@@ -1,6 +1,5 @@
 # Layer 1 — jar defaults of source-amps (D5 §6.1): safe, environment-agnostic defaults and the import list.
 # Everything environment-specific comes from the config tree, mounted read-only under /config/<layer>/:
-#   /config/platform  <- config/_common/<AppName>/                     (optional)
 #   /config/flow      <- config/<env>/<flow>/_common/                  (optional; the cluster layer, DL-44)
 #   /config/common    <- config/<env>/<flow>/<AppName>/app-common/
 #   /config/instance  <- config/<env>/<flow>/<AppName>/<AppInstance>/
@@ -11,7 +10,6 @@ spring:
     name: source-amps
   config:
     import:
-      - optional:file:/config/platform/application.yml
       - optional:file:/config/flow/application.yml
       - optional:file:/config/common/application.yml
       - optional:file:/config/instance/application.yml

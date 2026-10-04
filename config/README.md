@@ -1,11 +1,12 @@
 # config/ — the configuration tree (D5)
 
-`config/<env>/<flow>/<AppName>/{app-common,<AppInstance>}/` plus the optional layers
-`config/_common/<AppName>/` (every env) and `config/<env>/<flow>/_common/` (every app of one cluster — one business
-flow in one env, DL-44; nothing is shared at the env level), and in `*-dev` envs one deploy-dev inventory per flow,
+`config/<env>/<flow>/<AppName>/{app-common,<AppInstance>}/` plus the optional cluster layer
+`config/<env>/<flow>/_common/` (every app of one cluster — one business flow in one env, DL-44; nothing is shared at
+the env level, and nothing across envs: a default that is the same everywhere is a jar default, DL-45), and in
+`*-dev` envs one deploy-dev inventory per flow,
 `config/<env>/<flow>/workflows-config.yml`, with the boxes' host keys in `config/<env>/known_hosts`. The directory path
 is the identity tuple; `run-compose.sh` mounts the layers read-only under `/config/<layer>/` and the jar's import list
-applies them lowest precedence first: platform, flow, app-common, instance (D5 §6.1).
+applies them lowest precedence first: flow, app-common, instance (D5 §6.1).
 
 | File | Holds | Never |
 |---|---|---|
@@ -27,7 +28,6 @@ it; deploy-dev runs `deploy` for every flow with a pool (`.github/README.md`).
                                            BUNDLE_CREATED, BUNDLE_FILES, BUNDLE_SHA256, POOL_HOSTS, POOL_USER, POOL_ROOT
 <root>/scripts/run-compose.sh, smoke.sh    the one implementation for every app (D12 §6.2: no per-app wrapper)
 <root>/apps/<AppName>/                     docker/docker-compose.yml (and scripts/smoke.sh when the app ships checks of its own)
-<root>/config/_common/<AppName>/           when present
 <root>/config/<env>/<flow>/_common/        when present: the cluster layer (DL-44)
 <root>/config/<env>/<flow>/                every app, instance and layer of the flow, and workflows-config.yml
 <root>/config/<env>/known_hosts            when present: the pool guard pins the other boxes' keys with it

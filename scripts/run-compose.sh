@@ -13,7 +13,7 @@ readonly EXIT_FAILED=1 EXIT_USAGE=2 EXIT_REFUSED=3 EXIT_CONFIG=4 EXIT_ENGINE=5 E
 readonly COMMANDS="start stop down restart config app-config printenv health status ps logs pull validate record-tag exec shell version"
 readonly FLOWS="cash deriv swap"
 readonly COMPOSE_ENV_ALLOWED="IMAGE_REPO IMAGE_TAG APP_ENV APP_FLOW APP_NAME APP_INSTANCE JAVA_OPTS TZ LOG_LEVEL_ROOT LOGS_DIR DATA_DIR MEM_LIMIT"
-readonly SCRIPT_VARIABLES="CONFIG_DIR COMMON_DIR PLATFORM_DIR FLOW_COMMON_DIR PROJECT"
+readonly SCRIPT_VARIABLES="CONFIG_DIR COMMON_DIR FLOW_COMMON_DIR PROJECT"
 readonly IMAGE_TAG_PATTERN='^[A-Za-z0-9_][A-Za-z0-9_.-]{0,127}(@sha256:[0-9a-f]{64})?$'
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd -P)"
 readonly SCRIPT_DIR
@@ -281,9 +281,7 @@ COMMON_DIR="$APP_CONFIG_DIR/app-common"
 CONFIG_DIR="$APP_CONFIG_DIR/$INSTANCE"
 COMPOSE_FILE="$APP_DIR/docker/docker-compose.yml"
 ENV_FILE="$CONFIG_DIR/compose.env"
-PLATFORM_DIR=""
 FLOW_COMMON_DIR=""
-[ -d "$CONFIG_ROOT/_common/$APP" ] && PLATFORM_DIR="$CONFIG_ROOT/_common/$APP"
 # The cluster layer (DL-44): one business flow in one env is one cluster; nothing is shared at the env level.
 [ -d "$ENV_DIR/$FLOW/_common" ] && FLOW_COMMON_DIR="$ENV_DIR/$FLOW/_common"
 
@@ -383,7 +381,6 @@ if [ "$COMMAND" = record-tag ]; then
 fi
 export APP_ENV="$ENV_NAME" APP_FLOW="$FLOW" APP_NAME="$APP" APP_INSTANCE="$INSTANCE"
 export CONFIG_DIR COMMON_DIR PROJECT
-if [ -n "$PLATFORM_DIR" ]; then export PLATFORM_DIR; else unset PLATFORM_DIR; fi
 if [ -n "$FLOW_COMMON_DIR" ]; then export FLOW_COMMON_DIR; else unset FLOW_COMMON_DIR; fi
 if [ -n "${DEPS_NETWORK:-}" ]; then export DEPS_NETWORK DEPS_NETWORK_EXTERNAL=true; else unset DEPS_NETWORK DEPS_NETWORK_EXTERNAL; fi
 SELINUX_LABEL_SHARED="" SELINUX_LABEL_PRIVATE=""
@@ -580,7 +577,7 @@ show_plan() {
     [ "$DRY_RUN" -eq 1 ] || return 0
     printf 'run-compose.sh --dry-run: %s %s %s %s %s (nothing is executed)\n' "$ENV_NAME" "$FLOW" "$APP" "$INSTANCE" "$COMMAND"
     printf '  %-13s %s\n' "repo root" "$REPO_ROOT" "app dir" "$(rel "$APP_DIR")" "config root" "$(rel "$CONFIG_ROOT")" \
-        "platform dir" "$(rel "${PLATFORM_DIR:--}")" "flow dir" "$(rel "${FLOW_COMMON_DIR:--}")" \
+        "flow dir" "$(rel "${FLOW_COMMON_DIR:--}")" \
         "common dir" "$(rel "$COMMON_DIR")" "config dir" "$(rel "$CONFIG_DIR")" \
         "compose file" "$(rel "$COMPOSE_FILE")" "env file" "$(rel "$ENV_FILE")" "project" "$PROJECT" \
         "identity" "APP_ENV=$APP_ENV APP_FLOW=$APP_FLOW APP_NAME=$APP_NAME APP_INSTANCE=$APP_INSTANCE" \
@@ -751,8 +748,8 @@ cmd_version() {
 
 cmd_printenv() {
     {
-        printf 'REPO_ROOT=%s\nAPP_DIR=%s\nCONFIG_ROOT=%s\nCONFIG_DIR=%s\nCOMMON_DIR=%s\nPLATFORM_DIR=%s\nFLOW_COMMON_DIR=%s\n' \
-            "$REPO_ROOT" "$APP_DIR" "$CONFIG_ROOT" "$CONFIG_DIR" "$COMMON_DIR" "${PLATFORM_DIR:-}" "${FLOW_COMMON_DIR:-}"
+        printf 'REPO_ROOT=%s\nAPP_DIR=%s\nCONFIG_ROOT=%s\nCONFIG_DIR=%s\nCOMMON_DIR=%s\nFLOW_COMMON_DIR=%s\n' \
+            "$REPO_ROOT" "$APP_DIR" "$CONFIG_ROOT" "$CONFIG_DIR" "$COMMON_DIR" "${FLOW_COMMON_DIR:-}"
         printf 'COMPOSE_FILE=%s\nENV_FILE=%s\nPROJECT=%s\nENGINE=%s\nCOMPOSE=%s\n' \
             "$COMPOSE_FILE" "$ENV_FILE" "$PROJECT" "$ENGINE" "${COMPOSE[*]}"
         printf 'APP_ENV=%s\nAPP_FLOW=%s\nAPP_NAME=%s\nAPP_INSTANCE=%s\nDEPS_NETWORK=%s\nSELINUX_LABEL_SHARED=%s\n' \

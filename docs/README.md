@@ -1,7 +1,7 @@
 # Documentation of github-cicd-simple-apps
 
 This repository is a **project repository** of the Deephaven data platform: one release line, the connector apps.
-The platform's design documents D0–D12 and its decision log DL-01 … DL-42 live in
+The platform's design documents D0–D12 and its decision log DL-01 … DL-45 live in
 [github-demo/docs](https://github.com/crazymatthsu/github-demo/tree/main/docs); the repository contract this
 layout follows is D12 (`docs/12-repository-layout-and-pipeline-contract.md`) with ADR DL-42. This directory holds
 only what is specific to this repository.

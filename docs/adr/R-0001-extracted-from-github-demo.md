@@ -8,6 +8,7 @@
 | Note | Item 7's "v1.0 write-back still runs" ended with R-0002 (2026-10-04): DL-40 is implemented here |
 | Note | Item 2's `libs/` became `framework/` with R-0003 (2026-10-04, DL-43) |
 | Note | The env-wide layer `config/<env>/_common/` became the cluster layer `config/<env>/<flow>/_common/` with R-0004 (2026-10-04, DL-44) |
+| Note | The platform layer `config/_common/<AppName>/` went with R-0005 (2026-10-04, DL-45) |
 
 ## Context
 

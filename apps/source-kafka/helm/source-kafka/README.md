@@ -27,11 +27,10 @@ helm test source-database-trades-db-to-amps -n cash --logs   # the smoke test al
 | `-f config/<env>/<flow>/<AppName>/app-common/values.yaml` | sizing, `env.TZ` | values layer 2 |
 | `-f config/<env>/<flow>/<AppName>/<AppInstance>/values.yaml` | `image.tag`, `identity`, `env.APP_*`, `JAVA_OPTS`, `LOG_LEVEL_ROOT` | values layer 3 |
 | `--set-string image.tag=<tag>` | the deployed tag (`--tag`) | wins over layer 3 |
-| `--set-file appConfig.platform=config/_common/<AppName>/application.yml` | only when the file exists | `/config/platform/application.yml` |
 | `--set-file appConfig.flow=config/<env>/<flow>/_common/application.yml` | only when the file exists (the cluster layer, DL-44) | `/config/flow/application.yml` |
 | `--set-file appConfig.common=.../app-common/application.yml` | required | `/config/common/application.yml` |
 | `--set-file appConfig.instance=.../<AppInstance>/application.yml` | required | `/config/instance/application.yml` |
-| `--set-file appFiles.<layer>.<file>=<path>` | every other file of those four directories (not `values.yaml`, `compose.env`, `README.md`), `.` in the name escaped as `\.` | `/config/<layer>/<file>` |
+| `--set-file appFiles.<layer>.<file>=<path>` | every other file of those three directories (not `values.yaml`, `compose.env`, `README.md`), `.` in the name escaped as `\.` | `/config/<layer>/<file>` |
 
 `--mode deploy` adds: the namespace with the `restricted` Pod Security labels, the `Secret`
 `<release>-secrets` (`spring.datasource.username`, `spring.datasource.password`), `helm lint`,
@@ -69,7 +68,7 @@ The pods of the connector add `app.kubernetes.io/component: connector` (the sele
 | `serviceAccount.create`, `.name`, `.annotations`, `.automountToken` | `true`, `""`, `{}`, `false` | |
 | `identity.env`, `.flow`, `.app`, `.instance` | `""` | required, from the instance values; labels and the helm test; must equal `env.APP_*`, `app` the chart name |
 | `env` | `{}` | container environment as a map (rendered sorted); `SPRING_*`, `CONNECTOR_*_PASSWORD` and other secret-bearing names are rejected |
-| `appConfig.<layer>` | `{}` | `platform`, `env`, `common` (required), `instance` (required): `application.yml` contents |
+| `appConfig.<layer>` | `{}` | `flow`, `common` (required), `instance` (required): `application.yml` contents |
 | `appFiles.<layer>.<file>` | `{}` | other layer files (`logback.xml`, `*.properties`) |
 | `secrets.existingSecret` | `""` | default `<release>-secrets`, mounted at `/secrets/` (mode 0400, `optional: false`) |
 | `secrets.externalSecret.enabled`, `.storeRef`, `.storeKind`, `.vaultPath`, `.refreshInterval` | `false`, `vault-<env>`, `ClusterSecretStore`, `<env>/<flow>/<app>/<instance>`, `1m` | Phase 3 (DL-31) |
