@@ -360,7 +360,7 @@ class ConfigLinterTest {
         validInstance("us-dev", "trades-db-to-amps")
         validInstance("us-dev", "positions-db-to-deephaven")
         write("us-dev/cash/workflows-config.yml", flowTargets(
-            "pool:\n  hosts:\n    - dev-cash-01.example.com\n    - 10.0.0.2\n  user: deploy\n  root: /opt/platform\n" +
+            "pool:\n  hosts:\n    - dev-cash-01.example.com\n    - 10.0.0.2\n  user: deploy\n  keep: 3\n" +
                 "defaults:\n  kind: compose\n  cluster: kind-ci",
             "  - instance: source-database/trades-db-to-amps\n" +
                 "  - instance: source-database/positions-db-to-deephaven\n    host: 10.0.0.2\n"))
@@ -383,10 +383,10 @@ class ConfigLinterTest {
     }
 
     @Test
-    fun `check 11 rejects bad host names, users and roots in a pool`() {
+    fun `check 11 rejects bad host names, users, keeps and the gone root in a pool`() {
         validInstance("us-dev", "trades-db-to-amps")
         write("us-dev/cash/workflows-config.yml", flowTargets(
-            "pool:\n  hosts: [Dev_Cash_01.example.com, dev-cash-02.example.com., 42]\n  user: Root!\n  root: opt/platform\n" +
+            "pool:\n  hosts: [Dev_Cash_01.example.com, dev-cash-02.example.com., 42]\n  user: Root!\n  root: /opt/platform\n  keep: 1\n" +
                 "  port: 22",
             "  - instance: source-database/trades-db-to-amps\n    kind: compose\n"))
         val messages = lint().filter { it.check == 11 && it.severity == Severity.ERROR }.text()
@@ -395,34 +395,36 @@ class ConfigLinterTest {
             "pool.hosts[1]: 'dev-cash-02.example.com.' is not a lower-case DNS name or IPv4 address",
             "pool.hosts[2]: '42' is not a lower-case DNS name or IPv4 address",
             "pool.user 'Root!' is not a valid login name",
-            "pool.root 'opt/platform' must be an absolute path",
+            "pool.root is gone (DL-46): every box holds the project's versions under /apps/<user>/versions/<project>/",
+            "pool.keep '1' must be an integer of at least 2",
             "pool: unknown key 'port'",
         )) {
             assertTrue(messages.contains(expected), "missing '$expected' in:\n$messages")
         }
-        write("us-dev/cash/workflows-config.yml", flowTargets("pool:\n  hosts: []\n  root: /opt/../etc",
+        write("us-dev/cash/workflows-config.yml", flowTargets("pool:\n  hosts: []\n  keep: five",
             "  - instance: source-database/trades-db-to-amps\n    kind: compose\n"))
         val empty = lint().filter { it.check == 11 && it.severity == Severity.ERROR }.text()
         assertTrue(empty.contains("pool.hosts must be a non-empty list"), empty)
-        assertTrue(empty.contains("pool.root '/opt/../etc' must be an absolute path"), empty)
+        assertTrue(empty.contains("pool.keep 'five' must be an integer of at least 2"), empty)
     }
 
     @Test
-    fun `check 11 rejects a box listed twice, or shared by two flows under the same root`() {
+    fun `check 11 rejects a box listed twice, or shared by two flows (a box serves one env and flow)`() {
         validInstance("us-dev", "trades-db-to-amps")
         write("us-dev/cash/workflows-config.yml", flowTargets(
             "pool:\n  hosts: [dev-01.example.com, dev-02.example.com, dev-01.example.com]",
             "  - instance: source-database/trades-db-to-amps\n    kind: compose\n"))
         write("us-dev/swap/workflows-config.yml", flowTargets("pool:\n  hosts: [dev-02.example.com, dev-03.example.com]",
             "", flow = "swap").replace("targets:\n", "targets: []\n"))
-        write("us-dev/deriv/workflows-config.yml", flowTargets("pool:\n  hosts: [dev-03.example.com]\n  root: /opt/platform-deriv",
+        write("us-dev/deriv/workflows-config.yml", flowTargets("pool:\n  hosts: [dev-03.example.com]",
             "", flow = "deriv").replace("targets:\n", "targets: []\n"))
         val findings = lint().filter { it.check == 11 && it.severity == Severity.ERROR }
         val messages = findings.text()
         assertTrue(messages.contains("cash/workflows-config.yml: pool.hosts[2]: dev-01.example.com is listed twice"), messages)
-        assertTrue(messages.contains("swap/workflows-config.yml: pool.hosts: dev-02.example.com is also a box of flow 'cash' with the " +
-            "same root /opt/platform: their bundles would collide on it"), messages)
-        assertEquals(2, findings.size, "dev-03 serves deriv and swap under different roots, which is allowed:\n$messages")
+        assertTrue(messages.contains("swap/workflows-config.yml: pool.hosts: dev-02.example.com is also a box of flow 'cash': " +
+            "a box serves exactly one <env>/<flow> (DL-41)"), messages)
+        assertTrue(messages.contains("pool.hosts: dev-03.example.com is also a box of flow"), messages)
+        assertEquals(3, findings.size, "dev-03 serves deriv and swap, which is no longer allowed (DL-41):\n$messages")
     }
 
     @Test

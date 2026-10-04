@@ -9,6 +9,7 @@
 | Note | Item 2's `libs/` became `framework/` with R-0003 (2026-10-04, DL-43) |
 | Note | The env-wide layer `config/<env>/_common/` became the cluster layer `config/<env>/<flow>/_common/` with R-0004 (2026-10-04, DL-44) |
 | Note | The platform layer `config/_common/<AppName>/` went with R-0005 (2026-10-04, DL-45) |
+| Note | Item 7's in-place bundle under `/opt/platform` became the versioned layout `/apps/<user>/versions/<project>/` with R-0006 (2026-10-04, DL-41, DL-46) |
 
 ## Context
 

@@ -3,10 +3,13 @@
 # (check 11). A target's instance is <AppName>/<AppInstance>, relative to this flow; kind, cluster, namespace,
 # host and user come from the target, else from defaults.
 #   pool     the bare-metal boxes of us-dev/cash (DL-39): every box receives the flow's host bundle (the compose
-#            runtime plus every app, instance and layer of the flow) under `root`, so any instance of the flow can
-#            run on any box. `user` is the SSH user of DL-35 (forced command run-compose.sh). scripts/pool-deploy.sh
-#            syncs and deploys; deploy-dev's runner plays every box (transport local) until the boxes exist and
-#            the Environment us-dev holds DEV_DEPLOY_SSH_KEY with config/us-dev/known_hosts.
+#            runtime plus every app, instance and layer of the flow) as one version directory per deploy under
+#            /apps/<user>/versions/<project>/ with `current` a symlink to the live one (DL-41, DL-46; the project
+#            is platform.yml's), so any instance of the flow can run on any box and a rollback points `current`
+#            back. `user` is the SSH user of DL-35 (forced command run-compose.sh) and names the root /apps/<user>;
+#            `keep` is how many versions a box keeps. scripts/pool-deploy.sh syncs, deploys and rolls back;
+#            deploy-dev's runner plays every box (transport local) until the boxes exist and the Environment us-dev
+#            holds DEV_DEPLOY_SSH_KEY with config/us-dev/known_hosts.
 #   compose  demo step 1: run-compose.sh pull / start / health on a box of the pool. `host` pins the box; when
 #            absent, the deploy resolves it (pinned → discovered → assigned) and records the box in the run's
 #            GitHub Deployment (DL-40) — nothing is written back; a PR that sets or changes `host` moves the instance.
@@ -22,8 +25,8 @@ pool: # optional: the bare-metal boxes of us-dev/cash
   hosts: # non-empty, unique, lower-case DNS names (or IPv4)
     - dev-cash-01.us-dev.example.com
     - dev-cash-02.us-dev.example.com
-  user: deploy # default deploy (DL-35 forced command)
-  root: /opt/platform # default /opt/platform: the install root of the bundle on every box
+  user: deploy # default deploy (DL-35 forced command): the versions live under /apps/deploy/versions/<project>/ (DL-46)
+  keep: 5 # default 5: version directories kept per box, never fewer than current and the one before it (DL-41)
 defaults:
   kind: helm
   cluster: kind-ci
