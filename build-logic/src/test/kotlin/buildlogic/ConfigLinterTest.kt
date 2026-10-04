@@ -66,6 +66,16 @@ class ConfigLinterTest {
     private fun List<Finding>.text() = joinToString("\n")
 
     @Test
+    fun `the shared layer is the cluster's _common under the flow, never under the env (DL-44)`() {
+        validInstance("local", "trades-db-to-amps")
+        write("local/cash/_common/application.yml", "logging:\n  structured:\n    format:\n      console: ecs\n")
+        assertEquals(emptyList<Finding>(), lint().filter { it.check == 1 }, lint().text())
+        write("local/_common/application.yml", "a: 1\n")
+        val messages = lint().text()
+        assertTrue(messages.contains("config/local/_common/ moved to config/local/<flow>/_common/"), messages)
+    }
+
+    @Test
     fun `a valid tree has no findings and passes placeholders for the secrets to the renderer`() {
         validInstance("local", "trades-db-to-amps")
         validInstance("us-dev", "trades-db-to-amps")

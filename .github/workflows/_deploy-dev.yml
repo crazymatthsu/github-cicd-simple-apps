@@ -108,7 +108,7 @@ jobs:
           done
           files=()
           for file in config/"$DEPLOY_ENV"/*/workflows-config.yml; do
-            if [[ -f $file && $file != "config/$DEPLOY_ENV/_common/workflows-config.yml" ]]; then files+=("$file"); fi
+            if [[ -f $file ]]; then files+=("$file"); fi
           done
           echo '[]' > "$RUNNER_TEMP/targets.raw.json"
           echo '{}' > "$RUNNER_TEMP/pools.json"

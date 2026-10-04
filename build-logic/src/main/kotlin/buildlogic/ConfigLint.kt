@@ -74,7 +74,7 @@ object ConfigRules {
     val FORBIDDEN_PREFIXES = listOf("SPRING_", "LOGGING_", "MANAGEMENT_", "CONNECTOR_")
 
     /** Variables `run-compose.sh` sets itself; an instance may never define them (D5 §6.3, D6 §6.2). */
-    val SCRIPT_VARIABLES = setOf("CONFIG_DIR", "COMMON_DIR", "PLATFORM_DIR", "ENV_COMMON_DIR", "PROJECT")
+    val SCRIPT_VARIABLES = setOf("CONFIG_DIR", "COMMON_DIR", "PLATFORM_DIR", "FLOW_COMMON_DIR", "PROJECT")
     val IDENTITY = listOf("APP_ENV", "APP_FLOW", "APP_NAME", "APP_INSTANCE")
 
     /** D5 §6.3: the app-facing subset — the only names a values.yaml `env:` map may carry (check 4). */
@@ -222,10 +222,11 @@ class ConfigLinter(
                     "deploy inventory per flow (env, flow, pool, defaults, targets; D5 §6.6, DL-39)")
                 child.isFile && child.name == "README.md" -> Unit
                 child.isFile && child.name == "known_hosts" -> lintKnownHosts(child)
-                child.isDirectory && child.name == ConfigRules.COMMON -> lintLayerFiles(child, allowComposeEnv = false)
+                child.isDirectory && child.name == ConfigRules.COMMON -> error(1, child, "config/$env/_common/ moved to " +
+                    "config/$env/<flow>/_common/: nothing is shared at the env level, the cluster <env>/<flow> is the first shared layer (DL-44)")
                 child.isDirectory && child.name in ConfigRules.FLOWS -> lintFlow(child, env, appsSeen)?.let { pools += it }
                 child.isDirectory -> error(1, child, "flow '${child.name}' must be one of ${ConfigRules.FLOWS.sorted()}")
-                else -> error(1, child, "unexpected file in config/$env/ (expected known_hosts, _common/, <flow>/)")
+                else -> error(1, child, "unexpected file in config/$env/ (expected known_hosts, <flow>/)")
             }
         }
         if (env in completeEnvs) {
@@ -246,6 +247,11 @@ class ConfigLinter(
                     "targets.yml" -> error(11, appDir, "renamed: the flow's deploy inventory is workflows-config.yml (D5 §6.6, DL-39)")
                     else -> error(1, appDir, "unexpected file in a flow directory (expected workflows-config.yml and <AppName>/)")
                 }
+                continue
+            }
+            if (appDir.name == ConfigRules.COMMON) {
+                // The cluster layer (DL-44): application.yml and other files shared by every app of <env>/<flow>.
+                lintLayerFiles(appDir, allowComposeEnv = false)
                 continue
             }
             val app = appDir.name
@@ -571,7 +577,7 @@ class ConfigLinter(
         val template = apps[app] ?: return // check 2 already reported it
         val r = renderer ?: return
         val appDir = dir.parentFile
-        val envDir = appDir.parentFile.parentFile
+        val flowDir = appDir.parentFile
         val environment = linkedMapOf(
             "APP_ENV" to env, "APP_FLOW" to flow, "APP_NAME" to app, "APP_INSTANCE" to instance,
             "CONFIG_DIR" to dir.absolutePath,
@@ -579,7 +585,7 @@ class ConfigLinter(
             "PROJECT" to "$env-$flow-$app-$instance",
         )
         File(configRoot, "${ConfigRules.COMMON}/$app").takeIf { it.isDirectory }?.let { environment["PLATFORM_DIR"] = it.absolutePath }
-        File(envDir, ConfigRules.COMMON).takeIf { it.isDirectory }?.let { environment["ENV_COMMON_DIR"] = it.absolutePath }
+        File(flowDir, ConfigRules.COMMON).takeIf { it.isDirectory }?.let { environment["FLOW_COMMON_DIR"] = it.absolutePath }
         // Placeholders for every required variable nobody else provides: the secrets passed through the shell.
         for (match in templateVariable.findAll(template.readText())) {
             val (name, modifier) = match.destructured

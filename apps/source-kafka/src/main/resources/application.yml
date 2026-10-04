@@ -1,7 +1,7 @@
 # Layer 1 — jar defaults of source-kafka (D5 §6.1): safe, environment-agnostic defaults and the import list.
 # Everything environment-specific comes from the config tree, mounted read-only under /config/<layer>/:
 #   /config/platform  <- config/_common/<AppName>/                     (optional)
-#   /config/env       <- config/<env>/_common/                         (optional)
+#   /config/flow      <- config/<env>/<flow>/_common/                  (optional; the cluster layer, DL-44)
 #   /config/common    <- config/<env>/<flow>/<AppName>/app-common/
 #   /config/instance  <- config/<env>/<flow>/<AppName>/<AppInstance>/
 # Later imports override earlier ones; /secrets/ (Kubernetes Secret, one file per property) comes last.
@@ -12,7 +12,7 @@ spring:
   config:
     import:
       - optional:file:/config/platform/application.yml
-      - optional:file:/config/env/application.yml
+      - optional:file:/config/flow/application.yml
       - optional:file:/config/common/application.yml
       - optional:file:/config/instance/application.yml
       - optional:configtree:/secrets/

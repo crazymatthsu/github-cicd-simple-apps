@@ -23,7 +23,7 @@ identity:                             # the instance values set all four (the co
   instance: ""
 env: {}                               # map -> container env (sorted by name); the instance values set APP_ENV,
                                       # APP_FLOW, APP_NAME, APP_INSTANCE, JAVA_OPTS, LOG_LEVEL_ROOT, app-common TZ
-appConfig: {}                         # platform | env | common | instance -> /config/<layer>/application.yml (--set-file)
+appConfig: {}                         # platform | flow | common | instance -> /config/<layer>/application.yml (--set-file)
 appFiles: {}                          # <layer>: { <file name>: <content> } -> /config/<layer>/<file name> (--set-file)
 secrets:
   existingSecret: ""                  # defaults to <release>-secrets; mounted at /secrets/ (D2 §6.4, §8.1)

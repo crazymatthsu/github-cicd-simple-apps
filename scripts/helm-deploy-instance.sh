@@ -28,7 +28,7 @@ Flag list (identical in every mode):
   -f <app-common>/values.yaml -f <instance>/values.yaml --set-string image.tag=<tag>
   --set-file appConfig.common=<app-common>/application.yml --set-file appConfig.instance=<instance>/application.yml
   --set-file appConfig.platform=config/_common/<AppName>/application.yml     (when the file exists)
-  --set-file appConfig.env=config/<env>/_common/application.yml             (when the file exists)
+  --set-file appConfig.flow=config/<env>/<flow>/_common/application.yml      (when the file exists; the cluster layer, DL-44)
   --set-file appFiles.<layer>.<file>=<path>   for every other file of those four layer directories
                                               (logback.xml, *.properties; "." escaped as "\.")
 
@@ -196,7 +196,7 @@ rel() { case "$1" in "$REPO_ROOT"/*) printf '%s' "${1#"$REPO_ROOT"/}" ;; *) prin
 CHART="$(rel "$CHART_ABS")"
 CONFIG_ROOT_REL="$(rel "$CONFIG_ROOT_ABS")"
 PLATFORM_DIR="$CONFIG_ROOT_REL/_common/$APP"
-ENV_COMMON_DIR="$CONFIG_ROOT_REL/$ENV_NAME/_common"
+FLOW_COMMON_DIR="$CONFIG_ROOT_REL/$ENV_NAME/$FLOW/_common"
 COMMON="$CONFIG_ROOT_REL/$ENV_NAME/$FLOW/$APP/app-common"
 INST="$CONFIG_ROOT_REL/$ENV_NAME/$FLOW/$APP/$INSTANCE"
 
@@ -220,9 +220,9 @@ if [ -f "$PLATFORM_DIR/application.yml" ]; then
     FLAGS+=(--set-file "appConfig.platform=$PLATFORM_DIR/application.yml")
     LAYERS_PRESENT="platform $LAYERS_PRESENT"
 fi
-if [ -f "$ENV_COMMON_DIR/application.yml" ]; then
-    FLAGS+=(--set-file "appConfig.env=$ENV_COMMON_DIR/application.yml")
-    LAYERS_PRESENT="${LAYERS_PRESENT%common instance}env common instance"
+if [ -f "$FLOW_COMMON_DIR/application.yml" ]; then
+    FLAGS+=(--set-file "appConfig.flow=$FLOW_COMMON_DIR/application.yml")
+    LAYERS_PRESENT="${LAYERS_PRESENT%common instance}flow common instance"
 fi
 # Every other file of a layer directory ships to /config/<layer>/<file> (D5 §6.4). --set-file splits its key
 # on ".": the file name is escaped ("\."), and restricted to what a ConfigMap key allows.
@@ -239,7 +239,7 @@ add_layer_files() {
     done
 }
 add_layer_files platform "$PLATFORM_DIR"
-add_layer_files env "$ENV_COMMON_DIR"
+add_layer_files flow "$FLOW_COMMON_DIR"
 add_layer_files common "$COMMON"
 add_layer_files instance "$INST"
 

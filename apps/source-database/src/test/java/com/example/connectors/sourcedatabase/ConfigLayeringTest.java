@@ -26,13 +26,13 @@ import static org.assertj.core.api.Assertions.assertThat;
 
 /**
  * The rendered-config test of D5 §8 (R2): the jar's import list, pointed at a temporary tree instead of
- * /config and /secrets, applies jar defaults < platform < env < app-common < instance < secrets.
+ * /config and /secrets, applies jar defaults < platform < flow (the cluster layer) < app-common < instance < secrets.
  */
 class ConfigLayeringTest {
 
     private static final List<String> DOCUMENTED_IMPORTS = List.of(
             "optional:file:/config/platform/application.yml",
-            "optional:file:/config/env/application.yml",
+            "optional:file:/config/flow/application.yml",
             "optional:file:/config/common/application.yml",
             "optional:file:/config/instance/application.yml",
             "optional:configtree:/secrets/");
@@ -57,7 +57,7 @@ class ConfigLayeringTest {
         assertThat(imports).containsExactlyElementsOf(DOCUMENTED_IMPORTS);
         write(root.resolve("config/platform/application.yml"),
                 "connector.source.poll-interval: 15s\nconnector.source.port: 1111\nconnector.source.host: from-platform\n");
-        write(root.resolve("config/env/application.yml"), "connector.source.host: from-env\n");
+        write(root.resolve("config/flow/application.yml"), "connector.source.host: from-flow\n");
         write(root.resolve("config/common/application.yml"),
                 "connector.source.port: 1433\nconnector.source.poll-interval: 5s\nconnector.sink.amps.port: 9007\n");
         write(root.resolve("config/instance/application.yml"),
@@ -73,7 +73,7 @@ class ConfigLayeringTest {
                 .run("--spring.config.import=" + rewritten, "--APP_ENV=us-dev", "--APP_FLOW=cash",
                         "--APP_INSTANCE=trades-db-to-amps")) {
             ConfigurableEnvironment environment = context.getEnvironment();
-            assertThat(environment.getProperty("connector.source.host")).as("instance > env > platform")
+            assertThat(environment.getProperty("connector.source.host")).as("instance > flow > platform")
                     .isEqualTo("sql-trades.us-dev.example.com");
             assertThat(environment.getProperty("connector.source.port")).as("app-common > platform").isEqualTo("1433");
             assertThat(environment.getProperty("connector.source.poll-interval")).as("app-common > platform > jar")
@@ -87,7 +87,7 @@ class ConfigLayeringTest {
             ConfigurationSummary summary = ConfigurationSummary.capture(environment,
                     context.getBean(ConnectorIdentity.class));
             assertThat(summary.layers()).containsExactly(
-                    root + "/config/platform/application.yml", root + "/config/env/application.yml",
+                    root + "/config/platform/application.yml", root + "/config/flow/application.yml",
                     root + "/config/common/application.yml", root + "/config/instance/application.yml",
                     root + "/secrets/");
             assertThat(summary.properties()).containsEntry("spring.datasource.password", SecretMasker.MASK);

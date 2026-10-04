@@ -1,0 +1,7 @@
+# Layer 3 — cluster-wide settings for every app of us-dev/cash (D5 §6.1, DL-44: one business flow in one env is
+# one cluster; nothing is shared at the env level): JSON logs on stdout for the dev hosts (D6 §6.9); the identity
+# fields come from the jar defaults (logging.structured.json.add.*).
+logging:
+  structured:
+    format:
+      console: ecs

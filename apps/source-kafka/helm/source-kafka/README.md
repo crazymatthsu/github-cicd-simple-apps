@@ -28,7 +28,7 @@ helm test source-database-trades-db-to-amps -n cash --logs   # the smoke test al
 | `-f config/<env>/<flow>/<AppName>/<AppInstance>/values.yaml` | `image.tag`, `identity`, `env.APP_*`, `JAVA_OPTS`, `LOG_LEVEL_ROOT` | values layer 3 |
 | `--set-string image.tag=<tag>` | the deployed tag (`--tag`) | wins over layer 3 |
 | `--set-file appConfig.platform=config/_common/<AppName>/application.yml` | only when the file exists | `/config/platform/application.yml` |
-| `--set-file appConfig.env=config/<env>/_common/application.yml` | only when the file exists | `/config/env/application.yml` |
+| `--set-file appConfig.flow=config/<env>/<flow>/_common/application.yml` | only when the file exists (the cluster layer, DL-44) | `/config/flow/application.yml` |
 | `--set-file appConfig.common=.../app-common/application.yml` | required | `/config/common/application.yml` |
 | `--set-file appConfig.instance=.../<AppInstance>/application.yml` | required | `/config/instance/application.yml` |
 | `--set-file appFiles.<layer>.<file>=<path>` | every other file of those four directories (not `values.yaml`, `compose.env`, `README.md`), `.` in the name escaped as `\.` | `/config/<layer>/<file>` |
