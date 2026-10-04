@@ -1,5 +1,13 @@
 # Changelog
 
+## [0.2.0](https://github.com/crazymatthsu/github-cicd-simple-apps/compare/v0.1.1...v0.2.0) (2026-10-04)
+
+
+### Features
+
+* **deploy:** versioned host layout /apps/&lt;user&gt;/versions/&lt;project&gt;/&lt;version&gt;/ with current (DL-41, DL-46) ([6f7f73f](https://github.com/crazymatthsu/github-cicd-simple-apps/commit/6f7f73f4534edd84bbf3ee924b95a54751bf1fb8))
+* **deploy:** versioned host layout /apps/&lt;user&gt;/versions/&lt;project&gt;/&lt;version&gt;/ with current (DL-41, DL-46) ([5e70e92](https://github.com/crazymatthsu/github-cicd-simple-apps/commit/5e70e92ada415aa4ec4c727053db92fdd0460ac0))
+
 ## [0.1.1](https://github.com/crazymatthsu/github-cicd-simple-apps/compare/v0.1.0...v0.1.1) (2026-10-04)
 
 
