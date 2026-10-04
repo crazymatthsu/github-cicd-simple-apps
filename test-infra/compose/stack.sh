@@ -65,7 +65,7 @@ DOWN_TIMEOUT=20
 STATE_VARS="COMPOSE_PROJECT_NAME COMPOSE_FILE COMPOSE_PATH_SEPARATOR COMPOSE_ENV_FILES
   CI_RUN_ID CI_RUN_ATTEMPT IT_SA_PASSWORD IT_TABLE_PREFIX IT_RUNNER_UID IT_RUNNER_GID IT_WORKSPACE
   IT_GRADLE_HOME STACK_PROJECT STACK_SERVICES APP_IMAGE APP_NAME APP_ENV APP_FLOW APP_INSTANCE
-  COMMON_DIR CONFIG_DIR PLATFORM_DIR ENV_COMMON_DIR PROJECT IMAGE_REPO IMAGE_TAG ACTUATOR_HOST_PORT
+  COMMON_DIR CONFIG_DIR PLATFORM_DIR FLOW_COMMON_DIR PROJECT IMAGE_REPO IMAGE_TAG ACTUATOR_HOST_PORT
   SPRING_DATASOURCE_USERNAME SPRING_DATASOURCE_PASSWORD"
 
 COMPOSE_CMD=()
@@ -326,9 +326,9 @@ prepare_app() {
   fi
   # The optional layers exactly as run-compose.sh mounts them (D5 §6.1, D6 §6.2): set when the directory
   # exists, unset otherwise (the template then mounts the empty-layer volume).
-  unset PLATFORM_DIR ENV_COMMON_DIR
+  unset PLATFORM_DIR FLOW_COMMON_DIR
   if [[ -d $config_root/_common/$APP_NAME ]]; then export PLATFORM_DIR=$config_root/_common/$APP_NAME; fi
-  if [[ -d $config_root/$APP_ENV/_common ]]; then export ENV_COMMON_DIR=$config_root/$APP_ENV/_common; fi
+  if [[ -d $config_root/$APP_ENV/$APP_FLOW/_common ]]; then export FLOW_COMMON_DIR=$config_root/$APP_ENV/$APP_FLOW/_common; fi
   # The template publishes 127.0.0.1:${ACTUATOR_HOST_PORT:?...}, which compose interpolates even when the CI
   # override drops the port. Default it only when compose.env does not set it: the shell beats --env-file.
   if [[ -z ${ACTUATOR_HOST_PORT:-} ]] \

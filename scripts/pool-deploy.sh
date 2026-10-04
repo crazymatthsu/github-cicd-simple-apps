@@ -20,7 +20,7 @@ readonly ROOT_RE='^(/[A-Za-z0-9._-]+)+/?$'
 readonly TAG_RE='^[A-Za-z0-9_][A-Za-z0-9_.-]{0,127}$'
 readonly INSTANCE_RE='^[a-z0-9-]+/[a-z0-9-]+/[a-z0-9-]+$'
 # Set by run-compose.sh itself or read from compose.env: never replaced by a validation placeholder.
-PROVIDED="APP_ENV APP_FLOW APP_NAME APP_INSTANCE CONFIG_DIR COMMON_DIR PLATFORM_DIR ENV_COMMON_DIR PROJECT"
+PROVIDED="APP_ENV APP_FLOW APP_NAME APP_INSTANCE CONFIG_DIR COMMON_DIR PLATFORM_DIR FLOW_COMMON_DIR PROJECT"
 readonly PROVIDED="$PROVIDED IMAGE_REPO IMAGE_TAG APP_IMAGE"
 readonly PLACEHOLDER=pool-deploy-validate-placeholder
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd -P)"
@@ -93,7 +93,7 @@ Exit codes: 0 ok · 1 transport or command failure (after trying every box and i
   more than one box, or on a box other than its pin without --move)
 Bundle: scripts/run-compose.sh and smoke.sh (the one implementation for every app, D12 §6.2); per app with a
   directory under config/<env>/<flow>/ its compose template apps/<app>/docker/docker-compose.yml and, when the app
-  ships one, its own scripts/smoke.sh; config/_common/<app>/, config/<env>/_common/, config/<env>/<flow>/<app>/,
+  ships one, its own scripts/smoke.sh; config/_common/<app>/, config/<env>/<flow>/_common/ (the cluster layer, DL-44), config/<env>/<flow>/<app>/,
   config/<env>/<flow>/workflows-config.yml, and config/<env>/known_hosts when present. BUNDLE_SHA256 is the sha256 of
   the sorted "<sha256>  <path>" lines of every file but .platform-bundle and .state/. A sync is verified by
   rsync's exit code and a second rsync --dry-run --itemize-changes --checksum that must list no change; a local
@@ -439,6 +439,7 @@ build_bundle() { # <out> <tag>
     for dir in "$ENV_DIR/$FLOW"/*/; do
         [ -d "$dir" ] || continue
         app="$(basename "$dir")"
+        [ "$app" != _common ] || continue # the cluster layer (DL-44), copied with the flow below
         if rel="$(app_rel "$app")"; then
             apps+=("$app")
             app_rels+=("$rel")
@@ -456,7 +457,7 @@ build_bundle() { # <out> <tag>
         [ ! -d "$CONFIG_ROOT/_common/$app" ] || copy_tree "$CONFIG_ROOT/_common/$app" "config/_common/$app"
         copy_tree "$ENV_DIR/$FLOW/$app" "config/$ENV_NAME/$FLOW/$app"
     done
-    [ ! -d "$ENV_DIR/_common" ] || copy_tree "$ENV_DIR/_common" "config/$ENV_NAME/_common"
+    [ ! -d "$ENV_DIR/$FLOW/_common" ] || copy_tree "$ENV_DIR/$FLOW/_common" "config/$ENV_NAME/$FLOW/_common"
     mkdir -p "$OUT_DIR/config/$ENV_NAME/$FLOW"
     cp -p "$TARGETS_FILE" "$OUT_DIR/config/$ENV_NAME/$FLOW/workflows-config.yml"
     # The pinned host keys: run-compose.sh's pool guard on a box asks the other boxes with them.
@@ -466,8 +467,8 @@ build_bundle() { # <out> <tag>
     # The commit the bundle was built from; -dirty when a bundled file differs from it.
     git_sha="$(git -C "$REPO_ROOT" rev-parse HEAD 2>/dev/null || echo unknown)"
     if [ "$git_sha" != unknown ]; then
-        paths=(scripts/run-compose.sh scripts/smoke.sh "$(rel "$ENV_DIR/$FLOW")" "$(rel "$ENV_DIR/_common")"
-            "$(rel "$CONFIG_ROOT/_common")" "$(rel "$KNOWN_HOSTS")")
+        paths=(scripts/run-compose.sh scripts/smoke.sh "$(rel "$ENV_DIR/$FLOW")" "$(rel "$CONFIG_ROOT/_common")"
+            "$(rel "$KNOWN_HOSTS")")
         for rel in ${app_rels[@]+"${app_rels[@]}"}; do paths+=("$rel/docker/docker-compose.yml" "$rel/scripts"); done
         dirty="$(git -C "$REPO_ROOT" status --porcelain -- "${paths[@]}" 2>/dev/null || true)"
         [ -z "$dirty" ] || git_sha="$git_sha-dirty"
