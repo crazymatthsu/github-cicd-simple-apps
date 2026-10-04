@@ -6,14 +6,14 @@
 #            runtime plus every app, instance and layer of the flow) under `root`, so any instance of the flow can
 #            run on any box. `user` is the SSH user of DL-35 (forced command run-compose.sh). scripts/pool-deploy.sh
 #            syncs and deploys; deploy-dev's runner plays every box (transport local) until the boxes exist and
-#            the Environment dev holds DEV_DEPLOY_SSH_KEY with config/us-dev/known_hosts.
+#            the Environment us-dev holds DEV_DEPLOY_SSH_KEY with config/us-dev/known_hosts.
 #   compose  demo step 1: run-compose.sh pull / start / health on a box of the pool. `host` pins the box; when
 #            absent, the deploy resolves it (pinned → discovered → assigned) and records the box in the run's
 #            GitHub Deployment (DL-40) — nothing is written back; a PR that sets or changes `host` moves the instance.
 #            Without a pool, a compose target needs its own `host`.
 #   helm     demo step 2: helm upgrade --install into `cluster`, namespace `namespace` (default: the flow name,
 #            DL-38; "{flow}" stands for it). cluster kind-ci = a throwaway kind cluster inside the deploy-dev job
-#            until a dev cluster exists (DL-32); any other cluster needs its kubeconfig from the Environment dev
+#            until a dev cluster exists (DL-32); any other cluster needs its kubeconfig from the Environment us-dev
 #            secrets (Phase 3) and fails the deploy until then.
 # Layout: yq v4's own (one space before a trailing comment), so a yq edit changes one line.
 env: us-dev

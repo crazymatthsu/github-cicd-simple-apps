@@ -8,7 +8,7 @@
 #   compose (demo step 1)  a flow with a `pool` (DL-39): scripts/pool-deploy.sh builds the flow's host bundle,
 #                          syncs it to every box of the pool and runs pull → start → health on each instance's
 #                          box (pinned → discovered → assigned), then record-tag (the tag into compose.env) on
-#                          every box — transport ssh once the Environment dev holds DEV_DEPLOY_SSH_KEY, else
+#                          every box — transport ssh once the Environment us-dev holds DEV_DEPLOY_SSH_KEY, else
 #                          local (the runner plays every box: validate, start --dry-run and record-tag
 #                          --dry-run per placement, the ssh commands printed). A flow without a pool keeps the
 #                          PLACEHOLDER (brief v1.1): `run-compose.sh ... start --dry-run` per target on the
