@@ -11,7 +11,7 @@
 # `base-images` and `deploy-test` are flags instead: any matching path raises them, whatever its class.
 schema: 1
 
-# Every Gradle project CI knows: apps/<AppName> and libs/<lib> are top-level projects (settings.gradle.kts).
+# Every Gradle project CI knows: apps/<AppName> and framework/<name> are top-level projects (settings.gradle.kts).
 # `image`: has buildImage / pushImage / printImageRef (D1 §6.2).
 # `it`: has an integrationTest task, so it joins the component IT matrix (D8 §6.2).
 projects:
@@ -41,7 +41,7 @@ config:
 
 # Shared inputs: any change here means "everything" (full=true, D7 §5.4 rule 2).
 shared:
-  - "libs/**"
+  - "framework/**"
   - "build-logic/**"
   - "gradle/**"
   - "gradlew"

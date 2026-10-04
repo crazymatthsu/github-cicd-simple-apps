@@ -19,7 +19,7 @@ only what is specific to this repository.
 |---|---|
 | `platform.yml` | platform `v1`, kind `app`, registry `ghcr.io/crazymatthsu`, project `github-cicd-simple-apps` (`apps_dir: apps`), `dev_envs: [us-dev]` |
 | `apps/<AppName>/{build.gradle.kts, src/main, src/test, src/integrationTest, docker/Dockerfile, docker/docker-compose.yml, helm/<AppName>/}` | `source-kafka`, `source-amps`, `source-database`; each also carries `scripts/entrypoint.sh`, part of the image |
-| `libs/<lib>` | `connectors-framework` |
+| `framework/<name>` (DL-43; `libs/` before) | `connectors-framework` |
 | `config/<env>/<flow>/<AppName>/<AppInstance>/` and one `workflows-config.yml` per flow | `local/cash`, `us-dev/cash` (inventory schema v1.3; the v2 schema of DL-40 / DL-41 arrives with their implementation) |
 | `test-infra/`, `docs/`, `.github/CODEOWNERS` | present |
 | no per-app `scripts/run-compose.sh` / `scripts/smoke.sh` wrappers | removed: `scripts/run-compose.sh <env> <flow> <AppName> <AppInstance> <command>` finds the app under `apps/`; an app that needs checks of its own adds `apps/<AppName>/scripts/smoke.sh` |

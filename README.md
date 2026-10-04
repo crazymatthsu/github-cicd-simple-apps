@@ -3,7 +3,7 @@
 The connector apps of the Deephaven data platform — `source-kafka`, `source-amps`, `source-database` — and their
 shared library, extracted from the [`github-demo`](https://github.com/crazymatthsu/github-demo) monorepo as one
 **project repository** under the platform's repository contract (ADR DL-42 and design document D12 there): one
-release line, `apps/<AppName>` per deployable app, `libs/` for shared code, the `config/` tree of the envs this
+release line, `apps/<AppName>` per deployable app, `framework/` for the shared code the apps are built on, the `config/` tree of the envs this
 repository deploys itself, and a `platform.yml` manifest for what the tree cannot derive. The apps are
 hello-world Spring Boot 4.1 / Java 21 services (identity, masked configuration summary, actuator); the plumbing
 around them is the point.
@@ -12,7 +12,7 @@ around them is the point.
 |---|---|
 | `platform.yml` | the manifest: platform major, registry, the one project (`github-cicd-simple-apps`) and its dev envs |
 | `apps/<AppName>/` | one Gradle project per deployable app: `src/{main,test,integrationTest}`, `docker/` (Dockerfile, compose template), `helm/<AppName>/`, `scripts/entrypoint.sh` |
-| `libs/connectors-framework/` | shared library: identity, `connector.*` properties, masked start-up summary, health, metrics tags, test fixtures |
+| `framework/connectors-framework/` | the framework the apps are built on: identity, `connector.*` properties, masked start-up summary, health, metrics tags, test fixtures (DL-43) |
 | `config/` | configuration tree `config/<env>/<flow>/<AppName>/{app-common,<AppInstance>}`, the `_common` layers, one `workflows-config.yml` per dev flow ([`config/README.md`](config/README.md)) |
 | `test-infra/` | compose stacks, kind tier, seeds and test data of the integration tests ([`test-infra/README.md`](test-infra/README.md)) |
 | `scripts/` | `run-compose.sh`, `smoke.sh`, `pool-deploy.sh`, `helm-deploy-instance.sh`, `scripts/ci/` — platform scripts, vendored (below) |
