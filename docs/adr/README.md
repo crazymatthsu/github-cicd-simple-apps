@@ -8,3 +8,4 @@ edited in substance, a new one supersedes it.
 | ADR | Title | Status |
 |---|---|---|
 | [R-0001](R-0001-extracted-from-github-demo.md) | Extracted from github-demo as one project repository | Accepted (2026-10-04) |
+| [R-0002](R-0002-no-workflow-writes-to-main.md) | DL-40 implemented: no workflow writes to `main`, the Deployment is the record | Accepted (2026-10-04) |

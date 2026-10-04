@@ -102,7 +102,7 @@ images by name, and the deploy script's interface is `--tag`.
 | Job | Where | What |
 |---|---|---|
 | `kind-deploy` | `.github/workflows/_kind-deploy.yml`, called by `pr.yml` (PR and merge queue, when `detect-affected` reports `deploy-test`) and `main.yml` (after `publish`, before `deploy-dev`) | `ci-<run>-<attempt>`: one release per instance directory of `config/us-dev/*/source-database/`, then `scripts/helm-smoke-diff.sh` across the two releases |
-| `deploy-dev` | `.github/workflows/_deploy-dev.yml` (Helm adapter) | `deploy-<run>-<attempt>` for every `kind: helm` target with `cluster: kind-ci`, followed by the tag write-back |
+| `deploy-dev` | `.github/workflows/_deploy-dev.yml` (Helm adapter) | `deploy-<run>-<attempt>` for every `kind: helm` target with `cluster: kind-ci`, followed by the GitHub Deployment record (DL-40) |
 
 Both jobs run the same sequence:
 

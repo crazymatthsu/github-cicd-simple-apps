@@ -58,6 +58,7 @@ jobs:
       contents: read
       packages: write
       pull-requests: read
+      deployments: read # the last successful Deployment of each dev env names the tags in use (DL-40)
     steps:
       - uses: actions/checkout@v7
 

@@ -1,9 +1,9 @@
 # Helm values layer 3 (D11 §6.2) of us-dev/cash/source-database/positions-db-to-deephaven.
-# image.tag equals IMAGE_TAG in the sibling compose.env (the deploy-dev write-back rewrites both, D5 §6.8);
+# image.tag equals IMAGE_TAG in the sibling compose.env (config-lint check 4; in *-dev both declare `main`, DL-40);
 # identity and the APP_* variables restate the directory path (config-lint check 4); app-facing variables
 # only, never secrets (D5 §6.3).
 image:
-  tag: "0.1.0-rc.3"
+  tag: "main"
 identity:
   env: us-dev
   flow: cash

@@ -339,7 +339,7 @@ if [ -n "${GITHUB_RUN_ID:-}" ]; then
 fi
 # compose.env is the default for every variable it defines; only IMAGE_REPO and IMAGE_TAG may be overridden
 # from this shell, in every allowed env (deploy-dev injects IMAGE_TAG for pull / start / health, then record-tag
-# writes it into the box's compose.env and the write-back into git, D9 §6.4). Overrides are announced and
+# writes it into the box's compose.env; git keeps the declared tag, DL-40 / D9 §6.4). Overrides are announced and
 # recorded in the audit line. APP_IMAGE is local only.
 OVERRIDES=""
 for key in $ENV_KEYS; do
@@ -365,7 +365,7 @@ for key in IMAGE_REPO IMAGE_TAG; do
 done
 OVERRIDES="${OVERRIDES#,}"
 # record-tag changes a host bundle's copy of compose.env only: in a checkout, compose.env changes through git
-# (the write-back, a pull request), and a box's copy is replaced by git's at the next bundle sync.
+# (a pull request — no workflow writes to main, DL-40), and a box's copy is replaced by git's at the next bundle sync.
 if [ "$COMMAND" = record-tag ]; then
     [ -n "$BUNDLE_ROOT" ] || die "$EXIT_REFUSED" "record-tag writes the compose.env of a host bundle (a box synced by" \
         "scripts/pool-deploy.sh) only; in a checkout compose.env changes through git"

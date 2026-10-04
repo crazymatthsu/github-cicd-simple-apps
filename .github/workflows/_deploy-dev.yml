@@ -1,5 +1,5 @@
-# Reusable: deploy the images main.yml just published to the dev targets (D9 §6.4–§6.6, DL-32, DL-35, DL-36,
-# DL-39).
+# Reusable: deploy the images main.yml just published to the dev targets (D9 §6.4–§6.6, DL-32, DL-35, DL-39,
+# DL-40).
 #
 # Reads one inventory per flow, config/<env>/<flow>/workflows-config.yml (D5 §6.6): env and flow restate the path,
 # targets[].instance is <AppName>/<AppInstance> (the job prefixes the flow: <flow>/<AppName>/<AppInstance>),
@@ -8,7 +8,7 @@
 #   compose (demo step 1)  a flow with a `pool` (DL-39): scripts/pool-deploy.sh builds the flow's host bundle,
 #                          syncs it to every box of the pool and runs pull → start → health on each instance's
 #                          box (pinned → discovered → assigned), then record-tag (the tag into compose.env) on
-#                          every box — transport ssh once the Environment dev holds DEV_DEPLOY_SSH_KEY, else
+#                          every box — transport ssh once the Environment us-dev holds DEV_DEPLOY_SSH_KEY, else
 #                          local (the runner plays every box: validate, start --dry-run and record-tag
 #                          --dry-run per placement, the ssh commands printed). A flow without a pool keeps the
 #                          PLACEHOLDER (brief v1.1): `run-compose.sh ... start --dry-run` per target on the
@@ -20,12 +20,12 @@
 #                          --rollback-on-failure --wait, rollout status, helm test); the cluster is deleted
 #                          and leak-checked in always() steps (DL-27). Any other cluster fails its targets —
 #                          TODO(Phase 3) below.
-# Then the deployed tag is written back to the config tree by the bot with `[skip ci]` (loop guard,
-# DL-36) — IMAGE_TAG in compose.env and image.tag in values.yaml of every deployed instance, never of a
-# failed one, plus the box of every pooled instance as `host` in its flow's workflows-config.yml — and the run is
-# recorded as a GitHub Deployment in Environment `dev`. qa and prod are never
-# touched: the job refuses any env that is not *-dev, and so do run-compose.sh, helm-deploy-instance.sh
-# and write-back-tag.sh.
+# No workflow writes to `main` (DL-40): the dev tree declares its intent (`IMAGE_TAG=main`, `image.tag: main`)
+# and the run is recorded as a GitHub Deployment of the env's Environment (<env>, D12 §6.7), one per run, whose
+# payload names per instance the tag, the digest-pinned image, the box or cluster and the result, plus the
+# config tree's git SHA (the run's commit); the job summary is the human-readable copy and the boxes'
+# compose.env (record-tag) the second one. qa and prod are never touched: the job refuses any env that is not
+# *-dev, and so do run-compose.sh and helm-deploy-instance.sh.
 name: _deploy-dev
 
 on:
@@ -59,17 +59,17 @@ jobs:
     name: deploy ${{ inputs.env }}
     runs-on: ubuntu-latest
     timeout-minutes: 20
-    # GitHub Environment `dev`: no reviewers, deployment branch `main` (D9 §6.2). `deployment: false`
-    # keeps the Environment's rules and secrets without an automatic deployment object, so the record
-    # created below (with its payload) is the only one per run.
+    # The env's GitHub Environment (us-dev; D12 §6.7, DL-40): no reviewers, deployment branch `main` (D9 §6.2).
+    # `deployment: false` keeps the Environment's rules and secrets without an automatic deployment object, so
+    # the record created at the end (with its payload) is the only one per run.
     environment:
-      name: dev
+      name: ${{ inputs.env }}
       deployment: false
     concurrency:
       group: deploy-${{ inputs.env }}
       cancel-in-progress: false
     permissions:
-      contents: write # the write-back commit
+      contents: read # never write: no workflow commits to main (DL-40)
       deployments: write # the GitHub Deployment record
       packages: read # helm targets: this run's images are pulled into the kind cluster
     env:
@@ -161,23 +161,6 @@ jobs:
                 "$RUNNER_TEMP/targets.json")"
           } >> "$GITHUB_OUTPUT"
 
-      - name: Record the deployment (in progress)
-        id: deployment
-        env:
-          IMAGES: ${{ inputs.images }}
-        run: |
-          set -euo pipefail
-          payload=$(jq -cn --arg env "$DEPLOY_ENV" --arg tag "$DEPLOY_TAG" --argjson images "$IMAGES" \
-            --slurpfile targets "$RUNNER_TEMP/targets.json" '{env: $env, tag: $tag, images: $images, targets: $targets[0]}')
-          id=$(jq -n --arg ref "$GITHUB_SHA" --arg tag "$DEPLOY_TAG" --arg env "$DEPLOY_ENV" --argjson payload "$payload" '{
-                ref: $ref, environment: "dev", description: ("deploy-dev " + $env + " " + $tag),
-                auto_merge: false, required_contexts: [], payload: $payload,
-                transient_environment: false, production_environment: false
-              }' | gh api --method POST "repos/$GITHUB_REPOSITORY/deployments" --input - --jq '.id')
-          gh api --method POST "repos/$GITHUB_REPOSITORY/deployments/$id/statuses" \
-            -f state=in_progress -f log_url="$RUN_URL" -f description="deploying $DEPLOY_TAG" >/dev/null
-          echo "id=$id" >> "$GITHUB_OUTPUT"
-
       - name: Deploy compose targets (demo step 1 — host pools, DL-39)
         id: compose
         env:
@@ -191,11 +174,11 @@ jobs:
           #   IMAGE_TAG=<tag> run-compose.sh <env> <flow> <app> <inst> pull → start → health
           # and, once health passed, `record-tag` there and on every other box of the pool.
           # run-compose.sh honours IMAGE_TAG (and IMAGE_REPO) from the environment as an override of compose.env in
-          # every allowed env: the synced compose.env still names the previous tag, so a failed start or health
-          # re-runs start without the override (D9 §6.9). record-tag writes the new tag into every box's
-          # compose.env, so a restart or a failover there before the next sync keeps it; the write-back below
-          # records it in git, and the next deploy syncs that tree.
-          #   ssh    when the Environment `dev` holds DEV_DEPLOY_SSH_KEY: the key lives in this step's ssh-agent
+          # every allowed env. The synced compose.env names the declared tag `main` (DL-40), so a failed start or
+          # health starts the tag that ran before (known from discovery), else the declared one (D9 §6.9).
+          # record-tag writes the deployed tag into every box's compose.env, so a restart or a failover there
+          # before the next sync keeps it; the GitHub Deployment below records it, and git stays untouched.
+          #   ssh    when the Environment `us-dev` holds DEV_DEPLOY_SSH_KEY: the key lives in this step's ssh-agent
           #          only, and the reviewed config/<env>/known_hosts pins the boxes' host keys (pool-deploy.sh
           #          refuses without it; an unknown key is never accepted).
           #   local  otherwise — no box exists yet (brief v1.1): the runner plays every box, one directory each
@@ -273,8 +256,8 @@ jobs:
 
           # A flow without a pool: the per-target placeholder (brief v1.1, TODO(DL-35)) — `run-compose.sh ... start
           # --dry-run` on the runner and the SSH command it would run on the target's `host`. It validates the config
-          # as it will be after the write-back: a candidate copy of the tree with IMAGE_TAG set (CONFIG_ROOT); on a
-          # real host the override IMAGE_TAG=<tag> has the same effect before the write-back persists it.
+          # as the host runs it: a candidate copy of the tree with IMAGE_TAG set to the deployed tag (CONFIG_ROOT),
+          # which is what the override IMAGE_TAG=<tag> and record-tag produce on a real host.
           rows=$(jq -r --arg pooled " $POOLED_FLOWS " '.[] | select(.kind == "compose")
               | (.instance | split("/")[0]) as $flow | select($pooled | contains(" " + $flow + " ") | not)
               | [.instance, .host, .user] | join("|")' "$RUNNER_TEMP/targets.json")
@@ -331,7 +314,7 @@ jobs:
             echo "placements=${placements[*]}"
           } >> "$GITHUB_OUTPUT"
           if [[ ${#failed[@]} -gt 0 || ${#pool_failed[@]} -gt 0 ]]; then
-            echo "::error::compose: ${#failed[@]} target(s) failed${failed[*]:+: ${failed[*]}} — no write-back for them${pool_failed[*]:+; pool-deploy.sh failed for: ${pool_failed[*]}}"
+            echo "::error::compose: ${#failed[@]} target(s) failed${failed[*]:+: ${failed[*]}} — recorded as failed in the Deployment${pool_failed[*]:+; pool-deploy.sh failed for: ${pool_failed[*]}}"
             echo "failed=true" >> "$GITHUB_OUTPUT"
           fi
 
@@ -343,17 +326,17 @@ jobs:
         run: |
           set -euo pipefail
           # TODO(Phase 3): a helm target whose cluster is not kind-ci needs that cluster's kubeconfig from
-          #   the Environment `dev` secrets — DEV_KUBECONFIG_<CLUSTER> for a persistent dev cluster, or
+          #   the Environment `us-dev` secrets — DEV_KUBECONFIG_<CLUSTER> for a persistent dev cluster, or
           #   GitHub OIDC → IAM role → EKS RBAC once dev runs on EKS (D9 §6.7, DL-32) — written to
           #   $RUNNER_TEMP with mode 600 and passed to helm-deploy-instance as `kubeconfig`, with no kind
           #   cluster and no image load (that cluster pulls from the registry). Until then such a target
-          #   fails here and gets no write-back.
+          #   fails here and is recorded as failed.
           targets='[]' refs=() failed=()
           { echo "### deploy-dev: helm targets"; echo ""; } >> "$GITHUB_STEP_SUMMARY"
           while IFS=$'\t' read -r instance cluster namespace; do
             IFS=/ read -r _ app _ <<<"$instance"
             if [[ $cluster != kind-ci ]]; then
-              echo "::error::$instance: cluster '$cluster' — TODO(Phase 3): kubeconfig for $cluster from the Environment dev secrets"
+              echo "::error::$instance: cluster '$cluster' — TODO(Phase 3): kubeconfig for $cluster from the Environment us-dev secrets"
               echo "- \`$instance\`: **failed**, cluster \`$cluster\` has no kubeconfig yet (TODO(Phase 3); the demo deploys \`kind-ci\` only)" >> "$GITHUB_STEP_SUMMARY"
               failed+=("$instance")
               continue
@@ -416,7 +399,7 @@ jobs:
           targets: ${{ steps.helm-plan.outputs.targets }}
           tag: ${{ inputs.tag }}
           loaded-images: ${{ steps.load.outputs.loaded }}
-          # Every target is attempted; failed ones get no write-back and fail the job after it.
+          # Every target is attempted; failed ones are recorded as failed and fail the job after it.
           fail-on-error: 'false'
 
       - name: Diagnostics before teardown (kind)
@@ -459,19 +442,64 @@ jobs:
           echo "list=${instances[*]}" >> "$GITHUB_OUTPUT"
           echo "json=$(printf '%s\n' "${instances[@]}" | jq -R . | jq -cs 'map(select(length > 0))')" >> "$GITHUB_OUTPUT"
 
-      - name: Write back the deployed tag
-        id: writeback
-        # Also after a failed target or teardown step: what did deploy is recorded (failed targets are
-        # not in the list); never after a cancel.
-        if: ${{ !cancelled() && steps.deployed.outputs.list != '' }}
+      - name: Record the deployment (DL-40)
+        id: deployment
+        # Also after a failed target or teardown step: what did and did not deploy is recorded; never after a cancel.
+        if: ${{ !cancelled() }}
         env:
-          DEPLOYED: ${{ steps.deployed.outputs.list }}
-          # The boxes pool-deploy.sh chose, recorded as `host` in each flow's workflows-config.yml (DL-39).
-          WRITE_BACK_PLACEMENTS: ${{ steps.compose.outputs.placements }}
+          IMAGES: ${{ inputs.images }}
+          DEPLOYED: ${{ steps.deployed.outputs.json }}
+          PLACEMENTS: ${{ steps.compose.outputs.placements }}
         run: |
           set -euo pipefail
-          read -r -a instances <<<"$DEPLOYED"
-          scripts/ci/write-back-tag.sh "$DEPLOY_ENV" "$DEPLOY_TAG" "${instances[@]}"
+          # The record of what dev runs (D5 §6.8, D9 §6.3): one GitHub Deployment of the env's Environment per run,
+          # ref = this commit (the config tree deployed), payload = the tag, this run's digest-pinned images and
+          # every target with its box or cluster and its result. The tree's dev files say `main`; the literal
+          # version lives here and in the boxes' compose.env (record-tag) — never in a commit to main.
+          if [[ ! -f $RUNNER_TEMP/targets.json ]]; then
+            echo "::warning::no targets were resolved, so there is no deployment to record"
+            exit 0
+          fi
+          boxes=$(tr ' ' '\n' <<<"$PLACEMENTS" | jq -R 'select(length > 0) | split("=") | {key: .[0], value: .[1]}' | jq -cs 'from_entries')
+          instances=$(jq -c --argjson deployed "${DEPLOYED:-[]}" --argjson boxes "$boxes" --argjson images "$IMAGES" '
+              map(. as $t | ($t.instance | split("/")[1]) as $app
+                | {instance: $t.instance, kind: $t.kind}
+                + (if $t.kind == "compose" then {host: ($boxes[$t.instance] // (if ($t.host // "") == "" then null else $t.host end))}
+                   else {cluster: $t.cluster, namespace: $t.namespace} end)
+                + {image: ([$images | to_entries[] | select((.key | split(":") | last) == $app) | .value][0] // null),
+                   result: (if ($deployed | any(. == $t.instance)) then "deployed" else "failed" end)})' \
+              "$RUNNER_TEMP/targets.json")
+          bundles=$(for f in "$RUNNER_TEMP"/pool-*.json; do
+              if [[ -f $f ]]; then jq -c '{(.flow): {sha256: .bundle.sha256, files: .bundle.files, transport: .transport}}' "$f"; fi
+            done | jq -cs 'add // {}')
+          total=$(jq 'length' <<<"$instances")
+          ok=$(jq '[.[] | select(.result == "deployed")] | length' <<<"$instances")
+          state=success
+          [[ $ok -eq $total ]] || state=failure
+          payload=$(jq -cn --arg env "$DEPLOY_ENV" --arg tag "$DEPLOY_TAG" --arg sha "$GITHUB_SHA" --arg run "$RUN_URL" \
+            --argjson images "$IMAGES" --argjson instances "$instances" --argjson bundles "$bundles" \
+            '{env: $env, tag: $tag, configSha: $sha, run: $run, images: $images, instances: $instances, bundles: $bundles}')
+          id=$(jq -n --arg ref "$GITHUB_SHA" --arg env "$DEPLOY_ENV" --argjson payload "$payload" \
+                --arg desc "deploy-dev $DEPLOY_ENV $DEPLOY_TAG: $ok/$total deployed" '{
+                ref: $ref, environment: $env, task: "deploy", description: $desc,
+                auto_merge: false, required_contexts: [], payload: $payload,
+                transient_environment: false, production_environment: false
+              }' | gh api --method POST "repos/$GITHUB_REPOSITORY/deployments" --input - --jq '.id')
+          gh api --method POST "repos/$GITHUB_REPOSITORY/deployments/$id/statuses" \
+            -f state="$state" -f log_url="$RUN_URL" -f description="deploy-dev $DEPLOY_TAG: $ok/$total instance(s) deployed" >/dev/null
+          {
+            echo "### deploy-dev: GitHub Deployment $id of Environment \`$DEPLOY_ENV\` — **$state** (DL-40)"
+            echo ""
+            echo "The record of what \`$DEPLOY_ENV\` runs: tag \`$DEPLOY_TAG\`, config tree \`${GITHUB_SHA::7}\`. Nothing is committed to \`main\`."
+            echo ""
+            echo "| instance | kind | where | image | result |"
+            echo "|---|---|---|---|---|"
+            jq -r '.[] | "| `\(.instance)` | \(.kind) | \(if .kind == "compose" then (.host // "—") else (.cluster + "/" + .namespace) end) | `\(.image // "—")` | \(.result) |"' <<<"$instances"
+          } >> "$GITHUB_STEP_SUMMARY"
+          {
+            echo "id=$id"
+            echo "state=$state"
+          } >> "$GITHUB_OUTPUT"
 
       - name: Fail when a target failed
         if: ${{ !cancelled() && (steps.compose.outputs.failed == 'true' || steps.helm-plan.outputs.failed != '' || steps.helm.outputs.failed != '') }}
@@ -480,18 +508,5 @@ jobs:
           HELM_FAILED: ${{ steps.helm.outputs.failed }}
         run: |
           read -r -a names <<<"$HELM_PLAN_FAILED $HELM_FAILED"
-          echo "::error::deploy-dev: target(s) failed and got no write-back — compose: see its table; helm: ${names[*]:-none}"
+          echo "::error::deploy-dev: target(s) failed (recorded as failed in the Deployment) — compose: see its table; helm: ${names[*]:-none}"
           exit 1
-
-      - name: Record the deployment result
-        if: always() && steps.deployment.outputs.id != ''
-        env:
-          DEPLOYMENT_ID: ${{ steps.deployment.outputs.id }}
-          JOB_STATUS: ${{ job.status }}
-        run: |
-          set -euo pipefail
-          state=failure
-          [[ $JOB_STATUS == success ]] && state=success
-          gh api --method POST "repos/$GITHUB_REPOSITORY/deployments/$DEPLOYMENT_ID/statuses" \
-            -f state="$state" -f log_url="$RUN_URL" -f description="deploy-dev $DEPLOY_TAG: $JOB_STATUS" >/dev/null
-          echo "- GitHub Deployment $DEPLOYMENT_ID in Environment \`dev\`: **$state**" >> "$GITHUB_STEP_SUMMARY"

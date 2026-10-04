@@ -5,6 +5,7 @@
 | Status | Accepted |
 | Date | 2026-10-04 |
 | Platform decisions applied | DL-01, DL-03, DL-04, DL-42 (D12) of github-demo |
+| Note | Item 7's "v1.0 write-back still runs" ended with R-0002 (2026-10-04): DL-40 is implemented here |
 
 ## Context
 
