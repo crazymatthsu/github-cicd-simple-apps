@@ -74,7 +74,7 @@ object ConfigRules {
     val FORBIDDEN_PREFIXES = listOf("SPRING_", "LOGGING_", "MANAGEMENT_", "CONNECTOR_")
 
     /** Variables `run-compose.sh` sets itself; an instance may never define them (D5 §6.3, D6 §6.2). */
-    val SCRIPT_VARIABLES = setOf("CONFIG_DIR", "COMMON_DIR", "PLATFORM_DIR", "FLOW_COMMON_DIR", "PROJECT")
+    val SCRIPT_VARIABLES = setOf("CONFIG_DIR", "COMMON_DIR", "FLOW_COMMON_DIR", "PROJECT")
     val IDENTITY = listOf("APP_ENV", "APP_FLOW", "APP_NAME", "APP_INSTANCE")
 
     /** D5 §6.3: the app-facing subset — the only names a values.yaml `env:` map may carry (check 4). */
@@ -178,9 +178,11 @@ class ConfigLinter(
         for (child in children) {
             when {
                 child.isFile && child.name == "README.md" -> Unit
-                child.isDirectory && child.name == ConfigRules.COMMON -> lintPlatformLayer(child)
+                child.isDirectory && child.name == ConfigRules.COMMON -> error(1, child, "config/_common/ removed: nothing is shared " +
+                    "across envs (DL-45); a default that is the same everywhere belongs in the jar (layer 1), a cluster's shared " +
+                    "settings in config/<env>/<flow>/_common/")
                 child.isDirectory -> lintEnv(child)
-                else -> error(1, child, "unexpected file at the top of config/ (only <env>/, _common/ and README.md)")
+                else -> error(1, child, "unexpected file at the top of config/ (only <env>/ and README.md)")
             }
         }
         configRoot.walkTopDown().filter { it.isFile }.sortedBy { it.path }.forEach { scanSecrets(it) }
@@ -196,17 +198,6 @@ class ConfigLinter(
     }
 
     // --- layers ---------------------------------------------------------------------------------------
-
-    private fun lintPlatformLayer(dir: File) {
-        for (appDir in dir.listFiles().orEmpty().sortedBy { it.name }) {
-            if (!appDir.isDirectory) {
-                if (appDir.name != "README.md") error(1, appDir, "unexpected file in config/_common/ (expected <AppName>/)")
-                continue
-            }
-            checkAppName(appDir)
-            lintLayerFiles(appDir, allowComposeEnv = false)
-        }
-    }
 
     private fun lintEnv(envDir: File) {
         val env = envDir.name
@@ -584,7 +575,6 @@ class ConfigLinter(
             "COMMON_DIR" to File(appDir, ConfigRules.APP_COMMON).absolutePath,
             "PROJECT" to "$env-$flow-$app-$instance",
         )
-        File(configRoot, "${ConfigRules.COMMON}/$app").takeIf { it.isDirectory }?.let { environment["PLATFORM_DIR"] = it.absolutePath }
         File(flowDir, ConfigRules.COMMON).takeIf { it.isDirectory }?.let { environment["FLOW_COMMON_DIR"] = it.absolutePath }
         // Placeholders for every required variable nobody else provides: the secrets passed through the shell.
         for (match in templateVariable.findAll(template.readText())) {

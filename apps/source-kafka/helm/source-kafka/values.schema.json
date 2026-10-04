@@ -72,7 +72,6 @@
       "additionalProperties": false,
       "required": ["common", "instance"],
       "properties": {
-        "platform": { "type": "string" },
         "flow": { "type": "string" },
         "common": { "type": "string" },
         "instance": { "type": "string" }
@@ -83,7 +82,6 @@
       "type": "object",
       "additionalProperties": false,
       "properties": {
-        "platform": { "$ref": "#/$defs/layerFiles" },
         "flow": { "$ref": "#/$defs/layerFiles" },
         "common": { "$ref": "#/$defs/layerFiles" },
         "instance": { "$ref": "#/$defs/layerFiles" }

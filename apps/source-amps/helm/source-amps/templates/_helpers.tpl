@@ -115,7 +115,7 @@ readable in diffs), else a double-quoted string. Argument: (list key content).
 {{/* ConfigMap keys in mount order: [key, path] for every layer file present (D11 §6.3). */}}
 {{- define "connector.configItems" -}}
 {{- $items := list -}}
-{{- range $layer := list "platform" "flow" "common" "instance" -}}
+{{- range $layer := list "flow" "common" "instance" -}}
 {{- if hasKey $.Values.appConfig $layer -}}
 {{- $items = append $items (list (printf "%s.application.yml" $layer) (printf "%s/application.yml" $layer)) -}}
 {{- end -}}

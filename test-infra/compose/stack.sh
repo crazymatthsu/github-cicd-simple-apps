@@ -65,7 +65,7 @@ DOWN_TIMEOUT=20
 STATE_VARS="COMPOSE_PROJECT_NAME COMPOSE_FILE COMPOSE_PATH_SEPARATOR COMPOSE_ENV_FILES
   CI_RUN_ID CI_RUN_ATTEMPT IT_SA_PASSWORD IT_TABLE_PREFIX IT_RUNNER_UID IT_RUNNER_GID IT_WORKSPACE
   IT_GRADLE_HOME STACK_PROJECT STACK_SERVICES APP_IMAGE APP_NAME APP_ENV APP_FLOW APP_INSTANCE
-  COMMON_DIR CONFIG_DIR PLATFORM_DIR FLOW_COMMON_DIR PROJECT IMAGE_REPO IMAGE_TAG ACTUATOR_HOST_PORT
+  COMMON_DIR CONFIG_DIR FLOW_COMMON_DIR PROJECT IMAGE_REPO IMAGE_TAG ACTUATOR_HOST_PORT
   SPRING_DATASOURCE_USERNAME SPRING_DATASOURCE_PASSWORD"
 
 COMPOSE_CMD=()
@@ -295,7 +295,7 @@ manifest_instance() {
 # run-compose.sh exports (D6 §6.2): identity, config directories, compose.env, the image under test.
 prepare_app() {
   local app=$1 base config_root=${CONFIG_ROOT:-$REPO_ROOT/config} compose_env=''
-  # Absolute, or compose would read a relative layer path such as config/_common/<app> as a volume name.
+  # Absolute, or compose would read a relative layer path such as config/<env>/<flow>/_common as a volume name.
   if [[ -d $config_root ]]; then config_root=$(cd "$config_root" && pwd -P); fi
   export APP_NAME=${APP_NAME:-$app} APP_ENV=${APP_ENV:-local} APP_FLOW=${APP_FLOW:-cash}
   base=$config_root/$APP_ENV/$APP_FLOW/$APP_NAME
@@ -324,10 +324,9 @@ prepare_app() {
   else
     warn "$(rel "$CONFIG_DIR")/compose.env not found; the app template gets no instance compose.env"
   fi
-  # The optional layers exactly as run-compose.sh mounts them (D5 §6.1, D6 §6.2): set when the directory
+  # The optional cluster layer exactly as run-compose.sh mounts it (D5 §6.1, D6 §6.2): set when the directory
   # exists, unset otherwise (the template then mounts the empty-layer volume).
-  unset PLATFORM_DIR FLOW_COMMON_DIR
-  if [[ -d $config_root/_common/$APP_NAME ]]; then export PLATFORM_DIR=$config_root/_common/$APP_NAME; fi
+  unset FLOW_COMMON_DIR
   if [[ -d $config_root/$APP_ENV/$APP_FLOW/_common ]]; then export FLOW_COMMON_DIR=$config_root/$APP_ENV/$APP_FLOW/_common; fi
   # The template publishes 127.0.0.1:${ACTUATOR_HOST_PORT:?...}, which compose interpolates even when the CI
   # override drops the port. Default it only when compose.env does not set it: the shell beats --env-file.

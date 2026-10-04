@@ -13,7 +13,7 @@ around them is the point.
 | `platform.yml` | the manifest: platform major, registry, the one project (`github-cicd-simple-apps`) and its dev envs |
 | `apps/<AppName>/` | one Gradle project per deployable app: `src/{main,test,integrationTest}`, `docker/` (Dockerfile, compose template), `helm/<AppName>/`, `scripts/entrypoint.sh` |
 | `framework/connectors-framework/` | the framework the apps are built on: identity, `connector.*` properties, masked start-up summary, health, metrics tags, test fixtures (DL-43) |
-| `config/` | configuration tree `config/<env>/<flow>/<AppName>/{app-common,<AppInstance>}`, the `_common` layers, one `workflows-config.yml` per dev flow ([`config/README.md`](config/README.md)) |
+| `config/` | configuration tree `config/<env>/<flow>/<AppName>/{app-common,<AppInstance>}`, the cluster layer `<env>/<flow>/_common/`, one `workflows-config.yml` per dev flow ([`config/README.md`](config/README.md)) |
 | `test-infra/` | compose stacks, kind tier, seeds and test data of the integration tests ([`test-infra/README.md`](test-infra/README.md)) |
 | `scripts/` | `run-compose.sh`, `smoke.sh`, `pool-deploy.sh`, `helm-deploy-instance.sh`, `scripts/ci/` — platform scripts, vendored (below) |
 | `build-logic/` | the Gradle convention plugins `buildlogic.*` — vendored (below) |

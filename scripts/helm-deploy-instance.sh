@@ -27,9 +27,8 @@ chart apps/<AppName>/helm/<AppName>/ in the namespace <flow> (D11 §6.2, DL-33, 
 Flag list (identical in every mode):
   -f <app-common>/values.yaml -f <instance>/values.yaml --set-string image.tag=<tag>
   --set-file appConfig.common=<app-common>/application.yml --set-file appConfig.instance=<instance>/application.yml
-  --set-file appConfig.platform=config/_common/<AppName>/application.yml     (when the file exists)
   --set-file appConfig.flow=config/<env>/<flow>/_common/application.yml      (when the file exists; the cluster layer, DL-44)
-  --set-file appFiles.<layer>.<file>=<path>   for every other file of those four layer directories
+  --set-file appFiles.<layer>.<file>=<path>   for every other file of those three layer directories
                                               (logback.xml, *.properties; "." escaped as "\.")
 
 Modes:
@@ -195,7 +194,6 @@ cd "$REPO_ROOT"
 rel() { case "$1" in "$REPO_ROOT"/*) printf '%s' "${1#"$REPO_ROOT"/}" ;; *) printf '%s' "$1" ;; esac; }
 CHART="$(rel "$CHART_ABS")"
 CONFIG_ROOT_REL="$(rel "$CONFIG_ROOT_ABS")"
-PLATFORM_DIR="$CONFIG_ROOT_REL/_common/$APP"
 FLOW_COMMON_DIR="$CONFIG_ROOT_REL/$ENV_NAME/$FLOW/_common"
 COMMON="$CONFIG_ROOT_REL/$ENV_NAME/$FLOW/$APP/app-common"
 INST="$CONFIG_ROOT_REL/$ENV_NAME/$FLOW/$APP/$INSTANCE"
@@ -216,13 +214,9 @@ done
 FLAGS=(-f "$COMMON/values.yaml" -f "$INST/values.yaml" --set-string "image.tag=$TAG"
     --set-file "appConfig.common=$COMMON/application.yml" --set-file "appConfig.instance=$INST/application.yml")
 LAYERS_PRESENT="common instance"
-if [ -f "$PLATFORM_DIR/application.yml" ]; then
-    FLAGS+=(--set-file "appConfig.platform=$PLATFORM_DIR/application.yml")
-    LAYERS_PRESENT="platform $LAYERS_PRESENT"
-fi
 if [ -f "$FLOW_COMMON_DIR/application.yml" ]; then
     FLAGS+=(--set-file "appConfig.flow=$FLOW_COMMON_DIR/application.yml")
-    LAYERS_PRESENT="${LAYERS_PRESENT%common instance}flow common instance"
+    LAYERS_PRESENT="flow $LAYERS_PRESENT"
 fi
 # Every other file of a layer directory ships to /config/<layer>/<file> (D5 §6.4). --set-file splits its key
 # on ".": the file name is escaped ("\."), and restricted to what a ConfigMap key allows.
@@ -238,7 +232,6 @@ add_layer_files() {
         FLAGS+=(--set-file "appFiles.$layer.${name//./\\.}=$path")
     done
 }
-add_layer_files platform "$PLATFORM_DIR"
 add_layer_files flow "$FLOW_COMMON_DIR"
 add_layer_files common "$COMMON"
 add_layer_files instance "$INST"

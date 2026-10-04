@@ -76,6 +76,15 @@ class ConfigLinterTest {
     }
 
     @Test
+    fun `a top-level _common is rejected because nothing is shared across envs (DL-45)`() {
+        validInstance("local", "trades-db-to-amps")
+        write("_common/source-database/application.yml", "connector:\n  source:\n    poll-interval: 15s\n")
+        val messages = lint().text()
+        assertTrue(messages.contains("config/_common/ removed: nothing is shared across envs (DL-45)"), messages)
+        assertEquals(1, lint().count { it.check == 1 }, messages)
+    }
+
+    @Test
     fun `a valid tree has no findings and passes placeholders for the secrets to the renderer`() {
         validInstance("local", "trades-db-to-amps")
         validInstance("us-dev", "trades-db-to-amps")

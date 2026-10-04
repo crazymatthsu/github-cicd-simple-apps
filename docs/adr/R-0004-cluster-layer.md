@@ -5,6 +5,7 @@
 | Status | Accepted |
 | Date | 2026-10-04 |
 | Platform decisions applied | DL-44 (amends DL-07 layer 3, DL-41 bundle layout, DL-42 §2); D5 v1.1 §6.1 |
+| Note | The platform layer went with R-0005 (2026-10-04, DL-45): three file layers remain |
 
 ## Context
 

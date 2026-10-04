@@ -160,14 +160,14 @@ case_bundle() { # the layout and marker for us-dev/cash; every instance validate
     expect_rc 0
     m="$b/.platform-bundle"
     for f in .platform-bundle scripts/run-compose.sh scripts/smoke.sh apps/source-database/docker/docker-compose.yml \
-        config/_common/source-database/application.yml config/us-dev/cash/_common/application.yml config/us-dev/cash/workflows-config.yml \
+        config/us-dev/cash/_common/application.yml config/us-dev/cash/workflows-config.yml \
         config/us-dev/cash/source-database/app-common/application.yml config/us-dev/cash/source-database/trades-db-to-amps/compose.env \
         config/us-dev/cash/source-database/positions-db-to-deephaven/application.yml; do
         [ -f "$b/$f" ] || fail "the bundle lacks $f"
     done
     # No per-app wrapper (D12 §6.2): source-database ships no scripts/smoke.sh of its own, so apps/source-database/
     # holds the compose template only.
-    for f in config/us-dev/workflows-config.yml config/us-dev/_common config/local apps/source-amps apps/source-kafka \
+    for f in config/us-dev/workflows-config.yml config/us-dev/_common config/_common config/local apps/source-amps apps/source-kafka \
         apps/source-database/src apps/source-database/build apps/source-database/scripts scripts/ci scripts/test .git; do
         [ ! -e "$b/$f" ] || fail "the bundle holds $f"
     done
