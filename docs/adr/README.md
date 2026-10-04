@@ -1,0 +1,10 @@
+# ADRs of github-cicd-simple-apps
+
+Decisions specific to this repository. Platform-wide decisions (DL-01 … DL-42) live in
+[github-demo/docs/adr](https://github.com/crazymatthsu/github-demo/tree/main/docs/adr) and apply here unchanged.
+Format: the platform's (D6 §6.13) — status, context, decision, alternatives, consequences; an accepted ADR is never
+edited in substance, a new one supersedes it.
+
+| ADR | Title | Status |
+|---|---|---|
+| [R-0001](R-0001-extracted-from-github-demo.md) | Extracted from github-demo as one project repository | Accepted (2026-10-04) |
