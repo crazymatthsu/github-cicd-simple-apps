@@ -168,7 +168,7 @@ abstract class ContainerEngineTask : DefaultTask() {
         }
 }
 
-/** `buildImage`: builds `docker/Dockerfile` against the staged context `build/docker/` (D1 §6.4, D3 §6.4–§6.5). */
+/** `buildImage`: builds the staged `Dockerfile` against the context `build/docker/` (D1 §6.4, D3 §6.4–§6.5, R-0007). */
 @DisableCachingByDefault(because = "The image lands in the local engine, not in a Gradle output")
 abstract class BuildImageTask : ContainerEngineTask() {
     @get:InputDirectory
@@ -354,7 +354,7 @@ abstract class DockerImageExtension {
     /** Image name == AppName == project name (D1 §6.1). */
     abstract val imageName: Property<String>
 
-    /** Dockerfile relative to the subproject (and to the staged context). */
+    /** Dockerfile relative to the staged context (`Dockerfile`: the shared one, or the app's override, R-0007). */
     abstract val dockerfile: Property<String>
 
     /** Dockerfile ARG naming the base image, overridable with `-Pimage.arg.<ARG>=` or env `<ARG>`. */

@@ -18,7 +18,7 @@ only what is specific to this repository.
 | Contract | Here |
 |---|---|
 | `platform.yml` | platform `v1`, kind `app`, registry `ghcr.io/crazymatthsu`, project `github-cicd-simple-apps` (`apps_dir: apps`), `dev_envs: [us-dev]` |
-| `apps/<AppName>/{build.gradle.kts, src/main, src/test, src/integrationTest, docker/Dockerfile, docker/docker-compose.yml, helm/<AppName>/}` | `source-kafka`, `source-amps`, `source-database`; each also carries `scripts/entrypoint.sh`, part of the image |
+| `apps/<AppName>/{build.gradle.kts, src/main, src/test, src/integrationTest, docker/Dockerfile, docker/docker-compose.yml, helm/<AppName>/}` | `source-kafka`, `source-amps`, `source-database`; no app carries a `docker/Dockerfile` or `scripts/entrypoint.sh`: every image is built from the shared `docker/spring-boot.Dockerfile` and `docker/entrypoint.sh` ([R-0007](adr/R-0007-shared-dockerfile.md)), an app's own `docker/Dockerfile` would override it |
 | `framework/<name>` (DL-43; `libs/` before) | `connectors-framework` |
 | `config/<env>/<flow>/_common/` (the cluster layer, DL-44), `config/<env>/<flow>/<AppName>/<AppInstance>/` and one `workflows-config.yml` per flow | `local/cash`, `us-dev/cash` (inventory schema v1.3; the v2 schema of DL-40 / DL-41 arrives with their implementation) |
 | `test-infra/`, `docs/`, `.github/CODEOWNERS` | present |

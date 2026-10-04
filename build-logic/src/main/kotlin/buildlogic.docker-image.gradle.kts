@@ -3,10 +3,12 @@
 //   ./gradlew :source-database:buildImage      # docker buildx / podman build
 //   ./gradlew -q :source-database:printImageRef
 //
-// The build context is staged under build/docker/ with the same relative layout as the subproject
-// (docker/Dockerfile, scripts/entrypoint.sh, build/libs/<AppName>.jar), so the Dockerfile also builds by hand
-// from the subproject directory. Tags come from buildlogic.git-version (D4 §6.2); labels and build args
-// from project.version and git (D3 §6.5).
+// ONE shared Dockerfile for every app (R-0007): the build context staged under build/docker/ holds exactly
+// `Dockerfile` (docker/spring-boot.Dockerfile of the root), `entrypoint.sh` (docker/entrypoint.sh) and
+// `application.jar` (bootJar), so the Dockerfile is generic and an app carries no image files of its own. A
+// module-local docker/Dockerfile is a documented override, not the norm: when it exists it wins. By hand:
+// `./gradlew :<AppName>:stageDockerContext`, then `docker buildx build build/docker` from the subproject.
+// Tags come from buildlogic.git-version (D4 §6.2); labels and build args from project.version and git (D3 §6.5).
 //
 // Properties: -Pimage.registry (env IMAGE_REGISTRY, default ghcr.io/crazymatthsu), -Pimage.tags=a,b,
 // -Pimage.engine=auto|docker|podman (env CONTAINER_ENGINE), -Pimage.requireEngine=true (default when CI=true),
@@ -39,7 +41,7 @@ image.registry.convention(
 // else the root project, i.e. the repository (:source-kafka -> "github-cicd-simple-apps", platform.yml).
 image.group.convention(path.removePrefix(":").split(':').dropLast(1).joinToString("/").ifEmpty { rootProject.name })
 image.imageName.convention(name)
-image.dockerfile.convention("docker/Dockerfile")
+image.dockerfile.convention("Dockerfile")
 image.baseImageArg.convention("BASE_IMAGE")
 
 // Task properties only ever receive plain values or providers whose lambdas capture their own parameters:
@@ -102,21 +104,20 @@ val extraArgsProvider: Provider<List<String>> = providers.gradleProperty("image.
     .map { it.trim().split(Regex("\\s+")).filter(String::isNotEmpty) }
     .orElse(emptyList())
 
+val sharedDockerfile = layout.settingsDirectory.file("docker/spring-boot.Dockerfile")
+val sharedEntrypoint = layout.settingsDirectory.file("docker/entrypoint.sh")
+val moduleDockerfile = layout.projectDirectory.file("docker/Dockerfile")
+val dockerfileToUse = if (moduleDockerfile.asFile.exists()) moduleDockerfile else sharedDockerfile
+
 val stageDockerContext = tasks.register<Sync>("stageDockerContext") {
     group = "container image"
-    description = "Stages the minimal image build context under build/docker/."
+    description = "Stages the minimal image build context (Dockerfile, entrypoint.sh, application.jar) under build/docker/."
     into(layout.buildDirectory.dir("docker"))
-    from("docker") {
-        exclude("docker-compose*.yml") // the compose template is not part of the image
-        into("docker")
-    }
-    from("scripts") {
-        include("entrypoint.sh")
-        into("scripts")
-    }
+    from(dockerfileToUse) { rename { "Dockerfile" } }
+    from(sharedEntrypoint)
 }
 plugins.withId("org.springframework.boot") {
-    stageDockerContext.configure { from(tasks.named("bootJar")) { into("build/libs") } }
+    stageDockerContext.configure { from(tasks.named("bootJar")) { rename { "application.jar" } } }
 }
 
 val buildImage = tasks.register<BuildImageTask>("buildImage") {

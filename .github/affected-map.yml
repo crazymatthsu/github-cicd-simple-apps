@@ -49,7 +49,9 @@ shared:
   - "*.gradle.kts"
   - "gradle.properties"
   - "platform.yml"
+  - "docker/**"                      # the shared spring-boot.Dockerfile and entrypoint.sh (R-0007)
   - "**/Dockerfile"
+  - "**/*.Dockerfile"
   - "**/.dockerignore"
   - "test-infra/**"
   - "scripts/**"

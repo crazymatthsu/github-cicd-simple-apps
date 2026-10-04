@@ -13,3 +13,4 @@ edited in substance, a new one supersedes it.
 | [R-0004](R-0004-cluster-layer.md) | The cluster layer `config/<env>/<flow>/_common/` replaces the env layer (DL-44) | Accepted (2026-10-04) |
 | [R-0005](R-0005-no-platform-layer.md) | The platform layer `config/_common/<AppName>/` is removed (DL-45) | Accepted (2026-10-04) |
 | [R-0006](R-0006-host-layout.md) | The boxes hold versioned bundles under `/apps/<user>/versions/<project>/` with `current` (DL-41, DL-46) | Accepted (2026-10-04) |
+| [R-0007](R-0007-shared-dockerfile.md) | One shared `docker/spring-boot.Dockerfile` replaces the per-app Dockerfiles | Accepted (2026-10-04) |
