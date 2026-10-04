@@ -1,5 +1,13 @@
 # Changelog
 
+## [0.1.1](https://github.com/crazymatthsu/github-cicd-simple-apps/compare/v0.1.0...v0.1.1) (2026-10-04)
+
+
+### Bug Fixes
+
+* **release:** create the SBOM output directory; allow a dispatch from a branch with the tag input ([e2375f7](https://github.com/crazymatthsu/github-cicd-simple-apps/commit/e2375f7af9d7bfdd8fdca412498ce6f059ec9dc0))
+* **release:** create the SBOM output directory; allow a dispatch from a branch with the tag input ([108b866](https://github.com/crazymatthsu/github-cicd-simple-apps/commit/108b866279bd98f1288117c29f57714180040cbc))
+
 ## 0.1.0 (2026-10-04)
 
 
