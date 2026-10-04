@@ -1,0 +1,12 @@
+# platform.yml — the manifest of this repository for the shared pipeline (D12 §6.6, DL-42): only what the tree
+# cannot derive. Everything else is derived, never declared twice: apps from apps/*/docker/Dockerfile, libraries
+# from libs/*, envs / flows / instances from the config/ directories, deploy policy and boxes from each flow's
+# workflows-config.yml, versions from git tags.
+platform: v1                        # the platform-ci major this repository follows (vendored copies until it exists, README)
+kind: app                           # builds, publishes and deploys its dev envs
+registry: ghcr.io/crazymatthsu      # images are <registry>/<project>/<AppName>
+projects:
+  - name: github-cicd-simple-apps   # the one release line: tags vX.Y.Z, the image path, the `project` drop-down
+    apps_dir: apps
+    kinds: [compose, helm]
+dev_envs: [us-dev]                  # the envs this repository deploys itself; qa / uat / prod live in platform-config

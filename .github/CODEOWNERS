@@ -1,0 +1,52 @@
+# CODEOWNERS (D5 §6.7, D7 §5.6, D9 §6.1, §6.13; D12 §6.10). Branch protection on main requires a CODEOWNER review.
+#
+# Demo: @crazymatthsu stands in for every team. The comment above each rule names the team that owns
+# the path in the enterprise (organisation placeholder: @example). The LAST matching pattern wins, so
+# the general rules come first and the qa / prod config rules last.
+
+# Everything else — the connector apps and the shared library: connectors team (@example/connectors-team)
+*                       @crazymatthsu
+/apps/                  @crazymatthsu
+/libs/                  @crazymatthsu
+
+# Build platform: convention plugins, wrapper, version catalog, root build, manifest — platform team
+# (@example/platform-team). Vendored here until platform-ci exists (D12 §6.9).
+/build-logic/           @crazymatthsu
+/gradle/                @crazymatthsu
+/gradlew                @crazymatthsu
+/gradlew.bat            @crazymatthsu
+/settings.gradle.kts    @crazymatthsu
+/build.gradle.kts       @crazymatthsu
+/gradle.properties      @crazymatthsu
+/platform.yml           @crazymatthsu
+
+# CI/CD: workflows, composite actions, affected map, CI and runtime scripts, release tooling — platform team
+# (@example/platform-team)
+/.github/               @crazymatthsu
+/scripts/               @crazymatthsu
+/release-please-config.json     @crazymatthsu
+/.release-please-manifest.json  @crazymatthsu
+/renovate.json          @crazymatthsu
+/.hadolint.yaml         @crazymatthsu
+
+# The CA bundle of the test stacks — platform team + security (@example/platform-team @example/security)
+/test-infra/ca/         @crazymatthsu
+
+# Test infrastructure — platform team with the connectors team (@example/platform-team @example/connectors-team)
+/test-infra/            @crazymatthsu
+
+# Config tree (DL-06): dev and shared layers — connectors team (@example/connectors-team)
+/config/                @crazymatthsu
+
+# Each flow owns its directory in every env, including its deploy inventory and host pool
+# config/<env>/<flow>/workflows-config.yml (DL-39, DL-41) — flow teams (@example/flow-cash @example/flow-deriv @example/flow-swap)
+/config/*/cash/         @crazymatthsu
+/config/*/deriv/        @crazymatthsu
+/config/*/swap/         @crazymatthsu
+
+# qa: bump PRs are the deploy intent — connectors ops (@example/connectors-ops)
+/config/*-qa/           @crazymatthsu
+
+# prod: two approvals, change ticket in the PR — connectors ops + change approvers
+# (@example/connectors-ops @example/change-approvers)
+/config/*-prod/         @crazymatthsu
