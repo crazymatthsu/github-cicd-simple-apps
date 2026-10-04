@@ -4,10 +4,10 @@
 # the path in the enterprise (organisation placeholder: @example). The LAST matching pattern wins, so
 # the general rules come first and the qa / prod config rules last.
 
-# Everything else — the connector apps and the shared library: connectors team (@example/connectors-team)
+# Everything else — the connector apps and the framework they are built on: connectors team (@example/connectors-team)
 *                       @crazymatthsu
 /apps/                  @crazymatthsu
-/libs/                  @crazymatthsu
+/framework/             @crazymatthsu
 
 # Build platform: convention plugins, wrapper, version catalog, root build, manifest — platform team
 # (@example/platform-team). Vendored here until platform-ci exists (D12 §6.9).

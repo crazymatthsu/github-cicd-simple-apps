@@ -53,12 +53,13 @@ dependencyResolutionManagement {
 
 rootProject.name = "github-cicd-simple-apps"
 
-// Repository layout of D12 §6.2 (DL-42): every directory under apps/ (the deployable apps) and libs/ (shared
-// code, built and published, never deployed) that holds a build.gradle.kts is a top-level Gradle project.
+// Repository layout of D12 §6.2 (DL-42, DL-43): every directory under apps/ (the deployable apps) and framework/
+// (the shared code the apps are built on: built and published, never deployed) that holds a build.gradle.kts is a
+// top-level Gradle project.
 // Directory name == Gradle project name == image name == AppName (D1 §6.1); the release line — the <project>
 // of the image path <registry>/<project>/<AppName> — is the repository itself (platform.yml, D12 §6.6).
 // Adding an app is a directory under apps/, never an edit here.
-listOf("apps", "libs").forEach { dir ->
+listOf("apps", "framework").forEach { dir ->
     rootDir.resolve(dir).listFiles { file -> file.isDirectory && file.resolve("build.gradle.kts").isFile }
         ?.sortedBy { it.name }
         ?.forEach { projectDir ->
