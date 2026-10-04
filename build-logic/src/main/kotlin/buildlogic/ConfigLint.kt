@@ -108,9 +108,10 @@ object ConfigRules {
      * Check 11: a pool's install root — absolute, plain path segments only (it appears in rsync targets and SSH
      * command lines), never `.` or `..`.
      */
-    val POOL_ROOT = Regex("^(/[A-Za-z0-9._-]+)+/?$")
     const val POOL_USER = "deploy"
-    const val POOL_ROOT_DEFAULT = "/opt/platform"
+    /** DL-41 / DL-46: versions kept per box under `/apps/<user>/versions/<project>/`; `pool.keep` (default 5, at least 2). */
+    const val POOL_KEEP_DEFAULT = 5
+    const val POOL_KEEP_MIN = 2
     /** A helm target's namespace once "{flow}" is substituted: a DNS label (DL-38; the flow name by default). */
     val NAMESPACE = Regex("^[a-z0-9]([-a-z0-9]{0,61}[a-z0-9])?$")
     /** `config/<env>/known_hosts`: `[@marker] <host patterns> <key type> <base64 key> [comment]` (ssh-keyscan format). */
@@ -689,7 +690,7 @@ class ConfigLinter(
     // --- check 11: config/<env>/<flow>/workflows-config.yml (D5 §6.6) and the host pool of DL-39 --------------------
 
     /** The `pool` of one flow: the boxes of `<env>/<flow>`, reached as [user], the bundle under [root]. */
-    private data class Pool(val hosts: List<String>, val user: String, val root: String)
+    private data class Pool(val hosts: List<String>, val user: String, val keep: Int)
     private data class FlowPool(val file: File, val flow: String, val pool: Pool)
 
     /** Lints one flow's inventory; returns its pool, if it declares one. [instances] are `<AppName>/<AppInstance>`. */
@@ -786,14 +787,18 @@ class ConfigLinter(
         }
     }
 
-    /** `pool`: {hosts, user?, root?} (DL-39); null after reporting when it is not a mapping. */
+    /** `pool`: {hosts, user?, keep?} (DL-39, DL-41, DL-46); null after reporting when it is not a mapping. */
     private fun lintPool(file: File, node: Any?): Pool? {
         if (node !is Map<*, *>) {
-            error(11, file, "pool: must be a mapping with hosts, user, root")
+            error(11, file, "pool: must be a mapping with hosts, user, keep")
             return null
         }
-        (node.keys.map { it.toString() } - setOf("hosts", "user", "root")).forEach {
-            error(11, file, "pool: unknown key '$it' (allowed: hosts, user, root)")
+        if (node.containsKey("root")) {
+            error(11, file, "pool.root is gone (DL-46): every box holds the project's versions under /apps/<user>/versions/<project>/ " +
+                "(<version>/ per deploy, current the live one) — remove the key")
+        }
+        (node.keys.map { it.toString() } - setOf("hosts", "user", "keep", "root")).forEach {
+            error(11, file, "pool: unknown key '$it' (allowed: hosts, user, keep)")
         }
         val hosts = mutableListOf<String>()
         val list = node["hosts"]
@@ -812,22 +817,24 @@ class ConfigLinter(
         }
         val user = node["user"]?.toString() ?: ConfigRules.POOL_USER
         if (!ConfigRules.LOGIN.matches(user)) error(11, file, "pool.user '$user' is not a valid login name")
-        val root = node["root"]?.toString() ?: ConfigRules.POOL_ROOT_DEFAULT
-        if (!ConfigRules.POOL_ROOT.matches(root) || root.split('/').any { it == "." || it == ".." }) {
-            error(11, file, "pool.root '$root' must be an absolute path of plain segments ([A-Za-z0-9._-], no '.' or '..')")
+        val keepNode = node["keep"]
+        val keep = (keepNode as? Int) ?: ConfigRules.POOL_KEEP_DEFAULT
+        if (keepNode != null && (keepNode !is Int || keepNode < ConfigRules.POOL_KEEP_MIN)) {
+            error(11, file, "pool.keep '$keepNode' must be an integer of at least ${ConfigRules.POOL_KEEP_MIN} " +
+                "(the versions kept per box under /apps/<user>/versions/<project>/, DL-41)")
         }
-        return Pool(hosts, user, root.trimEnd('/'))
+        return Pool(hosts, user, keep)
     }
 
-    /** One box may serve two flows of an env only under different roots: two bundles in one root would collide. */
+    /** A box serves exactly one `<env>/<flow>` (DL-41): its `current` version is one cluster's; two pools cannot share it. */
     private fun checkSharedBoxes(pools: List<FlowPool>) {
-        val owner = mutableMapOf<Pair<String, String>, String>()
+        val owner = mutableMapOf<String, String>()
         for ((file, flow, pool) in pools) {
             for (host in pool.hosts) {
-                val other = owner.putIfAbsent(host to pool.root, flow)
+                val other = owner.putIfAbsent(host, flow)
                 if (other != null) {
-                    error(11, file, "pool.hosts: $host is also a box of flow '$other' with the same root ${pool.root}: " +
-                        "their bundles would collide on it (give one of the pools another root)")
+                    error(11, file, "pool.hosts: $host is also a box of flow '$other': a box serves exactly one <env>/<flow> " +
+                        "(DL-41) — its /apps/<user>/versions/<project>/current is one cluster's")
                 }
             }
         }

@@ -1,7 +1,7 @@
 # Documentation of github-cicd-simple-apps
 
 This repository is a **project repository** of the Deephaven data platform: one release line, the connector apps.
-The platform's design documents D0–D12 and its decision log DL-01 … DL-45 live in
+The platform's design documents D0–D12 and its decision log DL-01 … DL-46 live in
 [github-demo/docs](https://github.com/crazymatthsu/github-demo/tree/main/docs); the repository contract this
 layout follows is D12 (`docs/12-repository-layout-and-pipeline-contract.md`) with ADR DL-42. This directory holds
 only what is specific to this repository.
@@ -42,8 +42,10 @@ only what is specific to this repository.
 intent (`IMAGE_TAG=main`, `image.tag: main`); `deploy-dev` pins the literal version with the `IMAGE_TAG` override,
 `record-tag` writes it into the boxes' `compose.env`, and the run is recorded as a GitHub Deployment of Environment
 `us-dev` whose payload names, per instance, the tag, the digest-pinned image, the box or cluster and the result, plus
-the config tree's git SHA. Still open from DL-40 / DL-41: the per-flow deploy policy (`deploy.on-merge`,
-`deploy.schedule`), the manual deploy and rollback dispatches, and the versioned per-project bundles.
+the config tree's git SHA and the version directory per pooled flow. The boxes hold versioned bundles under
+`/apps/<user>/versions/<project>/` with `current` the live one (DL-41, DL-46, ADR R-0006). Still open from DL-40 /
+DL-41: the per-flow deploy policy (`deploy.on-merge`, `deploy.schedule`), the manual deploy and rollback dispatches,
+declared placement (the `instances` map) and the short form of `run-compose.sh` on a box.
 
 ## Repository settings (D12 §6.10)
 

@@ -4,9 +4,10 @@
 #
 # The one implementation for every app (D12 §6.2, no per-app wrapper): <AppName> names the app directory —
 # apps/<AppName>, or any <dir>/<AppName> holding docker/docker-compose.yml — and --app-dir pins it explicitly.
-# Run with --help for the command table. On a box of a host pool (DL-39) it runs from the host bundle that
-# scripts/pool-deploy.sh synced: the nearest ancestor holding .platform-bundle is the root, and start / restart
-# first ask the pool's other boxes (the pool guard, D6 §6.5).
+# Run with --help for the command table. On a box of a host pool (DL-39, DL-41) it runs from a version directory of
+# the host bundle, /apps/<user>/versions/<project>/<version>/ (DL-46), that scripts/pool-deploy.sh synced: the nearest
+# ancestor holding .platform-bundle is the root, `activate` makes that directory the box's `current` one, and
+# start / restart first ask the pool's other boxes (the pool guard, D6 §6.5).
 set -euo pipefail
 
 readonly EXIT_FAILED=1 EXIT_USAGE=2 EXIT_REFUSED=3 EXIT_CONFIG=4 EXIT_ENGINE=5 EXIT_TIMEOUT=124
@@ -15,6 +16,7 @@ readonly FLOWS="cash deriv swap"
 readonly COMPOSE_ENV_ALLOWED="IMAGE_REPO IMAGE_TAG APP_ENV APP_FLOW APP_NAME APP_INSTANCE JAVA_OPTS TZ LOG_LEVEL_ROOT LOGS_DIR DATA_DIR MEM_LIMIT"
 readonly SCRIPT_VARIABLES="CONFIG_DIR COMMON_DIR FLOW_COMMON_DIR PROJECT"
 readonly IMAGE_TAG_PATTERN='^[A-Za-z0-9_][A-Za-z0-9_.-]{0,127}(@sha256:[0-9a-f]{64})?$'
+readonly VERSION_DIR_PATTERN='^[0-9]{8}-[0-9]{6}$'
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd -P)"
 readonly SCRIPT_DIR
 
@@ -40,11 +42,20 @@ Commands (D6 §6.4):
   logs [-f] [--since T] [--tail N]
   pull                  pre-pull the image (the only command that contacts the registry)
   validate              offline checks: names, required files, compose.env rules, variables, compose lint
-  record-tag            host bundle only: write IMAGE_TAG (required in this shell) into the instance's compose.env,
-                        so a later start / restart on this box runs that tag (pool-deploy.sh, once health passed)
+  record-tag            host bundle only: write IMAGE_TAG (required in this shell) into the instance's compose.env
+                        of this version directory, so a start there runs that tag (pool-deploy.sh, before pull /
+                        start / health; the directory is the record, DL-41)
   exec <svc> <cmd...>   exec in a service (arguments after <svc> belong to the command)
   shell                 exec <AppName> sh (the app's service is named after the AppName)
   version               tag, digest and OCI labels of the running image
+
+Host bundle form (a box of a host pool, DL-41 / DL-46):
+  run-compose.sh activate [--keep N] [--previous | --to <version>] [--dry-run]
+                        make this version directory, /apps/<user>/versions/<project>/<version>/, the box's `current`
+                        one (an atomic symlink switch), create shared/<project>/{logs,data} beside versions/, and
+                        remove the versions beyond the newest N (default 5; never current or the one it replaced).
+                        --previous / --to <version> switch current to an older version instead (a rollback,
+                        run through current/scripts/run-compose.sh). Prints `activated <version>` on stdout.
 
 Options (before or after the command):
   --dry-run             print the resolved paths, identity, engine and exact command lines; run nothing
@@ -59,17 +70,18 @@ Exit codes: 0 ok · 1 operation failed or check negative · 2 usage · 3 refused
             4 config tree error · 5 engine not found or not running · 124 timeout
 Environment: CONFIG_ROOT (default <repo>/config), START_TIMEOUT, STOP_TIMEOUT, DEPS_NETWORK (join an
 existing network, e.g. the one of ./gradlew devUp), RUN_COMPOSE_ENGINE, IMAGE_TAG and IMAGE_REPO (override
-compose.env in every env, e.g. deploy-dev's pull / start / health, D9 §6.4, after which record-tag writes
-IMAGE_TAG into the box's compose.env; every other compose.env value always comes from the file), APP_IMAGE
+compose.env in every env, D9 §6.4; deploy-dev's record-tag writes IMAGE_TAG into the new version directory's
+compose.env before pull / start / health run from it; every other compose.env value always comes from the file), APP_IMAGE
 (local only: run this image instead of IMAGE_REPO/APP_NAME:IMAGE_TAG);
 secrets such as SPRING_DATASOURCE_PASSWORD are passed through from this shell, never from compose.env
 (D2 §8.1).
 
 Root: the nearest ancestor of this script holding a .platform-bundle marker (a host bundle synced by
-scripts/pool-deploy.sh, DL-39), else the git checkout, else the script's parent directory.
+scripts/pool-deploy.sh as one version directory /apps/<user>/versions/<project>/<version>/, DL-41 / DL-46), else
+the git checkout, else the script's parent directory.
 Pool guard (DL-39): on a box whose .platform-bundle lists more than one pool host (POOL_HOSTS), start and
 restart of an instance of that bundle's env and flow (never local) first ask every other box of the pool
-  $POOL_SSH $POOL_SSH_OPTS <POOL_USER>@<box> -- <POOL_ROOT>/<app dir>/scripts/run-compose.sh
+  $POOL_SSH $POOL_SSH_OPTS <POOL_USER>@<box> -- <POOL_ROOT>/current/scripts/run-compose.sh
       <env> <flow> <AppName> <AppInstance> status --json
 and refuse (3) when the instance runs there; a box that does not answer is only a warning (a dead box must
 not block a failover). --force skips the guard, --dry-run prints its commands, POOL_PEER_CHECK=off disables
@@ -124,10 +136,104 @@ mask_stream() {
     }'
 }
 
+# --- the host bundle (DL-39, DL-41, DL-46) ----------------------------------------------------------------
+
+# The nearest ancestor of $1 (itself included) that holds a .platform-bundle marker: the root of a host bundle
+# that scripts/pool-deploy.sh synced to a box of a pool — one version directory /apps/<user>/versions/<project>/
+# <YYYYMMDD-HHMMSS>/ (DL-41, DL-46).
+find_bundle_root() {
+    local dir="$1"
+    while :; do
+        if [ -f "$dir/.platform-bundle" ]; then
+            printf '%s' "$dir"
+            return 0
+        fi
+        [ "$dir" != / ] || return 1
+        dir="$(dirname "$dir")"
+    done
+}
+# One value of a manifest: KEY=value lines, the value optionally in double quotes. Read, never sourced.
+manifest_value() { # <manifest> <key>
+    awk -v k="$2" 'index($0, k "=") == 1 { v = substr($0, length(k) + 2); gsub(/^"|"$/, "", v); print v; exit }' "$1"
+}
+BUNDLE_ROOT=""
+bundle_value() {
+    [ -n "$BUNDLE_ROOT" ] || return 0
+    manifest_value "$BUNDLE_ROOT/.platform-bundle" "$1"
+}
+# activate: this version directory becomes the box's current one — <versions>/current -> <version>, switched
+# atomically (a new symlink renamed over the old one); --previous / --to point it at an older version instead.
+# The newest --keep versions stay, and always current and the version it replaced, so a rollback stays possible.
+cmd_activate() {
+    local versions version target previous keep="${KEEP:-5}" tmp v key shared index=0 candidates=() kept=() removed=()
+    BUNDLE_ROOT="$(find_bundle_root "$SCRIPT_DIR" || true)"
+    [ -n "$BUNDLE_ROOT" ] ||
+        die "$EXIT_REFUSED" "activate switches the current version of a host bundle (a box synced by scripts/pool-deploy.sh) only; this is a checkout"
+    versions="$(dirname "$BUNDLE_ROOT")" version="$(basename "$BUNDLE_ROOT")"
+    [[ $version =~ $VERSION_DIR_PATTERN ]] ||
+        die "$EXIT_CONFIG" "$BUNDLE_ROOT is not a version directory: a host bundle lives in /apps/<user>/versions/<project>/<YYYYMMDD-HHMMSS>/ (DL-46)"
+    [[ $keep =~ ^[0-9]+$ ]] && [ "$keep" -ge 2 ] || die "$EXIT_USAGE" "--keep must be an integer of at least 2 (was '$keep')"
+    [ "$ACTIVATE_PREVIOUS" -eq 0 ] || [ -z "$ACTIVATE_TO" ] || die "$EXIT_USAGE" "--previous and --to exclude each other"
+    previous="$(readlink "$versions/current" 2>/dev/null || true)"
+    previous="${previous%/}" previous="${previous##*/}"
+    # Every version directory under <versions>, newest first.
+    for v in "$versions"/*/; do
+        v="${v%/}" v="${v##*/}"
+        [[ $v =~ $VERSION_DIR_PATTERN ]] && [ -f "$versions/$v/.platform-bundle" ] || continue
+        candidates+=("$v")
+    done
+    mapfile -t candidates < <(printf '%s\n' ${candidates[@]+"${candidates[@]}"} | sort -r)
+    target="$version"
+    if [ -n "$ACTIVATE_TO" ]; then
+        [[ $ACTIVATE_TO =~ $VERSION_DIR_PATTERN ]] || die "$EXIT_USAGE" "--to '$ACTIVATE_TO' is not a version (<YYYYMMDD-HHMMSS>)"
+        contains_word "$ACTIVATE_TO" "${candidates[*]}" || die "$EXIT_CONFIG" "no version $ACTIVATE_TO under $versions"
+        target="$ACTIVATE_TO"
+    elif [ "$ACTIVATE_PREVIOUS" -eq 1 ]; then
+        target=""
+        for v in "${candidates[@]}"; do
+            if [[ $v < ${previous:-$version} ]]; then target="$v"; break; fi
+        done
+        [ -n "$target" ] || die "$EXIT_CONFIG" "no version older than ${previous:-$version} under $versions to go back to"
+    fi
+    # The target is a bundle of the same project, env and flow: a typo cannot activate another cluster's tree.
+    for key in BUNDLE_PROJECT BUNDLE_ENV BUNDLE_FLOW; do
+        [ "$(manifest_value "$versions/$target/.platform-bundle" "$key")" = "$(bundle_value "$key")" ] ||
+            die "$EXIT_REFUSED" "$versions/$target is a bundle of another $key than $BUNDLE_ROOT: not activated"
+    done
+    for v in "${candidates[@]}"; do
+        if [ "$index" -lt "$keep" ] || [ "$v" = "$target" ] || [ "$v" = "$previous" ]; then kept+=("$v"); else removed+=("$v"); fi
+        index=$((index + 1))
+    done
+    shared="$(dirname "$(dirname "$versions")")/shared/$(basename "$versions")"
+    if [ "$DRY_RUN" -eq 1 ]; then
+        printf 'run-compose.sh --dry-run: activate (nothing is executed)\n'
+        printf '  %-13s %s\n' "versions" "$versions" "activate" "current -> $target (now ${previous:-none})" \
+            "shared" "$shared/{logs,data}" "keep" "${kept[*]}" "remove" "${removed[*]:--}"
+        return 0
+    fi
+    if [ "$target" = "$previous" ]; then
+        info "$versions/current already points at $target"
+    else
+        tmp="$versions/.current.$$"
+        if ! ln -sfn "$target" "$tmp" || ! mv -fT "$tmp" "$versions/current"; then
+            rm -f "$tmp"
+            die "$EXIT_FAILED" "could not point $versions/current at $target"
+        fi
+        info "$versions/current -> $target (was ${previous:-none})"
+    fi
+    # What survives a version change (DL-41): shared/<project>/{logs,data} beside versions/ (LOGS_DIR, DATA_DIR).
+    mkdir -p "$shared/logs" "$shared/data" 2>/dev/null || warn "could not create $shared/{logs,data}"
+    for v in ${removed[@]+"${removed[@]}"}; do
+        if rm -rf -- "${versions:?}/$v"; then info "removed version $v (keeping the newest $keep)"; else warn "could not remove $versions/$v"; fi
+    done
+    printf 'activated %s\n' "$target"
+}
+
 # --- arguments --------------------------------------------------------------------------------------------
 
 DRY_RUN=0 FORCE=0 JSON=0 NO_WAIT=0 VOLUMES=0 OFFLINE=0 FOLLOW=0
 ENGINE_CHOICE="${RUN_COMPOSE_ENGINE:-}" SINCE="" TAIL="" APP_DIR_ARG=""
+KEEP="" ACTIVATE_PREVIOUS=0 ACTIVATE_TO=""
 POSITIONAL=()
 CMD_ARGS=()
 OPTS_TEXT=""
@@ -159,6 +265,11 @@ while [ $# -gt 0 ]; do
         --tail=*) TAIL="${1#*=}" ;;
         --app-dir) need_value "$@"; APP_DIR_ARG="$2"; shift ;;
         --app-dir=*) APP_DIR_ARG="${1#*=}" ;;
+        --keep) need_value "$@"; KEEP="$2"; OPTS_TEXT="$OPTS_TEXT --keep $2"; shift ;;
+        --keep=*) KEEP="${1#*=}"; OPTS_TEXT="$OPTS_TEXT --keep ${1#*=}" ;;
+        --previous) ACTIVATE_PREVIOUS=1; OPTS_TEXT="$OPTS_TEXT --previous" ;;
+        --to) need_value "$@"; ACTIVATE_TO="$2"; OPTS_TEXT="$OPTS_TEXT --to $2"; shift ;;
+        --to=*) ACTIVATE_TO="${1#*=}"; OPTS_TEXT="$OPTS_TEXT --to ${1#*=}" ;;
         -h | --help) AUDIT=0; usage; exit 0 ;;
         --) shift; CMD_ARGS+=("$@"); break ;;
         -*) die "$EXIT_USAGE" "unknown option $1 (see --help)" ;;
@@ -187,6 +298,17 @@ audit() {
 }
 trap 'audit "$?"' EXIT
 
+# The host bundle form: `activate` takes no instance (DL-41 / DL-46).
+if [ "${POSITIONAL[0]:-}" = activate ]; then
+    COMMAND=activate
+    [ "${#POSITIONAL[@]}" -eq 1 ] && [ "${#CMD_ARGS[@]}" -eq 0 ] ||
+        die "$EXIT_USAGE" "activate takes options only: run-compose.sh activate [--keep N] [--previous | --to <version>] [--dry-run]"
+    cmd_activate
+    exit $?
+fi
+if [ -n "$KEEP" ] || [ "$ACTIVATE_PREVIOUS" -eq 1 ] || [ -n "$ACTIVATE_TO" ]; then
+    die "$EXIT_USAGE" "--keep, --previous and --to only apply to activate (run-compose.sh activate ...)"
+fi
 if [ "${#POSITIONAL[@]}" -lt 5 ]; then
     usage >&2
     die "$EXIT_USAGE" "expected <env> <flow> <AppName> <AppInstance> <command>, got ${#POSITIONAL[@]} argument(s)"
@@ -195,7 +317,7 @@ ENV_NAME="${POSITIONAL[0]}" FLOW="${POSITIONAL[1]}" APP="${POSITIONAL[2]}" INSTA
 
 # --- validation: usage (2), safety (3) --------------------------------------------------------------------
 
-contains_word "$COMMAND" "$COMMANDS" || die "$EXIT_USAGE" "unknown command '$COMMAND' (one of: $COMMANDS)"
+contains_word "$COMMAND" "$COMMANDS" || die "$EXIT_USAGE" "unknown command '$COMMAND' (one of: $COMMANDS; activate takes no instance: run-compose.sh activate)"
 case "$ENV_NAME" in
     local) ;;
     [a-z][a-z]-dev | [a-z][a-z]-qa | [a-z][a-z]-prod) ;;
@@ -236,25 +358,6 @@ fi
 
 # --- path resolution (D6 §6.2) and config-tree checks (4) -------------------------------------------------
 
-# The nearest ancestor of $1 (itself included) that holds a .platform-bundle marker: the root of a host bundle
-# that scripts/pool-deploy.sh synced to a box of a pool (DL-39).
-find_bundle_root() {
-    local dir="$1"
-    while :; do
-        if [ -f "$dir/.platform-bundle" ]; then
-            printf '%s' "$dir"
-            return 0
-        fi
-        [ "$dir" != / ] || return 1
-        dir="$(dirname "$dir")"
-    done
-}
-# One value of the bundle manifest: KEY=value lines, the value optionally in double quotes. Read, never sourced.
-bundle_value() {
-    [ -n "$BUNDLE_ROOT" ] || return 0
-    awk -v k="$1" 'index($0, k "=") == 1 { v = substr($0, length(k) + 2); gsub(/^"|"$/, "", v); print v; exit }' \
-        "$BUNDLE_ROOT/.platform-bundle"
-}
 BUNDLE_ROOT="$(find_bundle_root "$SCRIPT_DIR" || true)"
 if [ -n "$BUNDLE_ROOT" ]; then
     REPO_ROOT="$BUNDLE_ROOT"
@@ -364,7 +467,8 @@ for key in IMAGE_REPO IMAGE_TAG; do
 done
 OVERRIDES="${OVERRIDES#,}"
 # record-tag changes a host bundle's copy of compose.env only: in a checkout, compose.env changes through git
-# (a pull request — no workflow writes to main, DL-40), and a box's copy is replaced by git's at the next bundle sync.
+# (a pull request — no workflow writes to main, DL-40); a box's version directory is never synced again, so the
+# record stays with the version it belongs to (DL-41).
 if [ "$COMMAND" = record-tag ]; then
     [ -n "$BUNDLE_ROOT" ] || die "$EXIT_REFUSED" "record-tag writes the compose.env of a host bundle (a box synced by" \
         "scripts/pool-deploy.sh) only; in a checkout compose.env changes through git"
@@ -473,11 +577,12 @@ setup_pool_guard() {
     fi
     POOL_USER_NAME="$user" POOL_ROOT_DIR="${root%/}"
 }
-# The peer's copy of this command (the bundle's scripts/run-compose.sh under the pool's root) as an argument vector.
+# The peer's copy of this command — the run-compose.sh of its current version under the pool's root (DL-41) — as an
+# argument vector.
 PEER_CMD=()
 peer_command() {
     local remote
-    remote="$(printf '%q ' "$POOL_ROOT_DIR/scripts/run-compose.sh" "$ENV_NAME" "$FLOW" "$APP" "$INSTANCE" status --json)"
+    remote="$(printf '%q ' "$POOL_ROOT_DIR/current/scripts/run-compose.sh" "$ENV_NAME" "$FLOW" "$APP" "$INSTANCE" status --json)"
     PEER_CMD=("${POOL_SSH:-ssh}" "${POOL_SSH_ARGS[@]+"${POOL_SSH_ARGS[@]}"}" "$POOL_USER_NAME@$1" -- "${remote% }")
 }
 # For --dry-run: a command line as it would be typed (arguments with spaces in single quotes).
@@ -583,9 +688,9 @@ show_plan() {
         "identity" "APP_ENV=$APP_ENV APP_FLOW=$APP_FLOW APP_NAME=$APP_NAME APP_INSTANCE=$APP_INSTANCE" \
         "image" "$IMAGE_REF" "engine" "$ENGINE (${COMPOSE[*]})" "deps network" "${DEPS_NETWORK:--}"
     if [ -n "$BUNDLE_ROOT" ]; then
-        printf '  %-13s %s/%s, tag %s, %s files, sha256 %.12s…, pool %s\n' "host bundle" "$(bundle_value BUNDLE_ENV)" \
-            "$(bundle_value BUNDLE_FLOW)" "$(bundle_value BUNDLE_TAG)" "$(bundle_value BUNDLE_FILES)" \
-            "$(bundle_value BUNDLE_SHA256)" "$(bundle_value POOL_HOSTS)"
+        printf '  %-13s %s %s/%s version %s, tag %s, %s files, sha256 %.12s…, pool %s\n' "host bundle" \
+            "$(bundle_value BUNDLE_PROJECT)" "$(bundle_value BUNDLE_ENV)" "$(bundle_value BUNDLE_FLOW)" "$(basename "$BUNDLE_ROOT")" \
+            "$(bundle_value BUNDLE_TAG)" "$(bundle_value BUNDLE_FILES)" "$(bundle_value BUNDLE_SHA256)" "$(bundle_value POOL_HOSTS)"
     fi
     if [ -n "$POOL_GUARD_NOTE" ]; then
         printf '  %-13s %s\n' "peer check" "$POOL_GUARD_NOTE"
@@ -705,9 +810,10 @@ cmd_status() {
         fi
     fi
     if [ "$JSON" -eq 1 ]; then
-        printf '{"project":%s,"running":%s,"desired":%s,"runningImage":%s,"runningId":%s,"desiredId":%s,"drift":%s}\n' \
+        printf '{"project":%s,"running":%s,"desired":%s,"runningImage":%s,"runningId":%s,"desiredId":%s,"drift":%s,"bundleRoot":%s}\n' \
             "$(json_str "$PROJECT")" "$([ -n "$cid" ] && echo true || echo false)" "$(json_str "$IMAGE_REF")" \
-            "$(json_str "$running_ref")" "$(json_str "$running_id")" "$(json_str "$desired_id")" "$(json_str "$drift")"
+            "$(json_str "$running_ref")" "$(json_str "$running_id")" "$(json_str "$desired_id")" "$(json_str "$drift")" \
+            "$(json_str "$BUNDLE_ROOT")"
     else
         printf 'desired %s; running %s; drift: %s\n' "$IMAGE_REF" "${running_ref:-(not running)}" "$drift"
     fi
@@ -816,7 +922,7 @@ cmd_record_tag() {
         warn "could not replace $(rel "$ENV_FILE")"
         return "$EXIT_FAILED"
     fi
-    info "IMAGE_TAG=$RECORD_TAG recorded in $(rel "$ENV_FILE") (was ${previous:-unset}); the next bundle sync replaces this copy with git's"
+    info "IMAGE_TAG=$RECORD_TAG recorded in $(rel "$ENV_FILE") (was ${previous:-unset}); this version directory keeps it (DL-41)"
 }
 
 cmd_app_config() {
