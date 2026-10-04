@@ -12,7 +12,7 @@ instance (D5 §6.1).
 | `application.yml` | endpoints, topics, table names, poll intervals, log levels | secrets (D2 §6.4) |
 | `<AppInstance>/compose.env` | `IMAGE_REPO`, `IMAGE_TAG`, identity, `JAVA_OPTS`, `TZ`, `LOG_LEVEL_ROOT`, `*_HOST_PORT`, `LOGS_DIR`, `DATA_DIR`, `MEM_LIMIT` | `SPRING_*`, `LOGGING_*`, `MANAGEMENT_*`, `CONNECTOR_*`, secrets |
 | `values.yaml` (Helm, D11 §6.2) | `app-common/`: `resources`, `env: {TZ}`; `<AppInstance>/`: `image.tag` (= `IMAGE_TAG`), `identity` (= the directory path), `env: {APP_ENV, APP_FLOW, APP_NAME, APP_INSTANCE, JAVA_OPTS, LOG_LEVEL_ROOT}` | `IMAGE_*`, `*_HOST_PORT`, `MEM_LIMIT`, `LOGS_DIR`, `DATA_DIR`, `SPRING_*`, `CONNECTOR_*_PASSWORD`, secrets |
-| `<flow>/workflows-config.yml` (every flow of a `*-dev` env; D5 §6.6, DL-39) | `env` and `flow` (= the path); `pool: {hosts, user, root}` — the flow's bare-metal boxes, SSH user (default `deploy`) and install root (default `/opt/platform`); `defaults`; `targets`: one entry per instance directory of the flow — `instance: <AppName>/<AppInstance>`, `kind: compose \| helm`, `host` (compose: the box; with a pool optional, one of `pool.hosts`, and written back by deploy-dev), `user`, `cluster`, `namespace` (default: the flow) | secrets; an env-level `config/<env>/workflows-config.yml` (config-lint check 11 rejects it); a box in two flows' pools with the same `root` |
+| `<flow>/workflows-config.yml` (every flow of a `*-dev` env; D5 §6.6, DL-39) | `env` and `flow` (= the path); `pool: {hosts, user, root}` — the flow's bare-metal boxes, SSH user (default `deploy`) and install root (default `/opt/platform`); `defaults`; `targets`: one entry per instance directory of the flow — `instance: <AppName>/<AppInstance>`, `kind: compose \| helm`, `host` (compose: the box; with a pool optional — one of `pool.hosts` — the deploy resolves it and records it in the GitHub Deployment, DL-40), `user`, `cluster`, `namespace` (default: the flow) | secrets; an env-level `config/<env>/workflows-config.yml` (config-lint check 11 rejects it); a box in two flows' pools with the same `root` |
 | `known_hosts` (in `config/<env>/`) | the reviewed `ssh-keyscan` lines of every box; the ssh transport of `scripts/pool-deploy.sh` and the pool guard trust no other host key | private keys: the deploy key is the Environment `dev` secret `DEV_DEPLOY_SSH_KEY` |
 
 ## Host pools (DL-39)
@@ -33,10 +33,16 @@ it; deploy-dev runs `deploy` for every flow with a pool (`.github/README.md`).
 <root>/config/<env>/known_hosts            when present: the pool guard pins the other boxes' keys with it
 ```
 
-- **Placement** is recorded, not fixed: pinned (`host` in `workflows-config.yml`) → discovered (the one box that runs the
-  instance, asked through `run-compose.sh ... status --json`) → assigned (the box with the fewest placements, ties
-  in pool order). The write-back records the box as `host`; a PR that changes `host` moves the instance
-  (`deploy --move` stops it on the old box first). An instance found on two boxes stops the deploy (exit 6).
+- **Placement**: pinned (`host` in `workflows-config.yml`) → discovered (the one box that runs the instance, asked
+  through `run-compose.sh ... status --json`) → assigned (the box with the fewest placements, ties in pool order).
+  The box is recorded in the run's GitHub Deployment (DL-40), never written back; a PR that sets or changes `host`
+  moves the instance (`deploy --move` stops it on the old box first). An instance found on two boxes stops the
+  deploy (exit 6).
+- **Record** (DL-40): the dev tree declares its intent — `IMAGE_TAG=main` in `compose.env`, `image.tag: main` in
+  `values.yaml` — and no workflow commits to `main`. What `us-dev` runs is the last successful GitHub Deployment of
+  Environment `us-dev` (payload: tag, digest-pinned images, every instance with its box or cluster and result, the
+  config tree's git SHA) and, on the boxes, the `compose.env` that `record-tag` wrote; a failed start or health goes
+  back to the tag that ran before (discovery), else to the declared one.
 - **Root**: `run-compose.sh` takes the nearest ancestor holding `.platform-bundle` as its root, so
   `<root>/scripts/run-compose.sh <env> <flow> <AppName> <AppInstance> start` works on any box, with no git checkout
   and no `CONFIG_ROOT`.

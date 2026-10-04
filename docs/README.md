@@ -32,15 +32,18 @@ only what is specific to this repository.
 | Workflow | Trigger | Does |
 |---|---|---|
 | `pr.yml` | branch push, pull request, merge queue | detect affected → lint (hadolint, ShellCheck, script tests, actionlint) → build, with images `pr-<n>-<sha7>` on pull requests → config-lint → component integration tests → kind deploy test → **`pr-gate`**, the one required check |
-| `main.yml` | push to `main`, `hotfix/**` | build all → component integration tests → system test (`source-database` against the platform's Deephaven server image, `DEEPHAVEN_SERVER_IMAGE` in `test-infra/compose/versions.env`) → publish (`<next>-rc.<n>`, `sha-<sha7>`, `main`) → kind deploy → deploy-dev (`main` only) |
+| `main.yml` | push to `main`, `hotfix/**` | build all → component integration tests → system test (`source-database` against the platform's Deephaven server image, `DEEPHAVEN_SERVER_IMAGE` in `test-infra/compose/versions.env`) → publish (`<next>-rc.<n>`, `sha-<sha7>`, `main`) → kind deploy → deploy-dev (`main` only), recorded as a GitHub Deployment of Environment `us-dev` (DL-40) |
 | `release-please.yml` | push to `main` | the release PR; merging it creates the tag `vX.Y.Z` and dispatches `release.yml` |
 | `release.yml` | tag `v*` | assert `printVersion` = tag → wait for the tested `main.yml` run → retag its digests → SBOMs → GitHub Release → `us-qa` bump PR (skipped while `config/us-qa` does not exist) |
 | `nightly.yml` | 03:17 UTC | GHCR retention (dry run unless told otherwise), teardown drill |
 | `config-lint.yml` | reusable | `./gradlew configLint` |
 
-`deploy-dev` still ends with the v1.0 write-back commit `chore(config): us-dev deployed <tag> [skip ci]` to `main`.
-DL-40 replaces it with a GitHub Deployment record and no commit; that implementation is pending, so a ruleset that
-forbids pushes to `main` fails that last step until it lands.
+**No workflow writes to `main`** (DL-40, ADR R-0002): no job holds `contents: write`. The dev tree declares its
+intent (`IMAGE_TAG=main`, `image.tag: main`); `deploy-dev` pins the literal version with the `IMAGE_TAG` override,
+`record-tag` writes it into the boxes' `compose.env`, and the run is recorded as a GitHub Deployment of Environment
+`us-dev` whose payload names, per instance, the tag, the digest-pinned image, the box or cluster and the result, plus
+the config tree's git SHA. Still open from DL-40 / DL-41: the per-flow deploy policy (`deploy.on-merge`,
+`deploy.schedule`), the manual deploy and rollback dispatches, and the versioned per-project bundles.
 
 ## Repository settings (D12 §6.10)
 
@@ -48,9 +51,11 @@ No file can set these; apply them once in the repository settings:
 
 1. **Actions → General → Workflow permissions**: "Allow GitHub Actions to create and approve pull requests" —
    `release-please.yml` opens the release PR, `release.yml` the qa bump PR.
-2. **Environment `dev`**: created by the first `deploy-dev` run; add the secret `DEV_DEPLOY_SSH_KEY` (and
-   `config/us-dev/known_hosts` in the tree) once boxes exist — until then the runner plays every box (transport `local`).
-3. **Ruleset on `main`** (and `hotfix/**`): pull request required, one approval, required check `pr-gate`, linear history.
+2. **Environment `us-dev`** (named like the env, D12 §6.7): created by the first `deploy-dev` run; add the secret
+   `DEV_DEPLOY_SSH_KEY` (and `config/us-dev/known_hosts` in the tree) once boxes exist — until then the runner plays
+   every box (transport `local`). The Environment `dev` of the first run is unused and can be deleted.
+3. **Ruleset on `main`** (and `hotfix/**`): pull request required, one approval, required check `pr-gate`, linear
+   history, no bypass for GitHub Actions — nothing here needs one (DL-40).
 4. **Packages**: the first `main.yml` run creates `ghcr.io/crazymatthsu/github-cicd-simple-apps/<AppName>`, linked to
    this repository and private by default; make them public or grant `packages: read` to their consumers.
 5. **Optional**: the secret `RETENTION_TOKEN` (read and delete packages) and the repository variable

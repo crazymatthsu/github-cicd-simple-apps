@@ -9,10 +9,11 @@
 #   *-rc.<n>        the RC_KEEP newest are kept, and every one younger than RC_MIN_AGE_DAYS; the rest go
 # Never deleted:
 #   - a version carrying a tag that config/**/compose.env (IMAGE_TAG) or config/**/values.yaml (tag:)
-#     references on this checkout — the in-use protection;
+#     references on this checkout, or that the last successful GitHub Deployment of a dev env names (its
+#     payload's tag and images; the dev tree itself declares `main`, DL-40) — the in-use protection;
 #   - a version carrying a release tag (x.y.z) or a convenience tag (main, latest, x, x.y);
 #   - untagged versions: in GHCR they include the per-platform manifests of tagged indexes.
-# Environment: GH_TOKEN (packages: write to delete; pull requests readable) · DRY_RUN (true|false, default
+# Environment: GH_TOKEN (packages: write to delete; pull requests and deployments readable) · DRY_RUN (true|false, default
 #   true; --delete / --dry-run win) · PR_GRACE_DAYS (7) · RC_KEEP (20) · RC_MIN_AGE_DAYS (30) · CONFIG_DIR
 #   (config) · GITHUB_REPOSITORY (owner/repo, for PR lookups).
 # Output: one line per version (package, id, tags, age, decision, reason) on stdout and, in CI, a table in
@@ -79,6 +80,23 @@ if [[ -d $config_dir ]]; then
     } | sort -u
   )
 fi
+# DL-40: a dev env's tree declares `main`, so the version it runs is in no file; the last successful GitHub
+# Deployment of its Environment (named like the env) names it — the payload's tag and digest-pinned images.
+for env_dir in "$config_dir"/*-dev/; do
+  [[ -d $env_dir ]] || continue
+  env=$(basename "$env_dir")
+  while read -r id; do
+    [[ -n $id ]] || continue
+    state=$(gh api "repos/$repo/deployments/$id/statuses?per_page=1" --jq '.[0].state // empty' 2>/dev/null) || state=""
+    [[ $state == success ]] || continue
+    while read -r tag; do
+      [[ -n $tag ]] && in_use[$tag]=1
+    done < <(gh api "repos/$repo/deployments/$id" --jq '.payload | (.tag // empty),
+        (.instances[]? | .image // empty | split("@")[0] | split(":") | last),
+        (.images[]? | split("@")[0] | split(":") | last)' 2>/dev/null)
+    break
+  done < <(gh api "repos/$repo/deployments?environment=$env&per_page=20" --jq '.[].id' 2>/dev/null)
+done
 
 # --- helpers ----------------------------------------------------------------------------------------
 owner_type=$(gh api "users/$owner" --jq .type 2>/dev/null || echo User)

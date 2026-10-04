@@ -1,7 +1,6 @@
 #!/usr/bin/env bash
 # pool-deploy-test.sh — script tests of the host pools (DL-39; D6 §6.8): scripts/pool-deploy.sh, the .platform-bundle
-# root, the pool guard and record-tag of scripts/run-compose.sh, and the placement write-back
-# (scripts/ci/set-target-host.sh, scripts/ci/write-back-tag.sh). Plain bash: stub ssh and rsync (POOL_SSH /
+# root, the pool guard and record-tag of scripts/run-compose.sh. Plain bash: stub ssh and rsync (POOL_SSH /
 # POOL_RSYNC) and a stub docker and curl (PATH) record their arguments and answer from STUB_* variables, so nothing
 # reaches a host, a registry or an engine.
 #
@@ -17,7 +16,7 @@ readonly TRADES=cash/source-database/trades-db-to-amps POSITIONS=cash/source-dat
 # The command a box runs, as pool-deploy.sh and the pool guard address it.
 readonly BOX_RC=/opt/platform/scripts/run-compose.sh
 readonly CASES="bundle plan_assigns plan_pinned discovered two_boxes move sync_local dry_run health_fails
-    record_tag record_after_health known_hosts refusals guard ssh_deploy local_execute write_back"
+    record_tag record_after_health known_hosts refusals guard ssh_deploy local_execute"
 
 for tool in yq jq rsync git; do
     command -v "$tool" >/dev/null 2>&1 || { echo "pool-deploy-test: $tool is needed" >&2; exit 2; }
@@ -26,7 +25,7 @@ yq --version 2>/dev/null | grep -q mikefarah || { echo "pool-deploy-test: mikefa
 if command -v sha256sum >/dev/null 2>&1; then SHA256=(sha256sum); else SHA256=(shasum -a 256); fi
 # Only what each case sets: nothing from the caller's shell steers the scripts under test.
 unset CONFIG_ROOT POOL_TRANSPORT POOL_LOCAL_ROOT POOL_LOCAL_EXECUTE POOL_SSH POOL_RSYNC POOL_SSH_OPTS POOL_PEER_CHECK \
-    POOL_SELF_HOST IMAGE_TAG IMAGE_REPO APP_IMAGE WRITE_BACK_PLACEMENTS STUB_RUNNING STUB_FAIL STUB_UNREACHABLE \
+    POOL_SELF_HOST IMAGE_TAG IMAGE_REPO APP_IMAGE STUB_RUNNING STUB_RUNNING_TAG STUB_FAIL STUB_UNREACHABLE \
     STUB_RSYNC_CHANGES STUB_RSYNC_FAIL STUB_HEALTHY STUB_INSTANCE
 
 WORK="$(mktemp -d "${TMPDIR:-/tmp}/pool-deploy-test.XXXXXX")"
@@ -37,9 +36,9 @@ mkdir -p "$STUB" "$DOCKER_BIN"
 
 cat >"$STUB/ssh" <<'EOF'
 #!/usr/bin/env bash
-# Stub ssh: logs "ssh <args>"; answers run-compose.sh ... status --json with running true for the
-# "<host>:<AppInstance>" pairs in STUB_RUNNING; fails the "<host>:<command>" pairs in STUB_FAIL; plays dead
-# (exit 255, as ssh does) for the hosts in STUB_UNREACHABLE.
+# Stub ssh: logs "ssh <args>"; answers run-compose.sh ... status --json with running true (image tag
+# STUB_RUNNING_TAG, default t0) for the "<host>:<AppInstance>" pairs in STUB_RUNNING; fails the "<host>:<command>"
+# pairs in STUB_FAIL; plays dead (exit 255, as ssh does) for the hosts in STUB_UNREACHABLE.
 printf 'ssh %s\n' "$*" >>"$STUB_LOG"
 target="" remote=""
 while [ $# -gt 0 ]; do
@@ -54,10 +53,10 @@ read -r -a words <<<"$remote"
 inst="${words[4]:-}" cmd="${words[5]:-}"
 case " ${STUB_FAIL:-} " in *" $host:$cmd "*) echo "stub: $cmd of $inst failed on $host" >&2; exit 1 ;; esac
 if [ "$cmd" = status ]; then
-    running=false
-    case " ${STUB_RUNNING:-} " in *" $host:$inst "*) running=true ;; esac
+    running=false image=""
+    case " ${STUB_RUNNING:-} " in *" $host:$inst "*) running=true image="ghcr.io/o/r/source-database:${STUB_RUNNING_TAG:-t0}" ;; esac
     echo "NAME    IMAGE    SERVICE    STATUS"
-    printf '{"project":"us-dev-cash-source-database-%s","running":%s,"desired":"ghcr.io/o/r/source-database:1","runningImage":"","runningId":"","desiredId":"","drift":"false"}\n' "$inst" "$running"
+    printf '{"project":"us-dev-cash-source-database-%s","running":%s,"desired":"ghcr.io/o/r/source-database:1","runningImage":"%s","runningId":"","desiredId":"","drift":"false"}\n' "$inst" "$running" "$image"
     [ "$running" = true ] || exit 1
 fi
 exit 0
@@ -127,9 +126,9 @@ in_dir() { # <dir> <command...>: the command, run from <dir>
     shift
     (cd "$dir" && "$@")
 }
-# copy_config <dest>: a copy of config/ without the placements deploy-dev records (the `host` of every target
-# of a pooled flow), so each case starts from an unplaced inventory whatever main's write-back last recorded.
-# Flows without a pool keep their hosts: there a compose target needs one.
+# copy_config <dest>: a copy of config/ without the pins (the `host` of every target of a pooled flow), so each
+# case starts from an unplaced inventory whatever the tree declares. Flows without a pool keep their hosts: there
+# a compose target needs one.
 copy_config() {
     local f
     cp -R "$REPO/config" "$1"
@@ -335,21 +334,34 @@ case_dry_run() { # dry-run prints the sync, pull / start / health and record-tag
     expect_in "known_hosts is missing: the ssh transport would refuse" "$ERR"
 }
 
-case_health_fails() { # a failed health check starts the previous tag again: no override, exit 1, no deployed line
+case_health_fails() { # a failed health check goes back to the tag that ran before (DL-40, D9 §6.9): exit 1, no deployed line
     local cfg log="$WORK/health-fails.log" last
     cfg="$(fixture health-fails)"
     known_hosts "$cfg"
+    # The instance runs t0 on H1 (discovery): the new tag fails health there, so t0 is started again with the
+    # override and recorded on every box — the synced compose.env names the declared tag `main`.
     run env CONFIG_ROOT="$cfg" POOL_SSH="$STUB/ssh" POOL_RSYNC="$STUB/rsync" STUB_LOG="$log" STUB_FAIL="$H1:health" \
+        STUB_RUNNING="$H1:trades-db-to-amps" STUB_RUNNING_TAG=t0 \
         "$POOL_DEPLOY" us-dev cash deploy --tag t1 --transport ssh --report "$WORK/health-fails.json"
     expect_rc 1
     expect_not_in "deployed" "$OUT"
     expect_in "deploy@$H1 -- IMAGE_TAG=t1 $BOX_RC us-dev cash source-database trades-db-to-amps health" "$(cat "$log")"
-    # compose.env keeps the previous tag on every box: nothing is recorded after a failed health.
+    expect_in "deploy@$H1 -- IMAGE_TAG=t0 $BOX_RC us-dev cash source-database trades-db-to-amps start" "$(cat "$log")"
+    expect_in "deploy@$H1 -- IMAGE_TAG=t0 $BOX_RC us-dev cash source-database trades-db-to-amps record-tag" "$(cat "$log")"
+    expect_in "deploy@$H2 -- IMAGE_TAG=t0 $BOX_RC us-dev cash source-database trades-db-to-amps record-tag" "$(cat "$log")"
+    expect_not_in "IMAGE_TAG=t1 $BOX_RC us-dev cash source-database trades-db-to-amps record-tag" "$(cat "$log")"
+    expect_json "$(cat "$WORK/health-fails.json")" '.placements[0].result' "failed: health (previous tag t0 started again)"
+    # Nothing ran before (no previous tag): start again without the override, nothing recorded.
+    : >"$log"
+    run env CONFIG_ROOT="$cfg" POOL_SSH="$STUB/ssh" POOL_RSYNC="$STUB/rsync" STUB_LOG="$log" STUB_FAIL="$H1:health" \
+        "$POOL_DEPLOY" us-dev cash deploy --tag t1 --transport ssh --report "$WORK/health-fails.json"
+    expect_rc 1
+    expect_not_in "deployed" "$OUT"
     expect_not_in "record-tag" "$(cat "$log")"
     last="$(grep '^ssh ' "$log" | tail -n 1)"
     [[ $last == *"deploy@$H1 -- $BOX_RC us-dev cash source-database trades-db-to-amps start" ]] ||
         fail "the last command is not start without the override: $last"
-    expect_json "$(cat "$WORK/health-fails.json")" '.placements[0].result' "failed: health (previous tag started again)"
+    expect_json "$(cat "$WORK/health-fails.json")" '.placements[0].result' "failed: health (started again without the override)"
 }
 
 case_record_tag() { # run-compose.sh record-tag: IMAGE_TAG into a host bundle's compose.env only, in place, idempotent
@@ -441,7 +453,7 @@ case_record_after_health() { # once health passed, the tag is recorded on every 
         "$POOL_DEPLOY" us-dev cash deploy --tag t1 --transport ssh --report "$report"
     expect_rc 0
     [ "$OUT" = "deployed $TRADES@$H1=t1" ] || fail "a failed record-tag on $H2 cost the deployed line: '$OUT'"
-    expect_in "compose.env on $H2 still names the previous tag" "$ERR"
+    expect_in "compose.env on $H2 does not name t1" "$ERR"
     expect_json "$(cat "$report")" '.placements[0].result' "deployed; IMAGE_TAG not recorded on $H2"
     # The local transport validates: record-tag --dry-run on both box directories, nothing written.
     bundle "$cfg" "$b" || return 0
@@ -628,44 +640,6 @@ case_local_execute() { # POOL_LOCAL_EXECUTE=true: the real run-compose.sh comman
     [[ $(head -n 1 <<<"$starts") == *override=IMAGE_TAG* ]] || fail "the first start lacks the override: $starts"
     [[ $(tail -n 1 <<<"$starts") != *override=* ]] || fail "the second start carries the override: $starts"
     expect_not_in "cmd=record-tag" "$ERR"
-}
-
-case_write_back() { # the box is recorded as host in the flow's workflows-config.yml, in the tag's commit; idempotent
-    local g="$WORK/write-back" count targets
-    mkdir -p "$g"
-    git init -q --bare "$g/remote.git"
-    git -C "$g/remote.git" symbolic-ref HEAD refs/heads/main
-    git init -q "$g/work"
-    copy_config "$g/work/config"
-    git -C "$g/work" checkout -q -b main
-    git -C "$g/work" add -A
-    git -C "$g/work" -c user.name=test -c user.email=test@example.com commit -q -m fixture
-    git -C "$g/work" remote add origin "$g/remote.git"
-    git -C "$g/work" push -q origin main 2>/dev/null
-    run in_dir "$g/work" env -u GITHUB_RUN_ID WRITE_BACK_PLACEMENTS="$TRADES=$H2 cash/source-database/gone=$H1" \
-        "$REPO/scripts/ci/write-back-tag.sh" us-dev 0.1.0-rc.99
-    expect_rc 0
-    expect_in "cash/source-database/gone was not deployed" "$ERR"
-    targets="$(git -C "$g/remote.git" show main:config/us-dev/cash/workflows-config.yml)"
-    expect_json "$(yq -o=json '.' <<<"$targets")" '.targets[] | select(.instance == "source-database/trades-db-to-amps") | .host' "$H2"
-    [ "$(git -C "$g/remote.git" diff main~1 main -- config/us-dev/cash/workflows-config.yml | grep -c '^[-+] ')" -eq 1 ] ||
-        fail "the placement is not a one-line change: $(git -C "$g/remote.git" diff main~1 main -- config/us-dev/cash/workflows-config.yml)"
-    expect_in "IMAGE_TAG=0.1.0-rc.99" "$(git -C "$g/remote.git" show main:config/us-dev/cash/source-database/trades-db-to-amps/compose.env)"
-    expect_in "chore(config): us-dev deployed 0.1.0-rc.99 [skip ci]" "$(git -C "$g/remote.git" log -1 --format=%B main)"
-    expect_in "us-dev/$TRADES on $H2" "$(git -C "$g/remote.git" log -1 --format=%B main)"
-    expect_in "github-actions[bot]" "$(git -C "$g/remote.git" log -1 --format=%an main)"
-    count="$(git -C "$g/remote.git" rev-list --count main)"
-    run in_dir "$g/work" env -u GITHUB_RUN_ID WRITE_BACK_PLACEMENTS="$TRADES=$H2" \
-        "$REPO/scripts/ci/write-back-tag.sh" us-dev 0.1.0-rc.99
-    expect_rc 0
-    expect_in "nothing to write back" "$OUT"
-    [ "$(git -C "$g/remote.git" rev-list --count main)" = "$count" ] || fail "an idempotent write-back committed"
-    run "$REPO/scripts/ci/set-target-host.sh" "$g/work/config/us-dev/cash/workflows-config.yml" source-database/gone "$H1"
-    expect_rc 4
-    run "$REPO/scripts/ci/set-target-host.sh" "$g/work/config/us-dev/cash/workflows-config.yml" source-database/trades-db-to-amps dev-other.example.com
-    expect_rc 4
-    run "$REPO/scripts/ci/set-target-host.sh" "$g/work/config/us-dev/cash/workflows-config.yml" "$TRADES" "$H1"
-    expect_rc 2
 }
 
 # --- runner -----------------------------------------------------------------------------------------------

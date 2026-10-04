@@ -4,8 +4,8 @@
 # Every box of the `pool` in config/<env>/<flow>/workflows-config.yml (one inventory per flow) receives the flow's host
 # bundle — the compose runtime plus every app, instance and layer of the flow — so any instance of the flow can run
 # on any box. Each compose target runs on exactly one box, resolved as pinned (`host` in workflows-config.yml) → discovered
-# (the one box it already runs on) → assigned (the box with the fewest placements); deploy-dev writes the chosen
-# box back as `host` (scripts/ci/set-target-host.sh). The one implementation behind the pooled flows of
+# (the one box it already runs on) → assigned (the box with the fewest placements); deploy-dev records the chosen
+# box in the run's GitHub Deployment (DL-40; nothing is written to git). The one implementation behind the pooled flows of
 # .github/workflows/_deploy-dev.yml; transports ssh (DL-35), local (the runner plays every box: the demo, until
 # the boxes exist) and dry-run. Stub-tested by scripts/test/pool-deploy-test.sh through POOL_SSH / POOL_RSYNC.
 # Run with --help. Needs bash 4+, mikefarah yq v4 and jq; rsync and ssh for the transports that use them.
@@ -34,7 +34,7 @@ Usage: pool-deploy.sh <env> <flow> <command> [options]
 Host pools (DL-39): every box of the pool in config/<env>/<flow>/workflows-config.yml (one inventory per flow) holds the
 flow's whole configuration and the compose runtime (the host bundle, under the pool's root), so any instance of
 the flow can run on any box; each compose target of the flow runs on exactly one box. Instances are named
-<flow>/<AppName>/<AppInstance> in the output, as deploy-dev and the write-back use them.
+<flow>/<AppName>/<AppInstance> in the output, as deploy-dev records them.
 
 Commands:
   bundle   --out <dir> [--tag <tag>]
@@ -589,7 +589,7 @@ sync_all() {
 
 # --- discovery and placement ------------------------------------------------------------------------------
 
-declare -A RUNNING_ON=() UNKNOWN_ON=()
+declare -A RUNNING_ON=() UNKNOWN_ON=() RUNNING_IMAGE=()
 STATUS_JSON=""
 # Asks one box for the status of one instance. 0: STATUS_JSON holds run-compose.sh's status JSON · 1: no answer
 # from run-compose.sh · 2: the box is unreachable (ssh exit 255) · 3: not asked (dry-run, local without execute).
@@ -619,13 +619,19 @@ box_status() { # <host> <instance>
 }
 discover_all() {
     local host instance other rc boxes=() silent=()
-    RUNNING_ON=() UNKNOWN_ON=()
+    RUNNING_ON=() UNKNOWN_ON=() RUNNING_IMAGE=()
     for host in ${AVAILABLE[@]+"${AVAILABLE[@]}"}; do
         for instance in ${T_INSTANCE[@]+"${T_INSTANCE[@]}"}; do
             rc=0
             box_status "$host" "$instance" || rc=$?
             case "$rc" in
-                0) [ "$(jq -r '.running' <<<"$STATUS_JSON")" != true ] || RUNNING_ON[$instance]="${RUNNING_ON[$instance]:-} $host" ;;
+                0)
+                    if [ "$(jq -r '.running' <<<"$STATUS_JSON")" = true ]; then
+                        RUNNING_ON[$instance]="${RUNNING_ON[$instance]:-} $host"
+                        # The image that runs before this deploy: the fallback when the new one fails (deploy_one).
+                        RUNNING_IMAGE[$instance]="$(jq -r '.runningImage // ""' <<<"$STATUS_JSON")"
+                    fi
+                    ;;
                 2)
                     warn "$host does not answer (ssh exit 255): placements treat it as running nothing"
                     for other in "${T_INSTANCE[@]}"; do UNKNOWN_ON[$other]="${UNKNOWN_ON[$other]:-} $host"; done
@@ -725,23 +731,32 @@ pool_header() { printf 'pool %s/%s: %s (user %s, root %s)\n' "$ENV_NAME" "$FLOW"
 P_RESULT=() P_COMMANDS=()
 FAILED=()
 deployed_line() { printf 'deployed %s@%s=%s\n' "$1" "$2" "$TAG"; }
-# After a healthy start: the tag into compose.env on each given box (record-tag). Until the next sync the boxes'
-# compose.env carries the bundle's previous tag (the write-back commits the new one to git afterwards), so a start
-# or restart there — an operator's, a failover — would run that tag again. A box that fails to record it is
-# reported, never fatal: the instance runs the new tag, and the next sync brings git's compose.env everywhere.
-record_tag() { # <index> <box>...
-    local i="$1" box missed=()
-    shift
+# The tag that runs before this deploy, from discovery (status --json's runningImage): the fallback when the new
+# tag fails to start or to pass health. Empty when the instance was not running or was not asked.
+previous_tag() { # <instance>
+    local ref="${RUNNING_IMAGE[$1]:-}" last
+    ref="${ref%%@*}"
+    last="${ref##*/}"
+    case "$last" in *:*) printf '%s' "${last##*:}" ;; esac
+}
+# After a start: the given tag into compose.env on each given box (record-tag). The synced compose.env names the
+# declared tag `main` (DL-40), so a start or restart there — an operator's, a failover — would otherwise run
+# whatever `main` points to; the record keeps the box on the tag that runs. A box that fails to record it is
+# reported in RECORD_MISSED, never fatal: the next sync brings the declared tag back everywhere anyway.
+RECORD_MISSED=()
+record_tag() { # <index> <tag> <box>...
+    local i="$1" tag="$2" box
+    shift 2
+    RECORD_MISSED=()
     for box in "$@"; do
-        on_box "$box" "${T_INSTANCE[i]}" record-tag "$TAG" || missed+=("$box")
+        on_box "$box" "${T_INSTANCE[i]}" record-tag "$tag" || RECORD_MISSED+=("$box")
     done
-    [ "${#missed[@]}" -gt 0 ] || return 0
-    P_RESULT[i]="deployed; IMAGE_TAG not recorded on ${missed[*]}"
-    warn "${T_INSTANCE[i]}: deployed, but compose.env on ${missed[*]} still names the previous tag: a start there before the next sync runs it"
+    [ "${#RECORD_MISSED[@]}" -eq 0 ] ||
+        warn "${T_INSTANCE[i]}: compose.env on ${RECORD_MISSED[*]} does not name $tag: a start there before the next sync runs the declared tag"
 }
 deploy_one() { # <index>
     local i="$1" instance="${T_INSTANCE[$1]}" host="${PLACE_HOST[$1]}" from="${PLACE_FROM[$1]}" cmd step box lines=""
-    local record_on=()
+    local record_on=() previous
     if [ -n "$host" ]; then
         # The tag is recorded on the instance's box first, then on every other box that holds the bundle.
         record_on=("$host")
@@ -810,16 +825,30 @@ deploy_one() { # <index>
         step=health
         if on_box "$host" "$instance" health "$TAG"; then
             P_RESULT[i]="deployed"
-            record_tag "$i" "${record_on[@]}"
+            record_tag "$i" "$TAG" "${record_on[@]}"
+            [ "${#RECORD_MISSED[@]}" -eq 0 ] || P_RESULT[i]="deployed; IMAGE_TAG not recorded on ${RECORD_MISSED[*]}"
             deployed_line "$instance" "$host"
             return 0
         fi
     fi
-    warn "$instance on $host: $step failed — starting it again without the override (compose.env on the box still holds the previous tag, D9 §6.9)"
-    if on_box "$host" "$instance" start ""; then
-        P_RESULT[i]="failed: $step (previous tag started again)"
+    # D9 §6.9: back to the tag that ran before, when discovery saw one; the synced compose.env names the declared
+    # tag `main` (DL-40), which is the build that just failed, so an override is needed to go back.
+    previous="$(previous_tag "$instance")"
+    if [ -n "$previous" ]; then
+        warn "$instance on $host: $step failed — starting the previous tag $previous again (D9 §6.9)"
+        if on_box "$host" "$instance" start "$previous"; then
+            P_RESULT[i]="failed: $step (previous tag $previous started again)"
+            record_tag "$i" "$previous" "${record_on[@]}"
+        else
+            P_RESULT[i]="failed: $step (starting the previous tag $previous failed too)"
+        fi
     else
-        P_RESULT[i]="failed: $step (starting the previous tag failed too)"
+        warn "$instance on $host: $step failed — no previous tag is known: starting it again without the override (the declared tag of compose.env)"
+        if on_box "$host" "$instance" start ""; then
+            P_RESULT[i]="failed: $step (started again without the override)"
+        else
+            P_RESULT[i]="failed: $step (starting it again failed too)"
+        fi
     fi
     return 1
 }

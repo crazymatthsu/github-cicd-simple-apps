@@ -1,15 +1,14 @@
-# Main pipeline (D7 §5.1, §6.10, Figure 3; D9 §6.4; D10 §5.2, §5.9).
+# Main pipeline (D7 §5.1, §6.10, Figure 3; D9 §6.4; D10 §5.2, §5.9; DL-40).
 #
 #   build (all, images pushed with the pre-release tags) ─┬─ integration-test (all, component)
 #                                                         └─ config-lint
 #   integration-test → system-test (the platform's Deephaven server image, DL-26) → publish (verify + `main` tag)
 #   → kind-deploy (demo step 2: one Helm release per us-dev instance of source-database in a throwaway
-#     kind cluster, readiness, helm test, smoke diff) → deploy-dev (Environment dev, main only: compose
-#     placeholder + Helm into kind-ci) → tag write-back `[skip ci]`
+#     kind cluster, readiness, helm test, smoke diff) → deploy-dev (Environment us-dev, main only: compose
+#     pools + Helm into kind-ci) → GitHub Deployment record
 #
-# Loop guard (DL-36): the write-back commit carries `[skip ci]`, and every root job skips runs whose
-# actor is the write-back bot. (With GITHUB_TOKEN the bot's push triggers no workflow at all; the
-# guards matter once a GitHub App token does the write-back — then name that App's actor here.)
+# No workflow writes to main (DL-40): the dev tree declares `main`, the Deployment record names the literal
+# version, and no job here holds `contents: write` — so no loop guard is needed (DL-36 superseded).
 # hotfix/* branches run the same pipeline without deploy-dev (D4 §6.6).
 name: main
 
@@ -19,8 +18,7 @@ on:
 
 concurrency:
   # Runs queue per branch and are never cancelled (a cancelled deploy-dev is worse than a late one).
-  # Bot runs get their own group so they can never displace a queued human merge.
-  group: ${{ github.actor == 'github-actions[bot]' && format('main-bot-{0}', github.run_id) || format('main-{0}', github.ref_name) }}
+  group: main-${{ github.ref_name }}
   cancel-in-progress: false
 
 permissions:
@@ -28,7 +26,6 @@ permissions:
 
 jobs:
   build:
-    if: github.actor != 'github-actions[bot]'
     uses: ./.github/workflows/_gradle-build.yml
     permissions:
       contents: read
@@ -40,7 +37,6 @@ jobs:
       ignore-head-tags: true
 
   config-lint:
-    if: github.actor != 'github-actions[bot]'
     uses: ./.github/workflows/config-lint.yml
     permissions:
       contents: read
@@ -108,11 +104,11 @@ jobs:
 
   deploy-dev:
     needs: [build, publish, kind-deploy]
-    if: github.ref == 'refs/heads/main' && github.actor != 'github-actions[bot]'
+    if: github.ref == 'refs/heads/main'
     uses: ./.github/workflows/_deploy-dev.yml
     permissions:
-      contents: write
-      deployments: write
+      contents: read # no workflow writes to main (DL-40)
+      deployments: write # the GitHub Deployment record
       packages: read # the Helm adapter pulls this run's images into its kind cluster
     with:
       env: us-dev
