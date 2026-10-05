@@ -26,11 +26,15 @@ import buildlogic.PrintImageRefTask
 import buildlogic.PushImageTask
 import buildlogic.buildlogicProperty
 import buildlogic.platformValue
+import buildlogic.requireAppliedInBuildFile
 import org.gradle.api.provider.Provider
 
 plugins {
     base
 }
+
+// CI knows the image projects from their build files (ADR-0031): this plugin is applied there and nowhere else.
+requireAppliedInBuildFile("buildlogic.docker-image")
 
 val image = extensions.create<DockerImageExtension>("dockerImage")
 image.registry.convention(

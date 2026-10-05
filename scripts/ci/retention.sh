@@ -3,7 +3,8 @@
 #
 # Usage: retention.sh [--dry-run | --delete] [--owner <owner>] [--repo <owner/repo>] [--package <name>]...
 #   --package   container package, e.g. github-cicd-simple-apps/source-database (repeatable). Default: every
-#               image project in .github/affected-map.yml under the project of platform.yml (ADR-0010).
+#               project that builds an image (scripts/ci/projects.py, ADR-0031) under the project of platform.yml
+#               (ADR-0010).
 # Rules, per package version (one version = one digest with its tags):
 #   pr-<n>-<sha7>   deleted once pull request #<n> has been closed (merged or not) for PR_GRACE_DAYS days
 #   *-rc.<n>        the RC_KEEP newest are kept, and every one younger than RC_MIN_AGE_DAYS; the rest go
@@ -58,8 +59,7 @@ if [[ ${#packages[@]} -eq 0 ]]; then
   # a nested app keeps its Gradle parent path (:deephaven-connectors:source-database, in a monorepo).
   project_name=""
   if [[ -f platform.yml ]]; then project_name=$(yq '.projects[0].name // ""' platform.yml); fi
-  mapfile -t packages < <(yq '.projects | to_entries | map(select(.value.image == true) | .key) | .[]' \
-    .github/affected-map.yml | sed 's/^://; s/:/\//g' |
+  mapfile -t packages < <(python3 scripts/ci/projects.py --images | jq -r '.[]' | sed 's/^://; s/:/\//g' |
     awk -v project="$project_name" '{ print (project != "" && index($0, "/") == 0) ? project "/" $0 : $0 }')
 fi
 

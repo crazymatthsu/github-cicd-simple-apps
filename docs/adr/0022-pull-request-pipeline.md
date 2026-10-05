@@ -2,7 +2,7 @@
 
 | | |
 |---|---|
-| Status | Accepted |
+| Status | Accepted. Rule 2 superseded in part by [ADR-0031](0031-ci-derives-the-projects-from-the-build-files.md) |
 | Date | 2026-10-04 |
 | Applies to | `pr.yml`, `config-lint.yml`, `.github/affected-map.yml`, `scripts/ci/affected.py` |
 | Enforced by | `pr-gate` (the only required check, [ADR-0020](0020-branching-protection-and-merge-rules.md)); `affected.py` (an unmapped path counts as shared) |
@@ -118,6 +118,5 @@ added, renamed or skipped.
 - A change to one app tests that app. A change to shared code tests everything. The merge queue always tests
   everything against the real merge result.
 - Pull requests from forks run no integration tests before the merge queue.
-- `.github/affected-map.yml` is maintained by hand: one `projects` entry and one `paths` glob per app. An app
-  missing from `projects` is silently left out of the integration-test matrix, of publishing, and of releases.
-  The map should be derived from the build, or checked against it (known gap).
+- The projects, and the directory that selects each, are derived from the build files ([ADR-0031](0031-ci-derives-the-projects-from-the-build-files.md)); the map keeps
+  only its path classes.

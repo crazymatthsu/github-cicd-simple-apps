@@ -17,11 +17,15 @@ import buildlogic.ComposeStackLock
 import buildlogic.IntegrationTestSecrets
 import buildlogic.buildlogicProperty
 import buildlogic.catalogLibrary
+import buildlogic.requireAppliedInBuildFile
 
 plugins {
     id("buildlogic.java-conventions")
     `jvm-test-suite`
 }
+
+// CI knows the integration-test projects from their build files (ADR-0031): this plugin is applied there and nowhere else.
+requireAppliedInBuildFile("buildlogic.integration-test")
 
 val springBootBom = catalogLibrary("spring-boot-dependencies")
 val junitJupiter = catalogLibrary("junit-jupiter")
