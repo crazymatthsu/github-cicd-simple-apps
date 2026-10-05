@@ -372,7 +372,7 @@ esac
 # Env allow-list (ADR-0017): --force never overrides it.
 case "$ENV_NAME" in
     local | *-dev) ;;
-    *) die "$EXIT_REFUSED" "env '$ENV_NAME' refused: production operations go through Kubernetes — see ADR-0004 (run-compose.sh serves local and *-dev only)" ;;
+    *) die "$EXIT_REFUSED" "env '$ENV_NAME' refused: this repository operates local and *-dev only; the higher envs are deployed from the configuration repository (ADR-0004)" ;;
 esac
 if [ "$COMMAND" = down ] && [ "$VOLUMES" -eq 1 ] && [ "$ENV_NAME" != local ] && [ "$FORCE" -eq 0 ]; then
     die "$EXIT_REFUSED" "down --volumes on a $ENV_NAME host removes data: add --force to confirm"

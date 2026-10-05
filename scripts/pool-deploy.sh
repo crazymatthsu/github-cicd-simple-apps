@@ -218,8 +218,8 @@ if [ -n "$VERSION" ] && ! [[ $VERSION =~ $VERSION_RE ]]; then die "$EXIT_USAGE" 
 if [ -n "$ROLLBACK_TO" ] && ! [[ $ROLLBACK_TO =~ $VERSION_RE ]]; then die "$EXIT_USAGE" "--to '$ROLLBACK_TO' is not a version (<YYYYMMDD-HHMMSS>)"; fi
 case "$ENV_NAME" in
     local | *-dev) ;;
-    *) die "$EXIT_REFUSED" "env '$ENV_NAME' refused: host pools serve local and *-dev only; qa and prod run on" \
-        "Kubernetes (ADR-0004)" ;;
+    *) die "$EXIT_REFUSED" "env '$ENV_NAME' refused: host pools of this repository serve local and *-dev only;" \
+        "the higher envs are deployed from the configuration repository (ADR-0004)" ;;
 esac
 EXECUTE=false
 [ "${POOL_LOCAL_EXECUTE:-false}" != true ] || EXECUTE=true
