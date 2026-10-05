@@ -144,6 +144,33 @@ object ConfigRules {
     /** `config/<env>/known_hosts`: `[@marker] <host patterns> <key type> <base64 key> [comment]` (ssh-keyscan format). */
     val SSH_KEY_TYPE = Regex("^(ssh|ecdsa|sk)-[A-Za-z0-9@._-]+$")
     val BASE64 = Regex("^[A-Za-z0-9+/]+={0,3}$")
+    /** The markers of a known_hosts line: a CA whose signed host keys are trusted, or a revoked key. */
+    val KNOWN_HOSTS_MARKERS = setOf("@cert-authority", "@revoked")
+    private val HOST_WITH_PORT = Regex("^\\[(.+)]:([0-9]+)$")
+
+    /**
+     * Whether [host] matches the comma-separated host [patterns] of a known_hosts line, as OpenSSH matches them: `*` and
+     * `?` wildcards, case-insensitive; a matching `!` pattern excludes the host; `[host]:port` names a port other than
+     * 22, which the pools' SSH connections do not use.
+     */
+    fun matchesHostPatterns(host: String, patterns: String): Boolean {
+        var matched = false
+        for (raw in patterns.split(',')) {
+            val negated = raw.startsWith("!")
+            var pattern = raw.removePrefix("!").lowercase()
+            val withPort = HOST_WITH_PORT.matchEntire(pattern)
+            if (withPort != null) {
+                if (withPort.groupValues[2] != "22") continue
+                pattern = withPort.groupValues[1]
+            }
+            val regex = Regex(pattern.split('*').joinToString(".*") { part -> part.split('?').joinToString(".") { Regex.escape(it) } })
+            if (regex.matches(host.lowercase())) {
+                if (negated) return false
+                matched = true
+            }
+        }
+        return matched
+    }
 
     val SECRET_VALUE_PATTERNS = listOf(
         Regex("-----BEGIN [A-Z ]*PRIVATE KEY-----") to "PEM private key",
@@ -243,12 +270,13 @@ class ConfigLinter(
         }
         val appsSeen = mutableSetOf<String>()
         val pools = mutableListOf<FlowPool>()
+        var knownHosts: List<KnownHost>? = null
         for (child in envDir.listFiles().orEmpty().sortedBy { it.name }) {
             when {
                 child.isFile && (child.name == ConfigRules.TARGETS || child.name == "targets.yml") -> error(11, child, "moved to config/$env/<flow>/workflows-config.yml: one " +
                     "deploy inventory per flow (env, flow, pool, defaults, targets; ADR-0027)")
                 child.isFile && child.name == "README.md" -> Unit
-                child.isFile && child.name == "known_hosts" -> lintKnownHosts(child)
+                child.isFile && child.name == "known_hosts" -> knownHosts = lintKnownHosts(child)
                 child.isDirectory && child.name == ConfigRules.COMMON -> error(1, child, "config/$env/_common/ removed: nothing is " +
                     "shared at the env level, the cluster <env>/<flow> is the first shared layer: config/$env/<flow>/application.flow.yml " +
                     "and _docker-compose.flow.env / .yml (ADR-0011)")
@@ -263,6 +291,7 @@ class ConfigLinter(
             }
         }
         checkSharedBoxes(pools)
+        checkPinnedBoxes(envDir, pools, knownHosts)
     }
 
     /**
@@ -953,14 +982,51 @@ class ConfigLinter(
         }
     }
 
+    /** A well-formed line of `config/<env>/known_hosts`: its marker, if any, and its host patterns. */
+    private data class KnownHost(val marker: String?, val patterns: String)
+
     /** `config/<env>/known_hosts` (ADR-0028): the pinned host keys of the SSH transport — public keys only. */
-    private fun lintKnownHosts(file: File) {
+    private fun lintKnownHosts(file: File): List<KnownHost> {
+        val entries = mutableListOf<KnownHost>()
         file.readLines().forEachIndexed { index, raw ->
             val line = raw.trim()
             if (line.isEmpty() || line.startsWith("#")) return@forEachIndexed
-            val fields = line.split(Regex("\\s+")).let { if (it.first().startsWith("@")) it.drop(1) else it }
-            if (fields.size < 3 || !ConfigRules.SSH_KEY_TYPE.matches(fields[1]) || !ConfigRules.BASE64.matches(fields[2])) {
-                error(11, file, "line ${index + 1}: expected '<host>[,<host>...] <key type> <base64 key>' (ssh-keyscan format)")
+            val words = line.split(Regex("\\s+"))
+            val marker = words.first().takeIf { it.startsWith("@") }
+            val fields = if (marker != null) words.drop(1) else words
+            when {
+                marker != null && marker !in ConfigRules.KNOWN_HOSTS_MARKERS ->
+                    error(11, file, "line ${index + 1}: unknown marker '$marker' (@cert-authority or @revoked)")
+                fields.size < 3 || !ConfigRules.SSH_KEY_TYPE.matches(fields[1]) || !ConfigRules.BASE64.matches(fields[2]) ->
+                    error(11, file, "line ${index + 1}: expected '<host>[,<host>...] <key type> <base64 key>' (ssh-keyscan format)")
+                fields[0].startsWith("|") ->
+                    error(11, file, "line ${index + 1}: a hashed host name (ssh-keyscan -H) cannot be reviewed: commit the " +
+                        "plain ssh-keyscan line (ADR-0028)")
+                else -> entries += KnownHost(marker, fields[0])
+            }
+        }
+        return entries
+    }
+
+    /**
+     * Every box of a pool has a pinned host key (ADR-0028): the ssh transport and the pool guard accept no other, so a box
+     * without a matching line fails only at deploy time. A `@cert-authority` line covers the boxes its patterns match; a
+     * `@revoked` line covers none. Without the file no box can be reached over SSH yet, which is only a warning.
+     */
+    private fun checkPinnedBoxes(envDir: File, pools: List<FlowPool>, knownHosts: List<KnownHost>?) {
+        if (pools.isEmpty()) return
+        val file = File(envDir, "known_hosts")
+        if (knownHosts == null) {
+            warn(11, file, "missing: the boxes of ${pools.joinToString { "flow '${it.flow}'" }} have no pinned host key, so " +
+                "the ssh transport refuses to deploy to them until their reviewed ssh-keyscan lines are added (ADR-0028)")
+            return
+        }
+        for ((_, flow, pool) in pools) {
+            for (host in pool.hosts) {
+                if (knownHosts.none { it.marker != "@revoked" && ConfigRules.matchesHostPatterns(host, it.patterns) }) {
+                    error(11, file, "box $host of flow '$flow' has no line: the ssh transport and the pool guard would refuse " +
+                        "it; add its reviewed ssh-keyscan line, or a @cert-authority line that covers it (ADR-0028)")
+                }
             }
         }
     }
