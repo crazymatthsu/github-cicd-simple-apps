@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.5.0](https://github.com/crazymatthsu/github-cicd-simple-apps/compare/v0.4.0...v0.5.0) (2026-10-05)
+
+
+### Features
+
+* **ci:** derive the projects from the build files instead of the affected map (ADR-0031) ([#21](https://github.com/crazymatthsu/github-cicd-simple-apps/issues/21)) ([bf8d882](https://github.com/crazymatthsu/github-cicd-simple-apps/commit/bf8d882cc6a01875722ff352e486b9ea474f7dd3))
+
 ## [0.4.0](https://github.com/crazymatthsu/github-cicd-simple-apps/compare/v0.3.0...v0.4.0) (2026-10-05)
 
 
