@@ -64,7 +64,7 @@ flowchart LR
 | [0001](0001-adrs-are-the-repository-contract.md) | Decisions are numbered ADRs with MUST/SHOULD rules and an "Enforced by" line. ADR-0001 to ADR-0999 are the shared contract; a repository's own decisions start at ADR-1000. | Accepted |
 | [0002](0002-one-repository-one-project-one-release-line.md) | A repository is one project of Spring Boot apps and libraries, released together as `vX.Y.Z`. `platform.yml` declares only what the tree cannot derive. | Accepted |
 | [0003](0003-identity-tuple-names-every-instance.md) | `<env>/<flow>/<AppName>/<AppInstance>` is the configuration path and the source of every name. | Accepted |
-| [0004](0004-environments-and-runtimes.md) | Dev is configured and deployed here. qa, uat, prod and parallel live in a configuration repository and are promoted by pull request. On-prem compose runs every env until EKS. | Accepted |
+| [0004](0004-environments-and-runtimes.md) | Only local and dev are configured and deployed here. qa, uat, prod and parallel are configured and deployed from a separate configuration repository, promoted by pull request. On-prem compose runs every env until EKS. | Accepted |
 | [0005](0005-repository-layout-and-shared-tooling.md) | One skeleton for every repository. Shared tooling is copied unchanged, project files are the project's own, and changes to the tooling are made here first. | Accepted |
 | [0006](0006-apps-and-framework-modules.md) | `apps/<AppName>/` holds an app's code and only the infrastructure that differs between apps. `framework/<name>/` holds shared libraries, never deployed. | Accepted |
 | **Build and artifacts** | | |
@@ -80,7 +80,7 @@ flowchart LR
 | **Runtime operations** | | |
 | [0015](0015-actuator-health-and-metrics-contract.md) | Every app exposes `health`, `info`, `prometheus` and `connectorconfig` on port 8080. Readiness is `readinessState` plus `connector`, the identity is on every meter, and one test checks all of it. | Accepted |
 | [0016](0016-logging-and-startup-configuration-summary.md) | Logs go to stdout with the identity on every line. The masked effective configuration is available at start-up, from an endpoint, and offline. | Accepted |
-| [0017](0017-run-compose-operations-cli-and-runtime-posture.md) | `run-compose.sh` operates every compose-run instance — laptop, CI, host — with safety rules and an audit line; the shared template hardens every container. | Accepted |
+| [0017](0017-run-compose-operations-cli-and-runtime-posture.md) | `run-compose.sh` operates every compose-run instance of this repository — laptop, CI, dev host — with safety rules and an audit line; the shared template hardens every container. | Accepted |
 | [0018](0018-on-prem-host-layout-versioned-bundles.md) | Hosts keep `/apps/<user>/versions/<project>/<version>/` per deploy, with `current` the live one. Activation is atomic, and rollback points `current` back. | Accepted |
 | [0019](0019-kubernetes-and-helm-are-provisional.md) | Charts, Helm values, the Helm deploy script, check 12 and the kind tier are kept working, not extended, until the EKS design. | Accepted |
 | **Source control** | | |
@@ -110,7 +110,7 @@ flowchart LR
 | env | `local`, or `<region>-<stage>` |
 | stage | `dev`, `qa`, `uat`, `prod`, `parallel` |
 | dev env | an env this repository configures and deploys (`dev_envs`) |
-| promoted env | `qa`, `uat`, `prod` or `parallel`: configured in the configuration repository, immutable tags only ([ADR-0004](0004-environments-and-runtimes.md)) |
+| promoted env | `qa`, `uat`, `prod` or `parallel`: configured in and deployed from the configuration repository, immutable tags only ([ADR-0004](0004-environments-and-runtimes.md)) |
 | configuration repository | the separate repository holding the configuration of the promoted envs |
 | flow, cluster | a business flow; one flow in one env is one cluster, with its own boxes and inventory |
 | instance | one configured pipeline of an app in a flow: `config/<env>/<flow>/<AppName>/<AppInstance>/` |
@@ -191,9 +191,8 @@ that opens a gap adds a row.
 
 | # | Gap | ADR |
 |---|---|---|
-| G1 | `run-compose.sh` and `pool-deploy.sh` refuse every env except `local` and `*-dev` (exit 3); compose is meant to serve qa, uat, prod and parallel too. | [0004](0004-environments-and-runtimes.md), [0017](0017-run-compose-operations-cli-and-runtime-posture.md), [0028](0028-host-pool-deployment.md) |
-| G2 | `uat` and `parallel` are unknown to `ConnectorIdentity` (the app refuses to start), config-lint, `run-compose.sh` and `pool-deploy.sh`. Config-lint allows only the regions `us` and `jp`; the others accept any two letters. | [0003](0003-identity-tuple-names-every-instance.md) |
-| G3 | Config-lint check 10 treats only `qa` and `prod` as promoted envs that require immutable tags. | [0010](0010-image-tags-digests-promotion-retention.md), [0014](0014-config-lint-enforces-the-config-contract.md) |
+| G2 | `ConnectorIdentity` does not accept the stages `uat` and `parallel`, so the app image refuses to start in those envs, wherever it is deployed. Config-lint allows only the regions `us` and `jp`; the other implementations accept any two letters. | [0003](0003-identity-tuple-names-every-instance.md) |
+| G3 | Config-lint check 1 does not know the stages `uat` and `parallel`, and check 10 treats only `qa` and `prod` as promoted envs that require immutable tags. This matters once the configuration repository reuses config-lint. | [0010](0010-image-tags-digests-promotion-retention.md), [0014](0014-config-lint-enforces-the-config-contract.md) |
 | G4 | `release.yml`'s bump job commits to `config/us-qa` in this repository; it must open the pull request in the configuration repository. | [0029](0029-release-and-promotion.md) |
 | G5 | This repository's config-lint accepts promoted-env directories, and CODEOWNERS still carries `config/*-qa/` and `config/*-prod/` rules. | [0004](0004-environments-and-runtimes.md), [0011](0011-configuration-tree-and-spring-layers.md) |
 | G6 | `us-dev/cash/source-database/positions-db-to-deephaven` is a `kind: helm` target on the throwaway `kind-ci` cluster, so it runs nowhere after the deploy job. | [0004](0004-environments-and-runtimes.md), [0019](0019-kubernetes-and-helm-are-provisional.md) |
@@ -221,7 +220,7 @@ Questions that no ADR answers yet. Each one becomes an ADR when it is decided.
 
 | # | Question | Touches |
 |---|---|---|
-| O1 | The configuration repository's pipeline: how it validates without app subprojects (config-lint needs the app list from a manifest); how it assembles host bundles from a release's runtime files (scripts, compose template, the apps' overrides and smoke tests at the release tag); how it deploys and records the promoted envs. | [0004](0004-environments-and-runtimes.md), [0014](0014-config-lint-enforces-the-config-contract.md), [0029](0029-release-and-promotion.md) |
+| O1 | The configuration repository's pipeline: how it validates without app subprojects (config-lint needs the app list from a manifest); how it assembles host bundles from a release's runtime files (scripts, compose template, the apps' overrides and smoke tests at the release tag); how it deploys and records the promoted envs; and so whether the bundled `run-compose.sh` must operate the higher envs (in this repository it refuses them, as it should). | [0004](0004-environments-and-runtimes.md), [0014](0014-config-lint-enforces-the-config-contract.md), [0029](0029-release-and-promotion.md) |
 | O2 | How secrets are provisioned and rotated on the boxes of the promoted envs. | [0013](0013-secrets.md) |
 | O3 | How repositories built from this one receive updates to the shared tooling: copying per release, a sync job, or extracting it into versioned reusable workflows, actions and a published Gradle plugin. | [0005](0005-repository-layout-and-shared-tooling.md) |
 | O4 | The EKS design, superseding ADR-0019: chart structure, values layering, secrets, the kind tier, and how each env moves from compose. | [0019](0019-kubernetes-and-helm-are-provisional.md) |

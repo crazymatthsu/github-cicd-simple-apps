@@ -8,10 +8,10 @@
 | Enforced by | config-lint checks 1 (env grammar) and 10 (tag policy); the env allow-lists of `run-compose.sh` and `pool-deploy.sh`; the `*-dev` guard of `_deploy-dev.yml` |
 | Related | [ADR-0003](0003-identity-tuple-names-every-instance.md), [ADR-0011](0011-configuration-tree-and-spring-layers.md), [ADR-0017](0017-run-compose-operations-cli-and-runtime-posture.md), [ADR-0019](0019-kubernetes-and-helm-are-provisional.md), [ADR-0027](0027-continuous-deployment-to-dev-and-the-deployment-record.md), [ADR-0029](0029-release-and-promotion.md) |
 
-**In short:** This repository configures and deploys only its dev envs. The promoted envs (qa, uat, prod and
-parallel) are configured in a separate configuration repository and are promoted by pull request there. Every env
-runs the image that `main` tested, and until EKS exists, every deployed env runs on on-prem hosts with docker or
-podman compose.
+**In short:** This repository configures and deploys only `local` and its dev envs. The promoted envs (qa, uat,
+prod and parallel) are configured in and deployed from a separate configuration repository, promoted by pull request
+there. Every env runs the image that `main` tested, and until EKS exists, every deployed env runs on on-prem hosts
+with docker or podman compose.
 
 ## Context
 
@@ -44,16 +44,19 @@ operations tooling must stay the same in every env, so that what was tested in d
    [ADR-0014](0014-config-lint-enforces-the-config-contract.md)). Its CODEOWNERS approve changes, and an approved
    pull request there is the deploy intent. This repository's `config/` MUST hold only `local` and the envs listed
    in `dev_envs`.
-3. **One runtime until EKS.** Until a decision on EKS supersedes
+3. **One runtime until EKS, deployed from two places.** Until a decision on EKS supersedes
    [ADR-0019](0019-kubernetes-and-helm-are-provisional.md), every env (dev, qa, uat, prod and parallel) runs on
-   **on-prem compose**:
-   - docker or podman compose on the boxes (bare-metal hosts) of each flow's host pool;
-   - operated with `run-compose.sh` ([ADR-0017](0017-run-compose-operations-cli-and-runtime-posture.md));
-   - laid out as versioned host bundles ([ADR-0018](0018-on-prem-host-layout-versioned-bundles.md));
-   - deployed with `pool-deploy.sh` ([ADR-0028](0028-host-pool-deployment.md)).
+   **on-prem compose**: docker or podman compose on the boxes (bare-metal hosts) of each flow's host pool, laid out
+   as versioned host bundles ([ADR-0018](0018-on-prem-host-layout-versioned-bundles.md)).
+   - This repository MUST deploy and operate only `local` and its dev envs. `run-compose.sh`
+     ([ADR-0017](0017-run-compose-operations-cli-and-runtime-posture.md)) and `pool-deploy.sh`
+     ([ADR-0028](0028-host-pool-deployment.md)) refuse every other env, and the dev deploy refuses anything that is
+     not `*-dev` ([ADR-0027](0027-continuous-deployment-to-dev-and-the-deployment-record.md)).
+   - The higher envs are deployed from the configuration repository. How it does so, on the same host layout, is
+     an open decision.
 4. **The same artifacts in every env.** Every env runs the image that `main` built and tested, promoted by its
    digest, the content hash of the image ([ADR-0010](0010-image-tags-digests-promotion-retention.md)). Every env also
-   uses the same template, scripts and bundle format. Promoted envs differ in only four things: who owns the
+   follows the same configuration rules and host layout. Promoted envs differ in only four things: who owns the
    configuration, which tags are allowed, who approves, and which pipeline deploys.
 5. **Kubernetes targets are tests, not a runtime.** A `kind: helm` target on `cluster: kind-ci` in a dev inventory
    (a flow's `workflows-config.yml`) is deployed into a throwaway kind cluster (Kubernetes in Docker). The job
@@ -76,8 +79,8 @@ flowchart LR
   pools["On-prem compose<br/>docker or podman on each<br/>flow's host pool, until EKS"]
   img -->|floating tag main| dev
   img -->|immutable X.Y.Z, by pull request| promoted
-  dev --> pools
-  promoted --> pools
+  dev -->|deployed from this repository| pools
+  promoted -->|deployed from the configuration repository| pools
 ```
 
 ## Alternatives considered
@@ -94,10 +97,9 @@ flowchart LR
 
 Work this decision requires (each item is a known gap in the index):
 
-- `run-compose.sh` and `pool-deploy.sh` refuse every env except `local` and `*-dev`. They must accept the promoted
-  stages.
-- `ConnectorIdentity` and config-lint do not know the stages `uat` and `parallel`, so an app refuses to start
-  there. Config-lint's tag policy treats only `qa` and `prod` as promoted.
+- `ConnectorIdentity` does not know the stages `uat` and `parallel`, so the app image refuses to start in those
+  envs, wherever it is deployed. Config-lint does not know them either, and treats only `qa` and `prod` as
+  promoted. That matters once the configuration repository reuses it.
 - The release workflow opens its version-bump pull request against `config/us-qa` in this repository. It must open
   it in the configuration repository ([ADR-0029](0029-release-and-promotion.md)).
 - This repository's config-lint still accepts promoted-env directories, and CODEOWNERS still carries rules for
@@ -108,5 +110,6 @@ Work this decision requires (each item is a known gap in the index):
 Decisions still open (in the index):
 
 - The configuration repository's pipeline: how it validates, how it assembles host bundles from a release's
-  runtime files, and how it deploys and records.
+  runtime files, and how it deploys and records — and so whether the bundled `run-compose.sh` must operate the
+  higher envs, which it refuses today.
 - How secrets are provisioned on the boxes of the promoted envs.

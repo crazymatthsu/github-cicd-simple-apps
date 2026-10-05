@@ -4,7 +4,7 @@
 |---|---|
 | Status | Accepted |
 | Date | 2026-10-04 |
-| Applies to | every flow whose compose targets run on a pool of boxes, in every env served by compose |
+| Applies to | every dev flow whose compose targets run on a pool of boxes |
 | Enforced by | `scripts/test/pool-deploy-test.sh` (stub `ssh`, `rsync` and engine; run in the `lint` job); ShellCheck; config-lint check 11; `pool-deploy.sh`'s own checks (exit codes 3 to 6) |
 | Related | [ADR-0004](0004-environments-and-runtimes.md), [ADR-0013](0013-secrets.md), [ADR-0017](0017-run-compose-operations-cli-and-runtime-posture.md), [ADR-0018](0018-on-prem-host-layout-versioned-bundles.md), [ADR-0027](0027-continuous-deployment-to-dev-and-the-deployment-record.md) |
 
@@ -112,8 +112,9 @@ flowchart TD
 8. **Reporting.** `--report <file>` writes a JSON record: the version, each box's bundle hash, verification and
    activation, and each placement's box, method, result and commands. The dev deploy turns it into the job summary
    and the Deployment payload.
-9. **Every compose env.** The same deploy and rollback serve every env that compose runs
-   ([ADR-0004](0004-environments-and-runtimes.md)).
+9. **Local and dev only.** `pool-deploy.sh` deploys `local` and the dev envs, and refuses every other env
+   ([ADR-0004](0004-environments-and-runtimes.md)). Whether the configuration repository reuses it for the higher
+   envs is an open decision.
 
 ## Alternatives considered
 
@@ -132,7 +133,6 @@ flowchart TD
   secrets ([ADR-0013](0013-secrets.md)).
 - A deploy takes longer as the pool and the number of instances grow.
 - Known gaps:
-  - `pool-deploy.sh` refuses every env except `local` and `*-dev`;
   - the forced command is not implemented;
   - no boxes exist yet;
   - the promoted envs' pipeline in the configuration repository is undecided (open decision).

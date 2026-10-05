@@ -4,15 +4,14 @@
 |---|---|
 | Status | Accepted |
 | Date | 2026-10-04 |
-| Applies to | every compose-run instance: laptops, CI test stacks and every on-prem env |
+| Applies to | every compose-run instance of this repository: laptops, CI test stacks and the dev hosts |
 | Enforced by | its own argument, safety and configuration checks (exit codes 2, 3, 4); ShellCheck and `scripts/test/pool-deploy-test.sh` in the `lint` job; the template's settings ([ADR-0012](0012-compose-template-and-generated-env.md)) |
 | Related | [ADR-0004](0004-environments-and-runtimes.md), [ADR-0012](0012-compose-template-and-generated-env.md), [ADR-0015](0015-actuator-health-and-metrics-contract.md), [ADR-0018](0018-on-prem-host-layout-versioned-bundles.md), [ADR-0028](0028-host-pool-deployment.md) |
 
-**In short:** One script, `scripts/run-compose.sh`, performs every operation on every compose-run instance: on a
-laptop, in CI and on the hosts. It assembles the compose files, the combined env and the identity itself, applies
-safety rules, and writes an audit line for every command, whether it succeeds or not. The compose template, not
-the apps, gives every
-container the same hardened runtime.
+**In short:** One script, `scripts/run-compose.sh`, performs every operation on every compose-run instance of this
+repository: on a laptop, in CI and on the dev hosts. It assembles the compose files, the combined env and the
+identity itself, applies safety rules, and writes an audit line for every command, whether it succeeds or not. The
+compose template, not the apps, gives every container the same hardened runtime.
 
 ## Context
 
@@ -59,8 +58,8 @@ scripts.
    With rootless Podman every published port is 1024 or above. On SELinux hosts the Spring layer mounts get `:z`
    or `:Z` labels.
 5. **Safety rules.** `--force` never lifts them, unless noted:
-   - **Allowed envs:** `local` and every stage — `dev`, `qa`, `uat`, `prod`, `parallel` — for as long as compose is
-     the runtime ([ADR-0004](0004-environments-and-runtimes.md)).
+   - **Allowed envs:** `local` and `*-dev` only. This repository deploys and operates nothing else
+     ([ADR-0004](0004-environments-and-runtimes.md)).
    - **Volumes:** `down --volumes` outside `local` requires `--force`.
    - **Pool guard:** an instance runs on one box (host) of its pool at a time. Before `start` or `restart`, the
      script asks the pool's other boxes whether the instance already runs there. If it does, the script refuses
@@ -119,6 +118,5 @@ scripts.
 - Operators learn one CLI, valid for every app and env. Every action is auditable.
 - The script is a critical part of the shared tooling (about 1,100 lines of bash). ShellCheck and the stub-based
   tests of `scripts/test/` cover it. It needs bash 4 or later on the hosts.
-- Known gaps:
-  - the env allow-list still refuses every env except `local` and `*-dev`;
-  - the stages and flows are hard-coded in the script ([ADR-0003](0003-identity-tuple-names-every-instance.md)).
+- Known gap: the stages and flows are hard-coded in the script
+  ([ADR-0003](0003-identity-tuple-names-every-instance.md)).

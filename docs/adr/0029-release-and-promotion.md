@@ -77,8 +77,9 @@ sequenceDiagram
    - Moving the version on to `uat`, `prod` and `parallel` is a further pull request there, approved by that
      repository's CODEOWNERS. Their approval is the deploy intent, and git is the record.
    - The release pipeline itself never deploys a promoted env.
-5. **The same runtime downstream.** The promoted envs run the promoted digests with the same host bundles and tools
-   as dev ([ADR-0018](0018-on-prem-host-layout-versioned-bundles.md), [ADR-0028](0028-host-pool-deployment.md)).
+5. **The same runtime downstream.** The promoted envs run the promoted digests on on-prem compose hosts with the
+   same layout as dev ([ADR-0018](0018-on-prem-host-layout-versioned-bundles.md)). This repository's tooling never
+   deploys them; how the configuration repository does is an open decision ([ADR-0004](0004-environments-and-runtimes.md)).
 
 ## Alternatives considered
 
