@@ -52,6 +52,10 @@ class ConfigLinterTest {
     private fun kubeconform(valid: Int, skipped: Int = 0, resources: String = "") =
         "{\n  \"resources\": [$resources],\n  \"summary\": {\"valid\": $valid, \"invalid\": 0, \"errors\": 0, \"skipped\": $skipped}\n}\n"
 
+    /** The vocabulary of this repository's platform.yml; `envs = null` as in the configuration repository, which holds every env. */
+    private val everyEnv = LintScope(regions = setOf("us", "jp"), stages = setOf("dev", "qa", "uat", "prod", "parallel"),
+        flows = setOf("cash", "deriv", "swap"), kinds = setOf("compose", "helm"), envs = null)
+
     private val helmRequests = mutableListOf<HelmRequest>()
     private val helmOk = HelmRunner { request -> helmRequests += request; CommandResult(0, "") }
     private val kubeconformOk = ManifestValidator { CommandResult(0, kubeconform(valid = 5)) }
@@ -63,11 +67,12 @@ class ConfigLinterTest {
         completeEnvs: Set<String> = emptySet(),
         requireRender: Boolean = false,
         charts: Map<String, File> = mapOf("source-database" to chart),
-    ) = ConfigLinter(config, setOf("source-database"), template, mapOf("source-database" to appOverride), completeEnvs,
+        scope: LintScope = everyEnv,
+    ) = ConfigLinter(config, setOf("source-database"), scope, template, mapOf("source-database" to appOverride), completeEnvs,
         renderer, requireRender, charts, helm, validator, rendered)
 
-    private fun lint(renderer: ComposeRenderer? = null): List<Finding> =
-        linter(renderer).lint().filter { it.severity != Severity.TODO }
+    private fun lint(scope: LintScope = everyEnv, renderer: ComposeRenderer? = null): List<Finding> =
+        linter(renderer, scope = scope).lint().filter { it.severity != Severity.TODO }
 
     private fun List<Finding>.checks() = map { it.check }.toSet()
     private fun List<Finding>.text() = joinToString("\n")
@@ -117,7 +122,7 @@ class ConfigLinterTest {
         write("local/cash/source-database/42/_docker-compose.instance.env",
             composeEnv("local", "cash", "source-database", "other", "SPRING_DATASOURCE_PASSWORD=x\nFOO=1\nCOMPOSE_ENV_FILE=/x\n"))
         write("local/fx/source-database/application.app.yml", "a: 1\n")
-        write("us-uat/README.md", "x")
+        write("eu-dev/README.md", "x")
         val findings = lint()
         val messages = findings.text()
         assertTrue(findings.checks().containsAll(setOf(1, 4, 5)), messages)
@@ -127,7 +132,7 @@ class ConfigLinterTest {
         assertTrue(messages.contains("COMPOSE_ENV_FILE is set by run-compose.sh"), messages)
         assertTrue(messages.contains("APP_INSTANCE=other does not match"), messages)
         assertTrue(messages.contains("flow 'fx'"), messages)
-        assertTrue(messages.contains("env 'us-uat'"), messages)
+        assertTrue(messages.contains("env 'eu-dev' must be local or <region>-<stage> with a region of [us, jp]"), messages)
         assertTrue(helmRequests.isEmpty(), "an invalid AppInstance is never rendered: $helmRequests")
     }
 
@@ -153,6 +158,68 @@ class ConfigLinterTest {
         assertTrue(messages.contains("'spring.datasource.password' is a secret property"), messages)
         assertTrue(messages.contains("IMAGE_TAG 'latest' in us-prod must be an immutable release tag"), messages)
         assertTrue(messages.contains("image.tag 'latest' in us-prod must be an immutable release tag"), messages)
+    }
+
+    // --- platform.yml (ADR-0030): the vocabulary, the runtimes and the envs of this repository ------------------------
+
+    @Test
+    fun `this repository holds local and its dev envs only, the promoted envs live in the configuration repository`() {
+        validInstance("local", "trades-db-to-amps")
+        validInstance("us-dev", "trades-db-to-amps")
+        write("us-dev/cash/workflows-config.yml", "env: us-dev\nflow: cash\ntargets:\n  - instance: source-database/trades-db-to-amps\n" +
+            "    kind: compose\n    host: h\n")
+        validInstance("us-prod", "trades-db-to-amps", tag = "1.4.2")
+        validInstance("jp-dev", "trades-db-to-amps")
+        val findings = lint(scope = everyEnv.copy(envs = setOf("us-dev")))
+        val messages = findings.text()
+        assertEquals(listOf("config/jp-dev", "config/us-prod"), findings.map { it.path }.sorted(), messages)
+        assertTrue(findings.all { it.check == 1 && it.severity == Severity.ERROR }, messages)
+        assertTrue(messages.contains("env 'us-prod' does not belong in this repository, which holds only local and its dev envs " +
+            "[us-dev]: the promoted envs live in the configuration repository"), messages)
+        assertTrue(messages.contains("env 'jp-dev' is not a dev env of this repository: add it to platform.yml dev_envs [us-dev]"), messages)
+    }
+
+    @Test
+    fun `the regions, stages and flows of platform_yml are the vocabulary`() {
+        validInstance("local", "trades-db-to-amps")
+        write("local/fx/source-database/application.app.yml", "a: 1\n")
+        write("eu-dev/cash/source-database/application.app.yml", "a: 1\n")
+        write("us-stage/cash/source-database/application.app.yml", "a: 1\n")
+        val narrow = lint().filter { it.check == 1 }.text()
+        assertTrue(narrow.contains("flow 'fx' must be one of [cash, deriv, swap] (platform.yml)"), narrow)
+        assertTrue(narrow.contains("env 'eu-dev' must be local or <region>-<stage>"), narrow)
+        assertTrue(narrow.contains("env 'us-stage' must be local or <region>-<stage> with a region of [us, jp] and a stage of " +
+            "[dev, qa, uat, prod, parallel] (platform.yml)"), narrow)
+        val wide = lint(scope = everyEnv.copy(regions = setOf("us", "eu"), stages = everyEnv.stages + "stage",
+            flows = everyEnv.flows + "fx")).filter { it.check == 1 }.text()
+        assertFalse(wide.contains("must be one of"), wide)
+        assertFalse(wide.contains("must be local or"), wide)
+    }
+
+    @Test
+    fun `uat and parallel are promoted stages, so their tags are immutable like qa and prod`() {
+        validInstance("us-uat", "trades-db-to-amps", tag = "latest")
+        validInstance("us-parallel", "trades-db-to-amps", tag = "0.1.0-rc.39")
+        validInstance("us-qa", "trades-db-to-amps", tag = "1.4.2")
+        val messages = lint().filter { it.check == 10 }.text()
+        assertTrue(messages.contains("IMAGE_TAG 'latest' in us-uat must be an immutable release tag"), messages)
+        assertTrue(messages.contains("image.tag 'latest' in us-uat must be an immutable release tag"), messages)
+        assertTrue(messages.contains("IMAGE_TAG '0.1.0-rc.39' in us-parallel must be an immutable release tag"), messages)
+        assertFalse(messages.contains("us-qa"), "1.4.2 is a release tag: $messages")
+    }
+
+    @Test
+    fun `a target names a runtime of platform_yml kinds`() {
+        validInstance("us-dev", "trades-db-to-amps")
+        validInstance("us-dev", "positions-db-to-deephaven")
+        write("us-dev/cash/workflows-config.yml", "env: us-dev\nflow: cash\ntargets:\n" +
+            "  - instance: source-database/trades-db-to-amps\n    kind: compose\n    host: h\n" +
+            "  - instance: source-database/positions-db-to-deephaven\n    kind: helm\n    cluster: kind-ci\n")
+        assertEquals(emptyList<Finding>(), lint().filter { it.check == 11 }, lint().text())
+        val composeOnly = lint(scope = everyEnv.copy(kinds = setOf("compose"))).filter { it.check == 11 }
+        assertEquals(1, composeOnly.size, composeOnly.text())
+        assertTrue(composeOnly.single().message.contains("targets[1]: kind 'helm' is not a runtime of this project " +
+            "(platform.yml kinds: compose)"), composeOnly.text())
     }
 
     @Test
@@ -204,7 +271,8 @@ class ConfigLinterTest {
     @Test
     fun `checks 7 and 8 are reported as TODO`() {
         validInstance("local", "trades-db-to-amps")
-        val todo = ConfigLinter(config, setOf("source-database"), completeEnvs = emptySet()).lint().filter { it.severity == Severity.TODO }
+        val todo = ConfigLinter(config, setOf("source-database"), everyEnv, completeEnvs = emptySet()).lint()
+            .filter { it.severity == Severity.TODO }
         assertEquals(listOf(7, 8), todo.map { it.check })
     }
 

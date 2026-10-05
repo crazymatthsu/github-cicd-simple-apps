@@ -27,6 +27,9 @@ pluginManagement {
 }
 
 plugins {
+    // Reads platform.yml: names the root project, includes every module under its apps_dir and framework/, and
+    // hands the project values to every project (ADR-0030).
+    id("buildlogic.platform")
     // Computes project.version from git for every project (ADR-0008); -Pversion=... overrides it.
     id("buildlogic.git-version")
 }
@@ -51,19 +54,6 @@ dependencyResolutionManagement {
     }
 }
 
-rootProject.name = "github-cicd-simple-apps"
-
-// Repository layout of ADR-0006: every directory under apps/ (the deployable apps) and framework/
-// (the shared code the apps are built on: built and published, never deployed) that holds a build.gradle.kts is a
-// top-level Gradle project.
-// Directory name == Gradle project name == image name == AppName (ADR-0006); the release line — the <project>
-// of the image path <registry>/<project>/<AppName> — is the repository itself (platform.yml, ADR-0002).
-// Adding an app is a directory under apps/, never an edit here.
-listOf("apps", "framework").forEach { dir ->
-    rootDir.resolve(dir).listFiles { file -> file.isDirectory && file.resolve("build.gradle.kts").isFile }
-        ?.sortedBy { it.name }
-        ?.forEach { projectDir ->
-            include(projectDir.name)
-            project(":${projectDir.name}").projectDir = projectDir
-        }
-}
+// No project value lives here: rootProject.name is platform.yml's project, and the modules are the directories under
+// its apps_dir and framework/ that hold a build.gradle.kts (buildlogic.platform, ADR-0006, ADR-0030). Adding an app is
+// a directory, never an edit here.

@@ -1,13 +1,28 @@
 // `buildlogic.java-conventions` (ADR-0007): every JVM subproject. Java 21 toolchain, the Spring Boot BOM as
-// a platform, JUnit Platform, JaCoCo with a low (ratchet-up-only) threshold, reproducible archives.
+// a platform, JUnit Platform, JaCoCo with a low (ratchet-up-only) threshold, reproducible archives, the group of
+// platform.yml, and the identity vocabulary of platform.yml as a resource (ADR-0003, ADR-0030).
+import buildlogic.PlatformIdentityTask
 import buildlogic.catalogLibrary
+import buildlogic.platformList
+import buildlogic.platformValue
 
 plugins {
     java
     jacoco
 }
 
-group = "com.example.connectors"
+group = platformValue("group")
+
+// META-INF/platform/identity.properties: the regions, stages and flows of platform.yml, which ConnectorIdentity checks
+// the instance's identity against at start-up (ADR-0003).
+val platformIdentity = tasks.register<PlatformIdentityTask>("generatePlatformIdentity") {
+    description = "Writes the identity vocabulary of platform.yml into META-INF/platform/identity.properties."
+    regions = platformList("regions")
+    stages = platformList("stages")
+    flows = platformList("flows")
+    outputDir = layout.buildDirectory.dir("generated/platform-resources")
+}
+sourceSets.named("main") { resources.srcDir(platformIdentity) }
 
 java {
     toolchain {

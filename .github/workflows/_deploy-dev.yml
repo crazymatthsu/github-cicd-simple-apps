@@ -10,7 +10,7 @@
 #                          pull → start → health from it on each instance's box (pinned → discovered → assigned)
 #                          and, once every instance passed, `activate` on every box (current → the version);
 #                          any failure sends every started instance back to current and current never moves —
-#                          transport ssh once the Environment us-dev holds DEV_DEPLOY_SSH_KEY, else local (the
+#                          transport ssh once the env's Environment holds DEV_DEPLOY_SSH_KEY, else local (the
 #                          runner plays every box: validate, record-tag --dry-run, start --dry-run per placement,
 #                          activate --dry-run per box, the ssh commands printed). A flow without a pool keeps the
 #                          PLACEHOLDER (ADR-0027): `run-compose.sh ... start --dry-run` per target on the
@@ -26,18 +26,18 @@
 # and the run is recorded as a GitHub Deployment of the env's Environment (<env>, ADR-0027), one per run, whose
 # payload names per instance the tag, the digest-pinned image, the box or cluster and the result, plus the
 # config tree's git SHA (the run's commit) and, per pooled flow, the version directory; the job summary is the
-# human-readable copy and the version directories' _docker-compose.instance.env (record-tag) the second one. qa and prod are never
-# touched: the job refuses any env that is not
-# *-dev, and so do run-compose.sh and helm-deploy-instance.sh.
+# human-readable copy and the version directories' _docker-compose.instance.env (record-tag) the second one. The promoted
+# envs are never touched: the job refuses any env that is not a dev env of platform.yml (dev_envs, ADR-0004), and so do
+# pool-deploy.sh, run-compose.sh and helm-deploy-instance.sh.
 name: _deploy-dev
 
 on:
   workflow_call:
     inputs:
       env:
-        description: Config env to deploy (a *-dev env).
+        description: Config env to deploy (a dev env of platform.yml).
         type: string
-        default: us-dev
+        required: true
       tag:
         description: Image tag to deploy (the connector-family pre-release tag published by main.yml).
         type: string
@@ -62,7 +62,7 @@ jobs:
     name: deploy ${{ inputs.env }}
     runs-on: ubuntu-latest
     timeout-minutes: 20
-    # The env's GitHub Environment (us-dev; ADR-0027): no reviewers, deployment branch `main` (ADR-0020).
+    # The env's GitHub Environment (named as the env; ADR-0027): no reviewers, deployment branch `main` (ADR-0020).
     # `deployment: false` keeps the Environment's rules and secrets without an automatic deployment object, so
     # the record created at the end (with its payload) is the only one per run.
     environment:
@@ -92,8 +92,9 @@ jobs:
       - name: Guard
         run: |
           set -euo pipefail
-          if [[ ! $DEPLOY_ENV =~ ^[a-z][a-z0-9]*-dev$ ]]; then
-            echo "::error::deploy-dev only deploys *-dev envs, got '$DEPLOY_ENV' (qa / prod go through bump PRs)"
+          dev_envs=$(yq -o=json -I=0 '.dev_envs // []' platform.yml)
+          if [[ ! $DEPLOY_ENV =~ ^[a-z]{2}-dev$ ]] || ! jq -e --arg env "$DEPLOY_ENV" 'any(.[]; . == $env)' <<<"$dev_envs" >/dev/null; then
+            echo "::error::deploy-dev deploys only the dev envs of platform.yml ($dev_envs), got '$DEPLOY_ENV': the promoted envs are deployed from the configuration repository (ADR-0004)"
             exit 1
           fi
           [[ $DEPLOY_TAG =~ ^[A-Za-z0-9_][A-Za-z0-9_.-]{0,127}$ ]] || { echo "::error::invalid tag '$DEPLOY_TAG'"; exit 1; }
@@ -183,7 +184,7 @@ jobs:
           # instance already started back to current — the previous version directory, old image and old config —
           # and current never moves (ADR-0028); a rollback later is `pool-deploy.sh <env> <flow> rollback`. The
           # GitHub Deployment below records the version, and git stays untouched.
-          #   ssh    when the Environment `us-dev` holds DEV_DEPLOY_SSH_KEY: the key lives in this step's ssh-agent
+          #   ssh    when the env's Environment holds DEV_DEPLOY_SSH_KEY: the key lives in this step's ssh-agent
           #          only, and the reviewed config/<env>/known_hosts pins the boxes' host keys (pool-deploy.sh
           #          refuses without it; an unknown key is never accepted).
           #   local  otherwise — no box exists yet (ADR-0027): the runner plays every box, one directory each
@@ -337,7 +338,7 @@ jobs:
         run: |
           set -euo pipefail
           # TODO(ADR-0019): a helm target whose cluster is not kind-ci needs that cluster's kubeconfig from
-          #   the Environment `us-dev` secrets — DEV_KUBECONFIG_<CLUSTER> for a persistent dev cluster, or
+          #   the env's Environment secrets — DEV_KUBECONFIG_<CLUSTER> for a persistent dev cluster, or
           #   GitHub OIDC → IAM role → EKS RBAC once dev runs on EKS (ADR-0019) — written to
           #   $RUNNER_TEMP with mode 600 and passed to helm-deploy-instance as `kubeconfig`, with no kind
           #   cluster and no image load (that cluster pulls from the registry). Until then such a target
@@ -347,7 +348,7 @@ jobs:
           while IFS=$'\t' read -r instance cluster namespace; do
             IFS=/ read -r _ app _ <<<"$instance"
             if [[ $cluster != kind-ci ]]; then
-              echo "::error::$instance: cluster '$cluster' — TODO(ADR-0019): kubeconfig for $cluster from the Environment us-dev secrets"
+              echo "::error::$instance: cluster '$cluster' — TODO(ADR-0019): kubeconfig for $cluster from the Environment $DEPLOY_ENV secrets"
               echo "- \`$instance\`: **failed**, cluster \`$cluster\` has no kubeconfig yet (TODO(ADR-0019); the demo deploys \`kind-ci\` only)" >> "$GITHUB_STEP_SUMMARY"
               failed+=("$instance")
               continue
@@ -424,7 +425,7 @@ jobs:
         if: ${{ !cancelled() && steps.helm-plan.outputs.kind == 'true' && (failure() || steps.helm.outputs.failed != '') }}
         uses: actions/upload-artifact@v7
         with:
-          name: deploy-dev-diagnostics-${{ github.run_id }}-${{ github.run_attempt }}
+          name: deploy-dev-diagnostics-${{ github.run_id }}-${{ github.run_attempt }}-${{ inputs.env }}
           path: build/kind-logs/**
           if-no-files-found: warn
           retention-days: 14

@@ -2,7 +2,7 @@
 
 | | |
 |---|---|
-| Status | Accepted |
+| Status | Accepted. Rule 3 superseded in part by [ADR-0030](0030-platform-yml-declares-every-project-value.md) |
 | Date | 2026-10-04 |
 | Applies to | every module and the root build |
 | Enforced by | `FAIL_ON_PROJECT_REPOS`; `org.gradle.configuration-cache.problems=fail`; `jacocoTestCoverageVerification` in `check`; Gradle wrapper validation in CI; the `build-logic` unit tests (part of the root `check`) |
@@ -27,7 +27,7 @@ a repository manager. Copying build logic into every module scales as badly as c
    settings. `build-logic/` is an included build (a separate Gradle build that the main build uses) of precompiled
    Kotlin script plugins.
    - The logic behind the plugins lives in plain Kotlin classes under `build-logic/src/main/kotlin/buildlogic/`.
-     It is unit-tested there (`VersionSchemeTest`, `ConfigLinterTest`, `ContainerEnginesTest`, `PushRetryTest`),
+     It is unit-tested there (`VersionSchemeTest`, `ConfigLinterTest`, `PlatformManifestTest`, `ContainerEnginesTest`, `PushRetryTest`),
      and the root `check` runs those tests.
    - The root build scripts hold no conventions, and no module uses `allprojects {}` or `subprojects {}`.
 3. **The plugins.** Each part of the build applies only the plugins it needs. The diagram shows which part applies
@@ -101,7 +101,7 @@ a repository manager. Copying build logic into every module scales as badly as c
 - A change to `build-logic/`, `gradle/` or a root Gradle file rebuilds and retests everything
   ([ADR-0022](0022-pull-request-pipeline.md)).
 - Builds need git history and tags, because the version comes from them.
-- Two plugins hold project or domain values inside shared tooling (known gaps):
-  - `buildlogic.java-conventions` hard-codes this project's group (`com.example.connectors`);
-  - `buildlogic.integration-test` wires in the Deephaven client and the connectors' test endpoints.
+- `buildlogic.integration-test` holds domain values inside shared tooling: it wires in the Deephaven client and the
+  connectors' test endpoints (known gap). The project values, the group among them, come from `platform.yml`
+  ([ADR-0030](0030-platform-yml-declares-every-project-value.md)).
 - The toolchain vendor is not pinned.

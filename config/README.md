@@ -1,5 +1,9 @@
 # config/ — the configuration tree ([ADR-0011](../docs/adr/0011-configuration-tree-and-spring-layers.md))
 
+This tree holds `local` and the dev envs listed in `platform.yml` (`dev_envs`), with the regions, stages and flows of
+`platform.yml` ([ADR-0004](../docs/adr/0004-environments-and-runtimes.md), [ADR-0030](../docs/adr/0030-platform-yml-declares-every-project-value.md));
+config-lint rejects any other env or flow. The promoted envs live in the configuration repository.
+
 The layers are files ([ADR-0011](../docs/adr/0011-configuration-tree-and-spring-layers.md)): each sits in the directory that already identifies its level, and its name says
 which layer it is. The directory path is the identity tuple; nothing is shared at the env level and nothing across
 envs (a default that is the same everywhere is a jar default, [ADR-0011](../docs/adr/0011-configuration-tree-and-spring-layers.md)). In `*-dev` envs every flow also has its deploy-dev

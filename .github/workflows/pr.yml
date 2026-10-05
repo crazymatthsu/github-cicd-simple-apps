@@ -3,9 +3,9 @@
 #   push to a branch            fast tier: affected build + unit tests + lint + config-lint (no images, no containers)
 #   pull_request / merge_group  fast tier + images pr-<n>-<sha7> + component ITs of the affected projects
 #                               (all projects when shared code changed, on the merge queue, or with label ci:full)
-#                               + kind-deploy (ADR-0019: Helm releases of us-dev/*/source-database in a
-#                               throwaway kind cluster) when detect-affected reports deploy-test and the
-#                               source-database image was pushed
+#                               + kind-deploy (ADR-0019: Helm releases of <dev env>/*/<reference app> in a
+#                               throwaway kind cluster, per dev env of platform.yml) when detect-affected reports
+#                               deploy-test and the reference app's image was pushed
 #   docs-only changes           everything skipped; pr-gate passes with a docs-only summary
 # `pr-gate` fans everything in and is the ONLY required status check on `main` (ADR-0022).
 name: pr
@@ -38,10 +38,16 @@ jobs:
       base-changed: ${{ steps.affected.outputs.base-changed }}
       deploy-test: ${{ steps.affected.outputs.deploy-test }}
       reason: ${{ steps.affected.outputs.reason }}
+      dev-envs: ${{ steps.platform.outputs.dev-envs }}
+      reference-app: ${{ steps.platform.outputs.reference-app }}
     steps:
       - uses: actions/checkout@v7
         with:
           fetch-depth: 0
+
+      # The dev envs and the reference app of the kind deployment test (ADR-0030).
+      - id: platform
+        uses: ./.github/actions/platform-manifest
 
       - id: affected
         uses: ./.github/actions/affected-matrix
@@ -141,23 +147,27 @@ jobs:
       retention-days: 7
 
   kind-deploy:
-    # Kind deployment test (ADR-0019, ADR-0022): one Helm release per us-dev instance of source-database in a kind
-    # cluster, readiness, helm test, smoke diff, cluster deleted. Needs the source-database image this run
-    # pushed (same-repo PRs and the merge queue); a config-only change builds no image, so there the
-    # per-instance helm lint / template of config-lint is the PR check and main.yml's kind-deploy runs
+    # Kind deployment test (ADR-0019, ADR-0022): per dev env, one Helm release per instance of the reference app
+    # (platform.yml) in a kind cluster, readiness, helm test, smoke diff, cluster deleted. Needs the reference
+    # app's image this run pushed (same-repo PRs and the merge queue); a config-only change builds no image, so
+    # there the per-instance helm lint / template of config-lint is the PR check and main.yml's kind-deploy runs
     # before deploy-dev.
     needs: [detect-affected, build]
     if: >-
       (github.event_name == 'pull_request' || github.event_name == 'merge_group')
       && needs.detect-affected.outputs.deploy-test == 'true'
-      && contains(needs.build.outputs.images, ':source-database"')
+      && contains(needs.build.outputs.images, format(':{0}"', needs.detect-affected.outputs.reference-app))
+    strategy:
+      fail-fast: false
+      matrix:
+        env: ${{ fromJSON(needs.detect-affected.outputs.dev-envs) }}
     uses: ./.github/workflows/_kind-deploy.yml
     permissions:
       contents: read
       packages: read
     with:
-      env: us-dev
-      app: source-database
+      env: ${{ matrix.env }}
+      app: ${{ needs.detect-affected.outputs.reference-app }}
       images: ${{ needs.build.outputs.images }}
       retention-days: 7
 
@@ -181,6 +191,7 @@ jobs:
           DEPLOY_TEST: ${{ needs.detect-affected.outputs.deploy-test }}
           BUILD_RESULT: ${{ needs.build.result }}
           KIND_RESULT: ${{ needs.kind-deploy.result }}
+          REFERENCE_APP: ${{ needs.detect-affected.outputs.reference-app }}
         run: |
           set -euo pipefail
           {
@@ -210,13 +221,13 @@ jobs:
               echo "- **component ITs skipped**: fork PR without registry write access" >> "$GITHUB_STEP_SUMMARY"
             fi
           fi
-          # kind-deploy (ADR-0022) is skipped when no source-database image was pushed in this run.
+          # kind-deploy (ADR-0022) is skipped when no image of the reference app was pushed in this run.
           if [[ $DOCS_ONLY != true && ($EVENT == pull_request || $EVENT == merge_group) && $DEPLOY_TEST == true &&
                 $KIND_RESULT == skipped && ($BUILD_RESULT == success || $BUILD_RESULT == skipped) ]]; then
             if [[ $EVENT == merge_group ]]; then
-              echo "::error::merge queue: the kind deploy test did not run (no source-database image in this run)"; fail=1
+              echo "::error::merge queue: the kind deploy test did not run (no $REFERENCE_APP image in this run)"; fail=1
             else
-              echo "- **kind deploy skipped**: no source-database image was pushed in this run (fork PR, or a change that builds none, e.g. config-only). config-lint rendered every release; main.yml runs the kind deploy before deploy-dev." >> "$GITHUB_STEP_SUMMARY"
+              echo "- **kind deploy skipped**: no $REFERENCE_APP image was pushed in this run (fork PR, or a change that builds none, e.g. config-only). config-lint rendered every release; main.yml runs the kind deploy before deploy-dev." >> "$GITHUB_STEP_SUMMARY"
             fi
           fi
           exit "$fail"

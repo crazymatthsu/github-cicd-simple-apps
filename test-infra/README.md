@@ -87,9 +87,10 @@ What `up` does:
    seeded. The app image is not pulled up front, because Gradle's `buildImage` produces it locally.
 
 When the app joins the stack, its template gets what `run-compose.sh` would export ([ADR-0025](../docs/adr/0025-integration-tests-on-compose-stacks.md)):
-`APP_ENV=local`, `APP_FLOW=cash`, `APP_NAME`, and `APP_INSTANCE` (when unset: the `instance:` of the
-project's testdata manifests, `positions-db-to-deephaven` for `source-database`; else the app's only instance
-directory under `config/local/cash/<AppName>/`, as for `source-kafka` and `source-amps`; several candidates
+`APP_ENV=local`, `APP_FLOW` (when unset: the one flow of `config/local/` that configures the app, `cash` for
+every app here; several or none is a usage error), `APP_NAME`, and `APP_INSTANCE` (when unset: the `instance:` of
+the project's testdata manifests, `positions-db-to-deephaven` for `source-database`; else the app's only instance
+directory under `config/local/<flow>/<AppName>/`, as for `source-kafka` and `source-amps`; several candidates
 or none is a usage error). It also gets
 the Spring layer files (`FLOW_APP_YML`, `APP_APP_YML`, `INSTANCE_APP_YML`), the combined env `COMPOSE_ENV_FILE`
 that `scripts/run-compose.sh ... compose-env` writes (one merge implementation), `PROJECT` and

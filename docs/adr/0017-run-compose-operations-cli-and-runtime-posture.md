@@ -2,7 +2,7 @@
 
 | | |
 |---|---|
-| Status | Accepted |
+| Status | Accepted. Rule 5 superseded in part by [ADR-0030](0030-platform-yml-declares-every-project-value.md) |
 | Date | 2026-10-04 |
 | Applies to | every compose-run instance of this repository: laptops, CI test stacks and the dev hosts |
 | Enforced by | its own argument, safety and configuration checks (exit codes 2, 3, 4); ShellCheck and `scripts/test/pool-deploy-test.sh` in the `lint` job; the template's settings ([ADR-0012](0012-compose-template-and-generated-env.md)) |
@@ -118,5 +118,5 @@ scripts.
 - Operators learn one CLI, valid for every app and env. Every action is auditable.
 - The script is a critical part of the shared tooling (about 1,100 lines of bash). ShellCheck and the stub-based
   tests of `scripts/test/` cover it. It needs bash 4 or later on the hosts.
-- Known gap: the stages and flows are hard-coded in the script
-  ([ADR-0003](0003-identity-tuple-names-every-instance.md)).
+- The script reads the regions, stages, flows and dev envs from the `platform.yml` of its root, which every host
+  bundle carries ([ADR-0030](0030-platform-yml-declares-every-project-value.md)).
