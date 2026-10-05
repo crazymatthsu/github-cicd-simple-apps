@@ -94,7 +94,7 @@ scripts.
    | Setting | Value |
    |---|---|
    | user | non-root `10001` (the image) |
-   | root filesystem | read-only; `tmpfs` on `/tmp`; writable `/app/logs` only |
+   | root filesystem | read-only; `tmpfs` on `/tmp`; writable `/app/logs` and `/app/data` only |
    | privileges | `cap_drop: [ALL]`, `no-new-privileges:true` |
    | memory | `mem_limit: ${MEM_LIMIT:-1g}`; the heap is a percentage of it |
    | network exposure | only the actuator port, on `127.0.0.1:${ACTUATOR_HOST_PORT}` |

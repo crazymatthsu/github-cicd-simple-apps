@@ -92,7 +92,15 @@ object ConfigRules {
     val FORBIDDEN_PREFIXES = listOf("SPRING_", "LOGGING_", "MANAGEMENT_", "CONNECTOR_")
 
     /** Variables `run-compose.sh` sets itself; no env layer may define them (ADR-0012). */
-    val SCRIPT_VARIABLES = setOf("COMPOSE_ENV_FILE", "FLOW_APP_YML", "APP_APP_YML", "INSTANCE_APP_YML", "PROJECT")
+    val SCRIPT_VARIABLES = setOf("COMPOSE_ENV_FILE", "FLOW_APP_YML", "APP_APP_YML", "INSTANCE_APP_YML", "PROJECT",
+        "INSTANCE_LOGS_DIR", "INSTANCE_DATA_DIR")
+    /**
+     * The env-layer variables that name the flow's host directories (ADR-0018); each instance mounts
+     * `<dir>/<AppName>/<AppInstance>`, which `run-compose.sh` passes to the template as `INSTANCE_<name>`.
+     */
+    val HOST_DIRS = listOf("LOGS_DIR", "DATA_DIR")
+    /** An absolute host path of plain segments: it is a bind-mount source and a `mkdir -p` argument. */
+    val HOST_PATH = Regex("^(/[A-Za-z0-9._-]+)+/?$")
     val IDENTITY = listOf("APP_ENV", "APP_FLOW", "APP_NAME", "APP_INSTANCE")
     /** Only the instance layer sets these (and `*_HOST_PORT`): the image tag, the identity, the published ports. */
     val INSTANCE_ONLY = IDENTITY.toSet() + "IMAGE_TAG"
@@ -504,6 +512,8 @@ class ConfigLinter(
                     error(5, file, "$key belongs in the instance layer only (_docker-compose.instance.env, ADR-0012)")
                 port && value.toIntOrNull()?.let { it in 1024..65535 } != true ->
                     error(5, file, "$key=$value must be a port in 1024..65535 (rootless Podman, ADR-0017)")
+                key in ConfigRules.HOST_DIRS && (!ConfigRules.HOST_PATH.matches(value) || value.split('/').any { it == ".." }) ->
+                    error(5, file, "$key=$value must be an absolute host path (ADR-0018)")
             }
         }
     }
@@ -674,6 +684,10 @@ class ConfigLinter(
         )
         File(flowDir, ConfigRules.application(ConfigRules.Layer.FLOW)).takeIf { it.isFile }
             ?.let { environment["FLOW_APP_YML"] = it.absolutePath }
+        // The instance's host directories, as run-compose.sh derives them (ADR-0018).
+        for (key in ConfigRules.HOST_DIRS) {
+            vars[key]?.takeIf { it.isNotBlank() }?.let { environment["INSTANCE_$key"] = "${it.trimEnd('/')}/$app/$instance" }
+        }
         // Placeholders for every required variable nobody else provides: the secrets passed through the shell.
         val text = files.joinToString("\n") { f -> f.readLines().filterNot { it.trimStart().startsWith("#") }.joinToString("\n") }
         for (match in templateVariable.findAll(text)) {

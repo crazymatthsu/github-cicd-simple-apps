@@ -142,6 +142,7 @@
     "securityContext": { "type": "object" },
     "tmp": { "$ref": "#/$defs/emptyDir" },
     "logs": { "$ref": "#/$defs/emptyDir" },
+    "data": { "$ref": "#/$defs/emptyDir" },
     "topologySpread": {
       "type": "object",
       "additionalProperties": false,

@@ -27,12 +27,18 @@ env served by compose ([ADR-0004](0004-environments-and-runtimes.md)).
    ```
    /apps/<user>/versions/<project>/<YYYYMMDD-HHMMSS>/   one host bundle per deploy, never synced over again
    /apps/<user>/versions/<project>/current              symlink to the live version
-   /apps/<user>/shared/<project>/logs                   what survives a version change (LOGS_DIR)
-   /apps/<user>/shared/<project>/data                   (DATA_DIR)
+   /logs/<user>/<project>/logs                          what survives a version change (LOGS_DIR)
+   /logs/<user>/<project>/data                          (DATA_DIR)
    ```
 
    `<user>` is the pool's deploy user (`pool.user`, default `deploy`); `<project>` is the project of `platform.yml`.
-   The layout is fixed: an inventory cannot move the root.
+   The layout is fixed: an inventory can move neither `/apps/<user>` nor `/logs/<user>`.
+
+   The flow's env layer sets `LOGS_DIR` and `DATA_DIR` to those two directories
+   ([ADR-0012](0012-compose-template-and-generated-env.md)). Every instance gets its own subdirectory of each,
+   `<AppName>/<AppInstance>`, mounted at `/app/logs` and `/app/data`, so two instances on a box never share a file.
+   `run-compose.sh start` creates them, writable by the image's user. Without the two variables, as in `local`, an
+   instance keeps its logs and data in volumes of its compose project.
 2. **A host bundle is the runtime of one `<env>/<flow>`:**
    - `scripts/run-compose.sh` and `scripts/smoke.sh`;
    - `docker/docker-compose.yml`;
@@ -54,7 +60,7 @@ env served by compose ([ADR-0004](0004-environments-and-runtimes.md)).
    `.run/`.
 6. **Activation is atomic.** `run-compose.sh activate` switches `current` to its own version directory: it creates
    a new symlink and renames it over the old one.
-   - It creates `shared/<project>/{logs,data}`.
+   - It creates `/logs/<user>/<project>/{logs,data}`.
    - It keeps the newest `keep` versions (default 5, at least 2), and always keeps `current` and the version it
      replaced.
    - `--previous` or `--to <version>` switch back instead.
@@ -89,7 +95,8 @@ env served by compose ([ADR-0004](0004-environments-and-runtimes.md)).
    - `run-compose.sh` with `pull`, `start`, `stop`, `health`, `status`, `record-tag` and `activate`;
    - `rsync --server` into `/apps/<user>/versions/<project>/<version>/`.
 
-   Hosts are provisioned with `/apps/<user>/versions/<project>/` and `/apps/<user>/shared/<project>/`.
+   Hosts are provisioned with `/apps/<user>/versions/<project>/` and `/logs/<user>/<project>/`, both writable by
+   the deploy user.
 
 ## Alternatives considered
 
