@@ -13,12 +13,14 @@ Usage: test-infra/compose/stack.sh <command> [options]
 Commands
   up --project <gradle path> [--local]
       Start the dependency stacks that stacks.yml declares for the project (base.yml, <stack>.yml...,
-      it-runner.yml), plus the app's docker/docker-compose.yml when APP_IMAGE is set: pull --quiet,
+      it-runner.yml), plus the shared docker/docker-compose.yml and the app's overrides when APP_IMAGE is set
+      (R-0008): pull --quiet,
       up --wait --wait-timeout 180, apply the SQL Server seed, then start the app under test.
       Exports COMPOSE_FILE, COMPOSE_PROJECT_NAME, COMPOSE_ENV_FILES and the IT_* values to
       $GITHUB_ENV in CI and records them in test-infra/compose/.state/<project>.env.
       --local also publishes 10000 / 1433 / 9092 on 127.0.0.1 (local-ports.yml). In CI the app under
-      test publishes no port either (tests reach it as <AppName>:8080 on the stack network).
+      test publishes no port either (tests reach it as <AppName>:8080 on the stack network: the service is
+      `app`, aliased <AppName>).
   diagnostics <dir>
       Write compose-ps.txt, <service>.log, health-<service>.json and stats.txt for the stack into <dir>.
   down
@@ -35,7 +37,8 @@ Environment
   COMPOSE_BIN              "docker compose" or "podman compose" (default: docker when present, else podman)
   COMPOSE_PROJECT_NAME     default ci-<CI_RUN_ID>-<CI_RUN_ATTEMPT> in CI, local-<AppName> elsewhere
   CI_RUN_ID, CI_RUN_ATTEMPT  run labels (default GITHUB_RUN_ID / GITHUB_RUN_ATTEMPT, else local / 0)
-  APP_IMAGE                image under test; adds <project dir>/docker/docker-compose.yml to the stack
+  APP_IMAGE                image under test; adds docker/docker-compose.yml, the app's override and the instance's
+                           config-tree overrides to the stack, with the combined env scripts/run-compose.sh writes
   APP_ENV, APP_FLOW, APP_INSTANCE
                            identity of the app instance (default local, cash, and the instance named
                            by the project's test-infra/testdata manifests)
@@ -65,12 +68,13 @@ DOWN_TIMEOUT=20
 STATE_VARS="COMPOSE_PROJECT_NAME COMPOSE_FILE COMPOSE_PATH_SEPARATOR COMPOSE_ENV_FILES
   CI_RUN_ID CI_RUN_ATTEMPT IT_SA_PASSWORD IT_TABLE_PREFIX IT_RUNNER_UID IT_RUNNER_GID IT_WORKSPACE
   IT_GRADLE_HOME STACK_PROJECT STACK_SERVICES APP_IMAGE APP_NAME APP_ENV APP_FLOW APP_INSTANCE
-  COMMON_DIR CONFIG_DIR FLOW_COMMON_DIR PROJECT IMAGE_REPO IMAGE_TAG ACTUATOR_HOST_PORT
+  COMPOSE_ENV_FILE FLOW_APP_YML APP_APP_YML INSTANCE_APP_YML PROJECT IMAGE_REPO IMAGE_TAG ACTUATOR_HOST_PORT
   SPRING_DATASOURCE_USERNAME SPRING_DATASOURCE_PASSWORD"
 
 COMPOSE_CMD=()
 ENGINE=
 ENV_FILES=()
+APP_OVERRIDES=()
 STATE_FILE=
 
 log()  { printf '[stack] %s\n' "$*"; }
@@ -265,13 +269,13 @@ short_sha() {
 }
 
 # The AppInstance the project's test cases run against (manifest key `instance`), when they agree.
-# The instance directories of config/<env>/<flow>/<app>: everything but the app-common layer, one per line.
+# The instance directories of config/<env>/<flow>/<app>, one per line (the app's own layers are files, R-0008).
 instance_dirs() {
   local d name
   for d in "$1"/*/; do
     [[ -d $d ]] || continue
     name=$(basename "$d")
-    [[ $name == app-common || $name == _* || $name == .* ]] && continue
+    [[ $name == _* || $name == .* ]] && continue
     printf '%s\n' "$name"
   done
 }
@@ -291,11 +295,12 @@ manifest_instance() {
   printf '%s' "$found"
 }
 
-# Interpolation values for the app's compose template when it joins the stack, mirroring what
-# run-compose.sh exports (D6 §6.2): identity, config directories, compose.env, the image under test.
+# Interpolation values for the app's compose files when it joins the stack, mirroring what run-compose.sh exports
+# (D6 §6.2, R-0008): identity, the Spring layer files, the combined env, the image under test. APP_OVERRIDES: the
+# instance's config-tree compose overrides that exist (the shared template and the app's override come from cmd_up).
 prepare_app() {
-  local app=$1 base config_root=${CONFIG_ROOT:-$REPO_ROOT/config} compose_env=''
-  # Absolute, or compose would read a relative layer path such as config/<env>/<flow>/_common as a volume name.
+  local app=$1 base config_root=${CONFIG_ROOT:-$REPO_ROOT/config} file
+  # Absolute: compose resolves a relative path against the first compose file's directory.
   if [[ -d $config_root ]]; then config_root=$(cd "$config_root" && pwd -P); fi
   export APP_NAME=${APP_NAME:-$app} APP_ENV=${APP_ENV:-local} APP_FLOW=${APP_FLOW:-cash}
   base=$config_root/$APP_ENV/$APP_FLOW/$APP_NAME
@@ -316,30 +321,12 @@ prepare_app() {
     esac
   fi
   export APP_INSTANCE
-  export COMMON_DIR=${COMMON_DIR:-$base/app-common} CONFIG_DIR=${CONFIG_DIR:-$base/$APP_INSTANCE}
-  [[ -d $CONFIG_DIR ]] || usage_error "up: the instance config $(rel "$CONFIG_DIR") does not exist (APP_INSTANCE=$APP_INSTANCE)"
-  if [[ -f $CONFIG_DIR/compose.env ]]; then
-    compose_env=$CONFIG_DIR/compose.env
-    ENV_FILES+=("$compose_env")
-  else
-    warn "$(rel "$CONFIG_DIR")/compose.env not found; the app template gets no instance compose.env"
-  fi
-  # The optional cluster layer exactly as run-compose.sh mounts it (D5 §6.1, D6 §6.2): set when the directory
-  # exists, unset otherwise (the template then mounts the empty-layer volume).
-  unset FLOW_COMMON_DIR
-  if [[ -d $config_root/$APP_ENV/$APP_FLOW/_common ]]; then export FLOW_COMMON_DIR=$config_root/$APP_ENV/$APP_FLOW/_common; fi
-  # The template publishes 127.0.0.1:${ACTUATOR_HOST_PORT:?...}, which compose interpolates even when the CI
-  # override drops the port. Default it only when compose.env does not set it: the shell beats --env-file.
-  if [[ -z ${ACTUATOR_HOST_PORT:-} ]] \
-    && ! { [[ -n $compose_env ]] && grep -Eq '^[[:space:]]*ACTUATOR_HOST_PORT=' "$compose_env"; }; then
-    export ACTUATOR_HOST_PORT=18080
-  fi
+  [[ -d $base/$APP_INSTANCE ]] || usage_error "up: the instance config $(rel "$base/$APP_INSTANCE") does not exist (APP_INSTANCE=$APP_INSTANCE)"
   export PROJECT=$COMPOSE_PROJECT_NAME
 
-  # A template written as ${IMAGE_REPO}/${APP_NAME}:${IMAGE_TAG} must run APP_IMAGE and not the tag in
-  # compose.env, so both are derived from it (the environment beats compose.env). A digest-only
-  # reference gets the placeholder tag `by-digest`: with name:tag@digest, Docker and Podman pull by
-  # digest and ignore the tag.
+  # A template written as ${IMAGE_REPO}/${APP_NAME}:${IMAGE_TAG} must run APP_IMAGE and not the tag of the env
+  # layers, so both are derived from it (they override the layers). A digest-only reference gets the placeholder
+  # tag `by-digest`: with name:tag@digest, Docker and Podman pull by digest and ignore the tag.
   local ref=$APP_IMAGE digest='' last
   if [[ $ref == *@* ]]; then
     digest=${ref#*@}
@@ -352,8 +339,30 @@ prepare_app() {
     export IMAGE_REPO=${ref%/*} IMAGE_TAG=by-digest@$digest
   fi
   [[ ${last%%:*} == "$APP_NAME" ]] || warn "APP_IMAGE names '${last%%:*}', not '$APP_NAME'"
+
+  # The combined env of the instance's layers, written by run-compose.sh itself (one merge implementation, with its
+  # checks), with IMAGE_REPO / IMAGE_TAG above as its last layer.
+  COMPOSE_ENV_FILE=$(env -u GITHUB_RUN_ID -u GITHUB_RUN_ATTEMPT CONFIG_ROOT="$config_root" \
+    "$REPO_ROOT/scripts/run-compose.sh" "$APP_ENV" "$APP_FLOW" "$APP_NAME" "$APP_INSTANCE" compose-env -q) \
+    || usage_error "up: scripts/run-compose.sh could not write the combined env of $APP_ENV/$APP_FLOW/$APP_NAME/$APP_INSTANCE"
+  export COMPOSE_ENV_FILE
+  export APP_APP_YML=$base/application.app.yml INSTANCE_APP_YML=$base/$APP_INSTANCE/application.instance.yml
+  unset FLOW_APP_YML
+  if [[ -f $config_root/$APP_ENV/$APP_FLOW/application.flow.yml ]]; then
+    export FLOW_APP_YML=$config_root/$APP_ENV/$APP_FLOW/application.flow.yml
+  fi
+  # The template publishes 127.0.0.1:${ACTUATOR_HOST_PORT:?...}, which compose interpolates even when the CI
+  # override drops the port. Default it only when the combined env does not set it: the shell beats --env-file.
+  if [[ -z ${ACTUATOR_HOST_PORT:-} ]] && ! grep -Eq '^ACTUATOR_HOST_PORT=' "$COMPOSE_ENV_FILE"; then
+    export ACTUATOR_HOST_PORT=18080
+  fi
   export SPRING_DATASOURCE_USERNAME=${SPRING_DATASOURCE_USERNAME:-sa}
   export SPRING_DATASOURCE_PASSWORD=${SPRING_DATASOURCE_PASSWORD:-$IT_SA_PASSWORD}
+  APP_OVERRIDES=()
+  for file in "$config_root/$APP_ENV/$APP_FLOW/_docker-compose.flow.yml" "$base/_docker-compose.app.yml" \
+    "$base/$APP_INSTANCE/_docker-compose.instance.yml"; do
+    if [[ -f $file ]]; then APP_OVERRIDES+=("$file"); fi
+  done
 }
 
 # Compose rejects an override for a service the stack does not define, so --local gets local-ports.yml
@@ -375,7 +384,7 @@ write_local_ports() {
 
 # D10 §5.6: nothing publishes a port in CI. The app template publishes its actuator on 127.0.0.1; this
 # override, merged after it, empties that list (compose `!reset`, Docker Compose 2.24+), so the template
-# stays as it is. Tests reach the app as <AppName>:8080 on the stack network.
+# stays as it is. Tests reach the app as <AppName>:8080 on the stack network (the alias of the service `app`).
 write_app_no_ports() {
   local out=$1 service=$2
   (
@@ -460,7 +469,7 @@ cmd_up() {
   done
   [[ -n $gradle_path ]] || usage_error "up: --project <gradle path> is required"
   validate_gradle_path "$gradle_path"
-  local app=${gradle_path##*:} project_dir=${gradle_path#:} stacks stack app_file='' candidate
+  local app=${gradle_path##*:} project_dir=${gradle_path#:} stacks stack app_file='' app_override='' candidate
   project_dir=${project_dir//://}
   stacks=$(declared_stacks "$app") || usage_error "up: stacks.yml declares no stacks for '$app' ($gradle_path)"
   [[ -n $stacks ]] || usage_error "up: the stack list for '$app' in stacks.yml is empty"
@@ -471,12 +480,13 @@ cmd_up() {
     local re='^[^/@[:space:]]+(/[^/@[:space:]]+)+(:[A-Za-z0-9_][A-Za-z0-9_.-]*)?(@sha256:[0-9a-f]{64})?$'
     [[ $APP_IMAGE =~ $re && ( ${APP_IMAGE##*/} == *:* || $APP_IMAGE == *@* ) ]] \
       || usage_error "up: APP_IMAGE '$APP_IMAGE' must be <registry>/<path>/<AppName>:<tag>, <...>@sha256:<digest>, or both"
-    # The app's compose template (D8 §6.2): apps/<AppName>/ (D12 §6.2), else the directory of the Gradle path
-    # (a monorepo nesting its apps, e.g. deephaven-connectors/<AppName>/).
+    # The shared compose template (D8 §6.2, R-0008), then the app's own override when it has one: apps/<AppName>/
+    # (D12 §6.2), else the directory of the Gradle path (a monorepo nesting its apps, e.g. deephaven-connectors/<AppName>/).
+    app_file=$REPO_ROOT/docker/docker-compose.yml
+    [[ -f $app_file ]] || usage_error "up: APP_IMAGE is set but docker/docker-compose.yml (the shared compose template) is missing"
     for candidate in "$REPO_ROOT/apps/$app" "$REPO_ROOT/$project_dir"; do
-      if [[ -f $candidate/docker/docker-compose.yml ]]; then app_file=$candidate/docker/docker-compose.yml; break; fi
+      if [[ -f $candidate/docker/docker-compose.override.yml ]]; then app_override=$candidate/docker/docker-compose.override.yml; break; fi
     done
-    [[ -n $app_file ]] || usage_error "up: APP_IMAGE is set but neither apps/$app/docker/docker-compose.yml nor $project_dir/docker/docker-compose.yml exists"
   fi
 
   detect_engine
@@ -506,10 +516,16 @@ cmd_up() {
   mkdir -p "$STATE_DIR"
   if [[ -n $app_file ]]; then
     files+=("$app_file")
+    if [[ -n $app_override ]]; then files+=("$app_override"); fi
     prepare_app "$app"
+    files+=(${APP_OVERRIDES[@]+"${APP_OVERRIDES[@]}"})
+    # One env file for the whole stack: podman-compose keeps only the last of several --env-file flags.
+    local stack_env=${STATE_FILE%.env}.compose.env
+    (umask 077; cat "$VERSIONS_ENV" "$COMPOSE_ENV_FILE" >"$stack_env")
+    ENV_FILES=("$stack_env")
     if in_ci; then
       local no_ports_file=${STATE_FILE%.env}.app-no-ports.yml
-      write_app_no_ports "$no_ports_file" "$app"
+      write_app_no_ports "$no_ports_file" app
       files+=("$no_ports_file")
     fi
   fi
@@ -679,7 +695,7 @@ cmd_down() {
   fi
   prune_by_labels
   if [[ -n ${STATE_FILE:-} ]]; then
-    rm -f "$STATE_FILE" "${STATE_FILE%.env}.local-ports.yml" "${STATE_FILE%.env}.app-no-ports.yml"
+    rm -f "$STATE_FILE" "${STATE_FILE%.env}.local-ports.yml" "${STATE_FILE%.env}.app-no-ports.yml" "${STATE_FILE%.env}.compose.env"
   fi
 
   local leftovers

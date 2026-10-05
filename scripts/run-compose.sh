@@ -2,19 +2,24 @@
 # run-compose.sh — the one entry point for a connector's compose stack (D6 §6): local development, CI test
 # stacks and the dev compose hosts of demo step 1. Never qa or prod: production runs on Kubernetes (D9, D11).
 #
-# The one implementation for every app (D12 §6.2, no per-app wrapper): <AppName> names the app directory —
-# apps/<AppName>, or any <dir>/<AppName> holding docker/docker-compose.yml — and --app-dir pins it explicitly.
-# Run with --help for the command table. On a box of a host pool (DL-39, DL-41) it runs from a version directory of
+# The one implementation for every app (D12 §6.2, no per-app wrapper) and one compose template for every app
+# (docker/docker-compose.yml, R-0008): the config tree names the instance, and the app directory — apps/<AppName>, or
+# any <dir>/<AppName> (--app-dir pins it) — only adds what one app needs everywhere (docker/docker-compose.override.yml,
+# scripts/smoke.sh). Run with --help for the command table and the file layout. On a box of a host pool (DL-39, DL-41) it runs from a version directory of
 # the host bundle, /apps/<user>/versions/<project>/<version>/ (DL-46), that scripts/pool-deploy.sh synced: the nearest
 # ancestor holding .platform-bundle is the root, `activate` makes that directory the box's `current` one, and
 # start / restart first ask the pool's other boxes (the pool guard, D6 §6.5).
 set -euo pipefail
 
 readonly EXIT_FAILED=1 EXIT_USAGE=2 EXIT_REFUSED=3 EXIT_CONFIG=4 EXIT_ENGINE=5 EXIT_TIMEOUT=124
-readonly COMMANDS="start stop down restart config app-config printenv health status ps logs pull validate record-tag exec shell version"
+readonly COMMANDS="start stop down restart config app-config printenv compose-env health status ps logs pull validate record-tag exec shell version"
 readonly FLOWS="cash deriv swap"
 readonly COMPOSE_ENV_ALLOWED="IMAGE_REPO IMAGE_TAG APP_ENV APP_FLOW APP_NAME APP_INSTANCE JAVA_OPTS TZ LOG_LEVEL_ROOT LOGS_DIR DATA_DIR MEM_LIMIT"
-readonly SCRIPT_VARIABLES="CONFIG_DIR COMMON_DIR FLOW_COMMON_DIR PROJECT"
+# Only the instance layer may set these (plus *_HOST_PORT): the image tag, the identity and the published ports.
+readonly INSTANCE_ONLY="IMAGE_TAG APP_ENV APP_FLOW APP_NAME APP_INSTANCE"
+readonly SCRIPT_VARIABLES="COMPOSE_ENV_FILE FLOW_APP_YML APP_APP_YML INSTANCE_APP_YML PROJECT"
+# The compose service of every app (docker/docker-compose.yml); other containers reach it as its AppName.
+readonly SERVICE=app
 readonly IMAGE_TAG_PATTERN='^[A-Za-z0-9_][A-Za-z0-9_.-]{0,127}(@sha256:[0-9a-f]{64})?$'
 readonly VERSION_DIR_PATTERN='^[0-9]{8}-[0-9]{6}$'
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd -P)"
@@ -33,20 +38,22 @@ Commands (D6 §6.4):
   start [--no-wait]     up -d --wait (--wait-timeout $START_TIMEOUT, default 180); 124 on timeout
   stop                  stop -t $STOP_TIMEOUT (default 30)
   down [--volumes]      down --remove-orphans; --volumes adds -v (on *-dev hosts also needs --force)
-  restart               stop, then start (picks up compose.env, image and mount changes)
+  restart               stop, then start (picks up env layer, image and mount changes)
   config                the rendered compose configuration, secrets masked
   app-config [--offline]  the app's effective configuration (actuator), or --offline: run --print-config
-  printenv              the resolved environment (paths, identity, engine, compose.env), secrets masked
+  printenv              the resolved environment (paths, identity, engine, the combined env), secrets masked
+  compose-env           write the combined env (below) and print its path
   health                container running and /actuator/health/readiness UP; 1 otherwise
   status | ps           ps, plus drift between the desired image and the running one; 1 on drift
   logs [-f] [--since T] [--tail N]
   pull                  pre-pull the image (the only command that contacts the registry)
-  validate              offline checks: names, required files, compose.env rules, variables, compose lint
-  record-tag            host bundle only: write IMAGE_TAG (required in this shell) into the instance's compose.env
+  validate              offline checks: names, required files, env layer rules, variables, override paths, compose lint
+  record-tag            host bundle only: write IMAGE_TAG (required in this shell) into the instance's
+                        _docker-compose.instance.env
                         of this version directory, so a start there runs that tag (pool-deploy.sh, before pull /
                         start / health; the directory is the record, DL-41)
   exec <svc> <cmd...>   exec in a service (arguments after <svc> belong to the command)
-  shell                 exec <AppName> sh (the app's service is named after the AppName)
+  shell                 exec app sh (every app's service is `app`; other containers reach it as <AppName>)
   version               tag, digest and OCI labels of the running image
 
 Host bundle form (a box of a host pool, DL-41 / DL-46):
@@ -66,14 +73,27 @@ Options (before or after the command):
   -q, --quiet           less informational output
   -h, --help            this text
 
+Files (R-0008; <c> = config/<env>/<flow>, every file optional unless marked):
+  compose  -f docker/docker-compose.yml (required) -f apps/<AppName>/docker/docker-compose.override.yml
+           -f <c>/_docker-compose.flow.yml -f <c>/<AppName>/_docker-compose.app.yml
+           -f <c>/<AppName>/<AppInstance>/_docker-compose.instance.yml
+  env      <c>/_docker-compose.flow.env < <c>/<AppName>/_docker-compose.app.env
+           < <c>/<AppName>/<AppInstance>/_docker-compose.instance.env (required: IMAGE_TAG, identity, *_HOST_PORT)
+           < the shell (IMAGE_TAG / IMAGE_REPO only), merged into ONE combined env,
+           .run/<env>/<flow>/<AppName>/<AppInstance>/compose.env under the root: regenerated by every command,
+           passed as --env-file and loaded by the template's env_file; each line names the layer it came from
+  spring   <c>/application.flow.yml, <c>/<AppName>/application.app.yml (required),
+           <c>/<AppName>/<AppInstance>/application.instance.yml (required), each mounted as one file at
+           /config/{flow,common,instance}/application.yml (a missing flow layer mounts /dev/null)
+
 Exit codes: 0 ok · 1 operation failed or check negative · 2 usage · 3 refused by a safety rule ·
             4 config tree error · 5 engine not found or not running · 124 timeout
 Environment: CONFIG_ROOT (default <repo>/config), START_TIMEOUT, STOP_TIMEOUT, DEPS_NETWORK (join an
 existing network, e.g. the one of ./gradlew devUp), RUN_COMPOSE_ENGINE, IMAGE_TAG and IMAGE_REPO (override
-compose.env in every env, D9 §6.4; deploy-dev's record-tag writes IMAGE_TAG into the new version directory's
-compose.env before pull / start / health run from it; every other compose.env value always comes from the file), APP_IMAGE
-(local only: run this image instead of IMAGE_REPO/APP_NAME:IMAGE_TAG);
-secrets such as SPRING_DATASOURCE_PASSWORD are passed through from this shell, never from compose.env
+the env layers in every env, D9 §6.4; deploy-dev's record-tag writes IMAGE_TAG into the new version directory's
+_docker-compose.instance.env before pull / start / health run from it; every other value always comes from the
+layers), APP_IMAGE (local only: run this image instead of IMAGE_REPO/APP_NAME:IMAGE_TAG);
+secrets such as SPRING_DATASOURCE_PASSWORD are passed through from this shell, never from an env layer
 (D2 §8.1).
 
 Root: the nearest ancestor of this script holding a .platform-bundle marker (a host bundle synced by
@@ -328,8 +348,8 @@ is_token() { printf '%s' "$1" | grep -Eq '^[a-z0-9]([a-z0-9-]*[a-z0-9])?$'; }
 if ! is_token "$APP" || [ "${#APP}" -gt 20 ]; then
     die "$EXIT_USAGE" "AppName '$APP' must be lower-case kebab-case, at most 20 characters"
 fi
-if ! is_token "$INSTANCE" || [ "${#INSTANCE}" -gt 32 ] || [ "$INSTANCE" = app-common ]; then
-    die "$EXIT_USAGE" "AppInstance '$INSTANCE' must be lower-case kebab-case, at most 32 characters (not app-common)"
+if ! is_token "$INSTANCE" || [ "${#INSTANCE}" -gt 32 ]; then
+    die "$EXIT_USAGE" "AppInstance '$INSTANCE' must be lower-case kebab-case, at most 32 characters"
 fi
 case "$INSTANCE" in *[!0-9]*) ;; *) die "$EXIT_USAGE" "AppInstance '$INSTANCE' is a business name, never a bare number" ;; esac
 if [ $((${#APP} + 1 + ${#INSTANCE})) -gt 53 ]; then
@@ -356,7 +376,7 @@ if [ "$COMMAND" = down ] && [ "$VOLUMES" -eq 1 ] && [ "$ENV_NAME" != local ] && 
     die "$EXIT_REFUSED" "down --volumes on a $ENV_NAME host removes data: add --force to confirm"
 fi
 
-# --- path resolution (D6 §6.2) and config-tree checks (4) -------------------------------------------------
+# --- path resolution (D6 §6.2, R-0008) and config-tree checks (4) -----------------------------------------
 
 BUNDLE_ROOT="$(find_bundle_root "$SCRIPT_DIR" || true)"
 if [ -n "$BUNDLE_ROOT" ]; then
@@ -364,6 +384,9 @@ if [ -n "$BUNDLE_ROOT" ]; then
 else
     REPO_ROOT="$(git -C "$SCRIPT_DIR" rev-parse --show-toplevel 2>/dev/null || (cd "$SCRIPT_DIR/.." && pwd -P))"
 fi
+# The app directory adds what one app needs in every env; it is optional (a host bundle carries it only when the app
+# ships docker/docker-compose.override.yml or scripts/smoke.sh).
+is_app_dir() { [ -f "$1/build.gradle.kts" ] || [ -f "$1/docker/docker-compose.override.yml" ] || [ -f "$1/scripts/smoke.sh" ]; }
 if [ -n "$APP_DIR_ARG" ]; then
     [ -d "$APP_DIR_ARG" ] || die "$EXIT_CONFIG" "app directory not found: $APP_DIR_ARG"
     APP_DIR="$(cd "$APP_DIR_ARG" && pwd -P)"
@@ -371,64 +394,142 @@ if [ -n "$APP_DIR_ARG" ]; then
         die "$EXIT_USAGE" "this script belongs to $(basename "$APP_DIR"), not to '$APP'"
 else
     APP_DIR=""
-    # apps/<AppName> (D12 §6.2), else any <dir>/<AppName> with a compose template (a monorepo nesting its apps).
+    # apps/<AppName> (D12 §6.2), else any <dir>/<AppName> (a monorepo nesting its apps).
     for candidate in "$REPO_ROOT/apps/$APP" "$REPO_ROOT/$APP" "$REPO_ROOT"/*/"$APP"; do
-        if [ -f "$candidate/docker/docker-compose.yml" ]; then APP_DIR="$candidate"; break; fi
+        if [ -d "$candidate" ] && is_app_dir "$candidate"; then APP_DIR="$candidate"; break; fi
     done
-    [ -n "$APP_DIR" ] || die "$EXIT_CONFIG" "no app '$APP' with docker/docker-compose.yml under $REPO_ROOT (expected apps/$APP)"
 fi
 CONFIG_ROOT="${CONFIG_ROOT:-$REPO_ROOT/config}"
+# Absolute: compose resolves a relative path against the first compose file's directory (docker/), not this shell's.
+[ ! -d "$CONFIG_ROOT" ] || CONFIG_ROOT="$(cd "$CONFIG_ROOT" && pwd -P)"
 ENV_DIR="$CONFIG_ROOT/$ENV_NAME"
-APP_CONFIG_DIR="$ENV_DIR/$FLOW/$APP"
-COMMON_DIR="$APP_CONFIG_DIR/app-common"
+FLOW_DIR="$ENV_DIR/$FLOW"
+APP_CONFIG_DIR="$FLOW_DIR/$APP"
 CONFIG_DIR="$APP_CONFIG_DIR/$INSTANCE"
-COMPOSE_FILE="$APP_DIR/docker/docker-compose.yml"
-ENV_FILE="$CONFIG_DIR/compose.env"
-FLOW_COMMON_DIR=""
-# The cluster layer (DL-44): one business flow in one env is one cluster; nothing is shared at the env level.
-[ -d "$ENV_DIR/$FLOW/_common" ] && FLOW_COMMON_DIR="$ENV_DIR/$FLOW/_common"
+COMPOSE_TEMPLATE="$REPO_ROOT/docker/docker-compose.yml"
+# The env layers, lowest precedence first (the flow is the cluster, DL-44; nothing is shared at the env level).
+FLOW_ENV="$FLOW_DIR/_docker-compose.flow.env"
+APP_LAYER_ENV="$APP_CONFIG_DIR/_docker-compose.app.env"
+INSTANCE_ENV="$CONFIG_DIR/_docker-compose.instance.env"
+# The Spring layers, one file each (mounted at /config/{flow,common,instance}/application.yml).
+FLOW_APP_YML="$FLOW_DIR/application.flow.yml"
+APP_APP_YML="$APP_CONFIG_DIR/application.app.yml"
+INSTANCE_APP_YML="$CONFIG_DIR/application.instance.yml"
+# The generated combined env of the instance (below): outside config/, never committed, one per version on a box.
+ENV_FILE="$REPO_ROOT/.run/$ENV_NAME/$FLOW/$APP/$INSTANCE/compose.env"
 
-for dir in "$ENV_DIR" "$ENV_DIR/$FLOW" "$APP_CONFIG_DIR" "$COMMON_DIR" "$CONFIG_DIR"; do
+for dir in "$ENV_DIR" "$FLOW_DIR" "$APP_CONFIG_DIR" "$CONFIG_DIR"; do
     [ -d "$dir" ] || die "$EXIT_CONFIG" "config tree: directory missing: $(rel "$dir")"
 done
-for file in "$COMMON_DIR/application.yml" "$CONFIG_DIR/application.yml" "$ENV_FILE" "$COMPOSE_FILE"; do
+# A tree in the layout before R-0008 says so instead of "file missing".
+for old in "$APP_CONFIG_DIR/app-common" "$FLOW_DIR/_common" "$CONFIG_DIR/compose.env"; do
+    [ ! -e "$old" ] || die "$EXIT_CONFIG" "config tree: $(rel "$old") is the layout before R-0008: the layers are files now" \
+        "(application.<layer>.yml, _docker-compose.<layer>.env / .yml, _helm-values.<layer>.yaml; config/README.md)"
+done
+for file in "$APP_APP_YML" "$INSTANCE_APP_YML" "$INSTANCE_ENV" "$COMPOSE_TEMPLATE"; do
     [ -f "$file" ] || die "$EXIT_CONFIG" "config tree: required file missing: $(rel "$file")"
 done
 
-# compose.env: KEY=VALUE lines only, allowed variables only (D5 §6.3), identity equal to the path (D5 check 4).
-env_value() { awk -v k="$1" -F= '$0 !~ /^[[:space:]]*#/ && $1 == k { sub(/^[^=]*=/, ""); gsub(/^["'\'']|["'\'']$/, ""); print; exit }' "$ENV_FILE"; }
-ENV_KEYS=""
+# The compose files, in merge order: the shared template, then every override that exists. compose_text: their
+# content without comment lines, for the variable scans below.
+COMPOSE_FILES=("$COMPOSE_TEMPLATE")
+OVERRIDE_FILES=()
+for file in ${APP_DIR:+"$APP_DIR/docker/docker-compose.override.yml"} "$FLOW_DIR/_docker-compose.flow.yml" \
+    "$APP_CONFIG_DIR/_docker-compose.app.yml" "$CONFIG_DIR/_docker-compose.instance.yml"; do
+    if [ -f "$file" ]; then COMPOSE_FILES+=("$file") OVERRIDE_FILES+=("$file"); fi
+done
+compose_text() { cat "${COMPOSE_FILES[@]}" | grep -v '^[[:space:]]*#'; }
+ENV_LAYERS=()
+for file in "$FLOW_ENV" "$APP_LAYER_ENV" "$INSTANCE_ENV"; do [ ! -f "$file" ] || ENV_LAYERS+=("$file"); done
+
+# Every env layer: KEY=VALUE lines only, allowed variables only (D5 §6.3), the instance-only ones in the instance
+# layer only; the instance layer restates the identity of its path (D5 check 4). A key defined twice in one layer is
+# config-lint's (check 5): record-tag repairs a duplicate IMAGE_TAG on a box, the first line wins.
+layer_value() { awk -v k="$2" -F= '$0 !~ /^[[:space:]]*#/ && $1 == k { sub(/^[^=]*=/, ""); gsub(/^["'\'']|["'\'']$/, ""); print; exit }' "$1"; }
 problems=""
-while IFS= read -r raw || [ -n "$raw" ]; do
-    line="$(printf '%s' "$raw" | sed -e 's/^[[:space:]]*//' -e 's/[[:space:]]*$//')"
-    case "$line" in "" | "#"*) continue ;; esac
-    key="${line%%=*}"
-    if [ "$key" = "$line" ] || ! printf '%s' "$key" | grep -Eq '^[A-Za-z_][A-Za-z0-9_]*$'; then
-        problems="$problems\n  not KEY=VALUE: $line"
-        continue
-    fi
-    ENV_KEYS="$ENV_KEYS $key"
-    case "$key" in
-        SPRING_* | LOGGING_* | MANAGEMENT_* | CONNECTOR_*) problems="$problems\n  $key is forbidden (YAML or shell pass-through, D5 §6.3)" ;;
-        *_HOST_PORT) ;;
-        *)
-            if contains_word "$key" "$SCRIPT_VARIABLES"; then
-                problems="$problems\n  $key is set by run-compose.sh, never in compose.env"
-            elif ! contains_word "$key" "$COMPOSE_ENV_ALLOWED"; then
-                problems="$problems\n  $key is not an allowed compose.env variable (D5 §6.3)"
-            fi
-            ;;
-    esac
-done <"$ENV_FILE"
+check_env_layer() { # <file> <instance: 1|0>
+    local raw line key
+    while IFS= read -r raw || [ -n "$raw" ]; do
+        line="$(printf '%s' "$raw" | sed -e 's/^[[:space:]]*//' -e 's/[[:space:]]*$//')"
+        case "$line" in "" | "#"*) continue ;; esac
+        key="${line%%=*}"
+        if [ "$key" = "$line" ] || ! printf '%s' "$key" | grep -Eq '^[A-Za-z_][A-Za-z0-9_]*$'; then
+            problems="$problems\n  $(rel "$1"): not KEY=VALUE: $line"
+            continue
+        fi
+        case "$key" in
+            SPRING_* | LOGGING_* | MANAGEMENT_* | CONNECTOR_*) problems="$problems\n  $(rel "$1"): $key is forbidden (YAML or shell pass-through, D5 §6.3)" ;;
+            *_HOST_PORT) [ "$2" -eq 1 ] || problems="$problems\n  $(rel "$1"): $key belongs in the instance layer only (_docker-compose.instance.env)" ;;
+            *)
+                if contains_word "$key" "$SCRIPT_VARIABLES"; then
+                    problems="$problems\n  $(rel "$1"): $key is set by run-compose.sh, never in an env layer"
+                elif ! contains_word "$key" "$COMPOSE_ENV_ALLOWED"; then
+                    problems="$problems\n  $(rel "$1"): $key is not an allowed compose variable (D5 §6.3)"
+                elif [ "$2" -eq 0 ] && contains_word "$key" "$INSTANCE_ONLY"; then
+                    problems="$problems\n  $(rel "$1"): $key belongs in the instance layer only (_docker-compose.instance.env)"
+                fi
+                ;;
+        esac
+    done <"$1"
+}
+[ ! -f "$FLOW_ENV" ] || check_env_layer "$FLOW_ENV" 0
+[ ! -f "$APP_LAYER_ENV" ] || check_env_layer "$APP_LAYER_ENV" 0
+check_env_layer "$INSTANCE_ENV" 1
 for pair in "APP_ENV=$ENV_NAME" "APP_FLOW=$FLOW" "APP_NAME=$APP" "APP_INSTANCE=$INSTANCE"; do
     key="${pair%%=*}"
-    actual="$(env_value "$key")"
-    [ "$actual" = "${pair#*=}" ] || problems="$problems\n  $key='$actual' must restate the path ('${pair#*=}')"
+    actual="$(layer_value "$INSTANCE_ENV" "$key")"
+    [ "$actual" = "${pair#*=}" ] || problems="$problems\n  $(rel "$INSTANCE_ENV"): $key='$actual' must restate the path ('${pair#*=}')"
 done
 if [ -n "$problems" ]; then
-    printf 'run-compose: error: %s:%b\n' "$(rel "$ENV_FILE")" "$problems" >&2
+    printf 'run-compose: error: config tree:%b\n' "$problems" >&2
     exit "$EXIT_CONFIG"
 fi
+
+# The combined env (R-0008): the layers merged per key, the later one winning, written as only the winning lines,
+# each after a comment naming its source and what it overrode. Regenerated by every command — it can never be
+# stale — into a temporary file renamed over the old one. podman-compose keeps only the last of several --env-file
+# flags, so one generated file is passed instead; it is also what `printenv` shows.
+write_combined_env() { # <label=file>... (lowest precedence first)
+    local tmp arg map=""
+    local files=()
+    for arg in "$@"; do
+        files+=("${arg#*=}")
+        map="$map${arg#*=}"$'\034'"${arg%%=*}"$'\034'
+    done
+    mkdir -p "$(dirname "$ENV_FILE")" || die "$EXIT_FAILED" "cannot create $(rel "$(dirname "$ENV_FILE")")"
+    tmp="$(mktemp "$(dirname "$ENV_FILE")/.compose.env.XXXXXX")" || die "$EXIT_FAILED" "cannot write in $(rel "$(dirname "$ENV_FILE")")"
+    # Layers are named by file (FILENAME), so an empty layer cannot shift the names of the ones after it.
+    if ! awk -v map="$map" -v created="$(date -u +%Y-%m-%dT%H:%M:%SZ)" -v identity="$ENV_NAME/$FLOW/$APP/$INSTANCE" '
+        BEGIN { n = split(map, m, "\034"); for (i = 1; i + 1 <= n; i += 2) label[m[i]] = m[i + 1] }
+        {
+            line = $0
+            sub(/^[[:space:]]+/, "", line); sub(/[[:space:]]+$/, "", line)
+            if (line == "" || substr(line, 1, 1) == "#") next
+            key = substr(line, 1, index(line, "=") - 1)
+            value = substr(line, index(line, "=") + 1)
+            if (!(key in source)) order[++keys] = key
+            else overridden[key] = label[source[key]] ": " val[key] (overridden[key] == "" ? "" : ", " overridden[key])
+            source[key] = FILENAME; val[key] = value
+        }
+        END {
+            print "# GENERATED by run-compose.sh at " created " — do not edit; edit the layers named below."
+            print "# " identity
+            for (i = 1; i <= keys; i++) {
+                k = order[i]
+                print ""
+                print "# from " label[source[k]] (overridden[k] == "" ? "" : " (overrides " overridden[k] ")")
+                print k "=" val[k]
+            }
+        }' "${files[@]}" >"$tmp" || ! mv -f "$tmp" "$ENV_FILE"; then
+        rm -f "$tmp"
+        die "$EXIT_FAILED" "could not write $(rel "$ENV_FILE")"
+    fi
+}
+LAYER_ARGS=()
+for file in "${ENV_LAYERS[@]}"; do LAYER_ARGS+=("$(rel "$file")=$file"); done
+write_combined_env "${LAYER_ARGS[@]}"
+env_value() { layer_value "$ENV_FILE" "$1"; }
+ENV_KEYS="$(awk -F= '$0 !~ /^[[:space:]]*(#|$)/ { printf " %s", $1 }' "$ENV_FILE")"
 
 # --- environment for the template (D6 §6.2, §6.6) ---------------------------------------------------------
 
@@ -439,16 +540,16 @@ if [ -n "${GITHUB_RUN_ID:-}" ]; then
     # host keeps its stable name so that a redeploy replaces the stack instead of starting a second one.
     [ "$ENV_NAME" = local ] && PROJECT="ci-$GITHUB_RUN_ID-${GITHUB_RUN_ATTEMPT:-1}-$PROJECT"
 fi
-# compose.env is the default for every variable it defines; only IMAGE_REPO and IMAGE_TAG may be overridden
+# The env layers are the default for every variable they define; only IMAGE_REPO and IMAGE_TAG may be overridden
 # from this shell, in every allowed env (deploy-dev injects IMAGE_TAG for pull / start / health, then record-tag
-# writes it into the box's compose.env; git keeps the declared tag, DL-40 / D9 §6.4). Overrides are announced and
-# recorded in the audit line. APP_IMAGE is local only.
+# writes it into the box's _docker-compose.instance.env; git keeps the declared tag, DL-40 / D9 §6.4). Overrides are
+# announced, recorded in the audit line and written into the combined env as its last layer. APP_IMAGE is local only.
 OVERRIDES=""
 for key in $ENV_KEYS; do
     case "$key" in IMAGE_REPO | IMAGE_TAG) ;; *) unset "$key" 2>/dev/null || true ;; esac
 done
 [ "$ENV_NAME" = local ] || unset APP_IMAGE
-RECORD_TAG="${IMAGE_TAG:-}" # record-tag's value, also when it equals compose.env (then unset below)
+RECORD_TAG="${IMAGE_TAG:-}" # record-tag's value, also when it equals the env layers (then unset below)
 for key in IMAGE_REPO IMAGE_TAG; do
     value="${!key:-}"
     if [ -n "$value" ] && [ "$value" != "$(env_value "$key")" ]; then
@@ -458,7 +559,7 @@ for key in IMAGE_REPO IMAGE_TAG; do
         esac
         # [[ =~ ]] matches the whole value (grep would accept a value with one valid line among several).
         [[ $value =~ $pattern ]] || die "$EXIT_USAGE" "$key='$value' is not a valid override"
-        info "$key=$value from the environment overrides compose.env ($(env_value "$key"))"
+        info "$key=$value from the environment overrides the env layers ($(env_value "$key"))"
         OVERRIDES="$OVERRIDES,$key"
         export "${key?}"
     else
@@ -466,16 +567,22 @@ for key in IMAGE_REPO IMAGE_TAG; do
     fi
 done
 OVERRIDES="${OVERRIDES#,}"
-# record-tag changes a host bundle's copy of compose.env only: in a checkout, compose.env changes through git
-# (a pull request — no workflow writes to main, DL-40); a box's version directory is never synced again, so the
-# record stays with the version it belongs to (DL-41).
+if [ -n "$OVERRIDES" ]; then
+    SHELL_LAYER="$(dirname "$ENV_FILE")/.shell.env"
+    for key in IMAGE_REPO IMAGE_TAG; do [ -z "${!key:-}" ] || printf '%s=%s\n' "$key" "${!key}"; done >"$SHELL_LAYER"
+    write_combined_env "${LAYER_ARGS[@]}" "the shell (IMAGE_TAG / IMAGE_REPO only)=$SHELL_LAYER"
+    rm -f "$SHELL_LAYER"
+fi
+# record-tag changes a host bundle's copy of the instance layer only: in a checkout, it changes through git (a pull
+# request — no workflow writes to main, DL-40); a box's version directory is never synced again, so the record stays
+# with the version it belongs to (DL-41).
 if [ "$COMMAND" = record-tag ]; then
-    [ -n "$BUNDLE_ROOT" ] || die "$EXIT_REFUSED" "record-tag writes the compose.env of a host bundle (a box synced by" \
-        "scripts/pool-deploy.sh) only; in a checkout compose.env changes through git"
+    [ -n "$BUNDLE_ROOT" ] || die "$EXIT_REFUSED" "record-tag writes the _docker-compose.instance.env of a host bundle (a box" \
+        "synced by scripts/pool-deploy.sh) only; in a checkout it changes through git"
     # The physical directory: neither `..` in CONFIG_ROOT nor a symlink may lead the write out of the bundle.
     case "$(cd "$CONFIG_DIR" && pwd -P)/" in
         "$BUNDLE_ROOT"/*) ;;
-        *) die "$EXIT_REFUSED" "record-tag writes this bundle's own compose.env only, and $(rel "$CONFIG_DIR") lies outside it" ;;
+        *) die "$EXIT_REFUSED" "record-tag writes this bundle's own _docker-compose.instance.env only, and $(rel "$CONFIG_DIR") lies outside it" ;;
     esac
     [ -n "$RECORD_TAG" ] || die "$EXIT_USAGE" "record-tag needs IMAGE_TAG=<tag> in its environment: the tag start and health just ran"
     [[ $RECORD_TAG =~ $IMAGE_TAG_PATTERN ]] || die "$EXIT_USAGE" "IMAGE_TAG='$RECORD_TAG' is not a valid image tag"
@@ -484,9 +591,20 @@ if [ "$COMMAND" = record-tag ]; then
     esac
 fi
 export APP_ENV="$ENV_NAME" APP_FLOW="$FLOW" APP_NAME="$APP" APP_INSTANCE="$INSTANCE"
-export CONFIG_DIR COMMON_DIR PROJECT
-if [ -n "$FLOW_COMMON_DIR" ]; then export FLOW_COMMON_DIR; else unset FLOW_COMMON_DIR; fi
-if [ -n "${DEPS_NETWORK:-}" ]; then export DEPS_NETWORK DEPS_NETWORK_EXTERNAL=true; else unset DEPS_NETWORK DEPS_NETWORK_EXTERNAL; fi
+export COMPOSE_ENV_FILE="$ENV_FILE" APP_APP_YML INSTANCE_APP_YML PROJECT
+if [ -f "$FLOW_APP_YML" ]; then export FLOW_APP_YML; else unset FLOW_APP_YML; fi
+# DEPS_NETWORK joins a running dependency stack's network: a generated override (literal values — podman-compose
+# reads an interpolated `external: false` as true), merged last.
+if [ -n "${DEPS_NETWORK:-}" ]; then
+    printf '%s' "$DEPS_NETWORK" | grep -Eq '^[A-Za-z0-9][A-Za-z0-9_.-]*$' || die "$EXIT_USAGE" "DEPS_NETWORK='$DEPS_NETWORK' is not a network name"
+    DEPS_OVERRIDE="$(dirname "$ENV_FILE")/deps-network.yml"
+    printf '# GENERATED by run-compose.sh: DEPS_NETWORK=%s\nnetworks:\n  default:\n    name: %s\n    external: true\n' \
+        "$DEPS_NETWORK" "$DEPS_NETWORK" >"$DEPS_OVERRIDE"
+    COMPOSE_FILES+=("$DEPS_OVERRIDE")
+else
+    rm -f "$(dirname "$ENV_FILE")/deps-network.yml"
+fi
+unset DEPS_NETWORK_EXTERNAL
 SELINUX_LABEL_SHARED="" SELINUX_LABEL_PRIVATE=""
 if command -v getenforce >/dev/null 2>&1 && [ "$(getenforce 2>/dev/null)" = Enforcing ]; then
     SELINUX_LABEL_SHARED=",z" SELINUX_LABEL_PRIVATE=",Z"
@@ -502,7 +620,7 @@ ACTUATOR_PORT="$(env_value ACTUATOR_HOST_PORT)"
 missing_required() {
     local var out=""
     # shellcheck disable=SC2013 # variable names never contain whitespace
-    for var in $(grep -oE '\$\{[A-Za-z_][A-Za-z0-9_]*:?\?' "$COMPOSE_FILE" | sed -e 's/^\${//' -e 's/:*?$//' | sort -u); do
+    for var in $(compose_text | grep -oE '\$\{[A-Za-z_][A-Za-z0-9_]*:?\?' | sed -e 's/^\${//' -e 's/:*?$//' | sort -u); do
         if [ -z "${!var:-}" ] && ! contains_word "$var" "$ENV_KEYS"; then out="$out $var"; fi
     done
     printf '%s' "${out# }"
@@ -515,7 +633,7 @@ case "$COMMAND" in
 esac
 if [ -n "$MISSING" ]; then
     if [ "$NEEDS_SECRETS" -eq 1 ] && [ "$DRY_RUN" -eq 0 ]; then
-        die "$EXIT_FAILED" "set $MISSING in this shell first (secrets pass through, never from compose.env — D2 §8.1)"
+        die "$EXIT_FAILED" "set $MISSING in this shell first (secrets pass through, never from an env layer — D2 §8.1)"
     fi
     # ps, logs, stop, down, pull ... never use the values: placeholders keep the template interpolating.
     for var in $MISSING; do export "$var=unset-for-$COMMAND"; done
@@ -639,6 +757,9 @@ detect_engine() {
         if command -v podman >/dev/null 2>&1 && podman compose version >/dev/null 2>&1; then
             ENGINE=podman COMPOSE_KIND=plugin
             COMPOSE=(podman compose)
+            # `podman compose` runs an external provider; podman-compose (python) has no `up --wait`.
+            # (Captured first: with pipefail, `| grep -q` would fail on podman's SIGPIPE.)
+            case "$(podman compose version 2>&1)" in *podman-compose*) COMPOSE_KIND=python ;; esac
             return 0
         fi
         if command -v podman-compose >/dev/null 2>&1; then
@@ -652,7 +773,7 @@ detect_engine() {
 case "$COMMAND" in
     printenv) NEEDS_CLI=0 NEEDS_DAEMON=0 ;;
     config) NEEDS_CLI=1 NEEDS_DAEMON=0 ;;
-    validate | record-tag) NEEDS_CLI=0 NEEDS_DAEMON=0 ;;
+    validate | record-tag | compose-env) NEEDS_CLI=0 NEEDS_DAEMON=0 ;;
     app-config) NEEDS_CLI="$OFFLINE" NEEDS_DAEMON="$OFFLINE" ;;
     *) NEEDS_CLI=1 NEEDS_DAEMON=1 ;;
 esac
@@ -677,14 +798,23 @@ fi
 
 # --- execution helpers ------------------------------------------------------------------------------------
 
-compose_line() { printf '%s -p %s --env-file %s -f %s' "${COMPOSE[*]}" "$PROJECT" "$ENV_FILE" "$COMPOSE_FILE"; }
+# -p, --env-file and one -f per compose file, in merge order (the shared template first).
+COMPOSE_ARGS=(-p "$PROJECT" --env-file "$ENV_FILE")
+for file in "${COMPOSE_FILES[@]}"; do COMPOSE_ARGS+=(-f "$file"); done
+compose_line() { printf '%s %s' "${COMPOSE[*]}" "${COMPOSE_ARGS[*]}"; }
+# Every file or layer of a list, relative and space-separated ("-" when there is none).
+rel_list() {
+    local out="" f
+    for f in "$@"; do out="$out $(rel "$f")"; done
+    printf '%s' "${out# }"
+}
 show_plan() {
     [ "$DRY_RUN" -eq 1 ] || return 0
     printf 'run-compose.sh --dry-run: %s %s %s %s %s (nothing is executed)\n' "$ENV_NAME" "$FLOW" "$APP" "$INSTANCE" "$COMMAND"
     printf '  %-13s %s\n' "repo root" "$REPO_ROOT" "app dir" "$(rel "$APP_DIR")" "config root" "$(rel "$CONFIG_ROOT")" \
-        "flow dir" "$(rel "${FLOW_COMMON_DIR:--}")" \
-        "common dir" "$(rel "$COMMON_DIR")" "config dir" "$(rel "$CONFIG_DIR")" \
-        "compose file" "$(rel "$COMPOSE_FILE")" "env file" "$(rel "$ENV_FILE")" "project" "$PROJECT" \
+        "config dir" "$(rel "$CONFIG_DIR")" "compose files" "$(rel_list "${COMPOSE_FILES[@]}")" \
+        "env layers" "$(rel_list "${ENV_LAYERS[@]}")" "combined env" "$(rel "$ENV_FILE")" \
+        "spring layers" "$(rel_list ${FLOW_APP_YML:+"$FLOW_APP_YML"} "$APP_APP_YML" "$INSTANCE_APP_YML")" "project" "$PROJECT" \
         "identity" "APP_ENV=$APP_ENV APP_FLOW=$APP_FLOW APP_NAME=$APP_NAME APP_INSTANCE=$APP_INSTANCE" \
         "image" "$IMAGE_REF" "engine" "$ENGINE (${COMPOSE[*]})" "deps network" "${DEPS_NETWORK:--}"
     if [ -n "$BUNDLE_ROOT" ]; then
@@ -709,11 +839,14 @@ compose() {
         return 0
     fi
     info "$(compose_line) $*"
-    "${COMPOSE[@]}" -p "$PROJECT" --env-file "$ENV_FILE" -f "$COMPOSE_FILE" "$@"
+    "${COMPOSE[@]}" "${COMPOSE_ARGS[@]}" "$@"
 }
 plan_step() { [ "$DRY_RUN" -eq 0 ] || printf '  %-13s %s\n' "then" "$*"; }
 readiness_url() { printf 'http://127.0.0.1:%s/actuator/health/readiness' "$ACTUATOR_PORT"; }
-app_container() { "${COMPOSE[@]}" -p "$PROJECT" --env-file "$ENV_FILE" -f "$COMPOSE_FILE" ps -q "$APP" 2>/dev/null | head -n 1; }
+# The app's container, found through the compose labels both docker compose and podman-compose set (podman-compose's
+# `ps` takes no service argument).
+APP_FILTERS=(--filter "label=com.docker.compose.project=$PROJECT" --filter "label=com.docker.compose.service=$SERVICE")
+app_container() { "$ENGINE" ps -q "${APP_FILTERS[@]}" 2>/dev/null | head -n 1; }
 http_get() { curl -fsS --max-time 5 "$1"; }
 
 wait_ready() {
@@ -741,7 +874,7 @@ cmd_start() {
     fi
     if [ "$rc" -ne 0 ]; then
         warn "start failed (exit $rc); last log lines:"
-        "${COMPOSE[@]}" -p "$PROJECT" --env-file "$ENV_FILE" -f "$COMPOSE_FILE" logs --tail 50 >&2 2>&1 || true
+        "${COMPOSE[@]}" "${COMPOSE_ARGS[@]}" logs --tail 50 >&2 2>&1 || true
         [ "$rc" -eq "$EXIT_TIMEOUT" ] && return "$EXIT_TIMEOUT"
         return "$EXIT_FAILED"
     fi
@@ -753,19 +886,19 @@ cmd_start() {
 SMOKE_CMD=()
 smoke_command() {
     SMOKE_CMD=()
-    if [ -x "$APP_DIR/scripts/smoke.sh" ]; then
+    if [ -n "$APP_DIR" ] && [ -x "$APP_DIR/scripts/smoke.sh" ]; then
         SMOKE_CMD=("$APP_DIR/scripts/smoke.sh")
     elif [ -x "$SCRIPT_DIR/smoke.sh" ]; then
-        SMOKE_CMD=("$SCRIPT_DIR/smoke.sh" --app-dir "$APP_DIR")
+        SMOKE_CMD=("$SCRIPT_DIR/smoke.sh")
     fi
 }
 cmd_health() {
     local cid="" body="" status="DOWN" running=false rc=0
     smoke_command
     if [ "$DRY_RUN" -eq 1 ]; then
-        compose ps -q "$APP"
+        plan_step "$ENGINE ps -q $(quote_words "${APP_FILTERS[@]}")"
         plan_step "curl -fsS $(readiness_url)"
-        [ "${#SMOKE_CMD[@]}" -eq 0 ] || plan_step "$(rel "${SMOKE_CMD[0]}")${SMOKE_CMD[2]:+ --app-dir $(rel "${SMOKE_CMD[2]}")}"
+        [ "${#SMOKE_CMD[@]}" -eq 0 ] || plan_step "$(rel "${SMOKE_CMD[0]}") $ENV_NAME $FLOW $APP $INSTANCE"
         return 0
     fi
     cid="$(app_container)"
@@ -776,7 +909,7 @@ cmd_health() {
         fi
     fi
     if [ "$status" = UP ] && [ "${#SMOKE_CMD[@]}" -gt 0 ]; then
-        CONFIG_ROOT="$CONFIG_ROOT" "${SMOKE_CMD[@]}" "$ENV_NAME" "$FLOW" "$APP" "$INSTANCE" >&2 ||
+        CONFIG_ROOT="$CONFIG_ROOT" ACTUATOR_HOST_PORT="$ACTUATOR_PORT" "${SMOKE_CMD[@]}" "$ENV_NAME" "$FLOW" "$APP" "$INSTANCE" >&2 ||
             { status=SMOKE_FAILED; rc="$EXIT_FAILED"; }
     fi
     [ "$status" = UP ] || rc="$EXIT_FAILED"
@@ -825,7 +958,7 @@ image_label() { "$ENGINE" image inspect --format "{{index .Config.Labels \"$2\"}
 cmd_version() {
     local cid image_id image digest
     if [ "$DRY_RUN" -eq 1 ]; then
-        compose ps -q "$APP"
+        plan_step "$ENGINE ps -q $(quote_words "${APP_FILTERS[@]}")"
         plan_step "$ENGINE inspect <app container>; $ENGINE image inspect <image> (tag, digest, OCI labels)"
         return 0
     fi
@@ -854,17 +987,17 @@ cmd_version() {
 
 cmd_printenv() {
     {
-        printf 'REPO_ROOT=%s\nAPP_DIR=%s\nCONFIG_ROOT=%s\nCONFIG_DIR=%s\nCOMMON_DIR=%s\nFLOW_COMMON_DIR=%s\n' \
-            "$REPO_ROOT" "$APP_DIR" "$CONFIG_ROOT" "$CONFIG_DIR" "$COMMON_DIR" "${FLOW_COMMON_DIR:-}"
-        printf 'COMPOSE_FILE=%s\nENV_FILE=%s\nPROJECT=%s\nENGINE=%s\nCOMPOSE=%s\n' \
-            "$COMPOSE_FILE" "$ENV_FILE" "$PROJECT" "$ENGINE" "${COMPOSE[*]}"
+        printf 'REPO_ROOT=%s\nAPP_DIR=%s\nCONFIG_ROOT=%s\nCONFIG_DIR=%s\n' "$REPO_ROOT" "$APP_DIR" "$CONFIG_ROOT" "$CONFIG_DIR"
+        printf 'COMPOSE_FILES=%s\nENV_LAYERS=%s\nCOMPOSE_ENV_FILE=%s\nPROJECT=%s\nENGINE=%s\nCOMPOSE=%s\n' \
+            "${COMPOSE_FILES[*]}" "${ENV_LAYERS[*]}" "$ENV_FILE" "$PROJECT" "$ENGINE" "${COMPOSE[*]}"
+        printf 'FLOW_APP_YML=%s\nAPP_APP_YML=%s\nINSTANCE_APP_YML=%s\n' "${FLOW_APP_YML:-}" "$APP_APP_YML" "$INSTANCE_APP_YML"
         printf 'APP_ENV=%s\nAPP_FLOW=%s\nAPP_NAME=%s\nAPP_INSTANCE=%s\nDEPS_NETWORK=%s\nSELINUX_LABEL_SHARED=%s\n' \
             "$APP_ENV" "$APP_FLOW" "$APP_NAME" "$APP_INSTANCE" "${DEPS_NETWORK:-}" "$SELINUX_LABEL_SHARED"
-        printf '# compose.env (%s)\n' "$(rel "$ENV_FILE")"
-        grep -Ev '^[[:space:]]*(#|$)' "$ENV_FILE"
-        printf '# passed through from this shell\n'
+        printf '\n# ---- the combined env (%s) ----\n' "$(rel "$ENV_FILE")"
+        cat "$ENV_FILE"
+        printf '\n# ---- passed through from this shell ----\n'
         # shellcheck disable=SC2013 # variable names never contain whitespace
-        for var in $(grep -oE '\$\{[A-Za-z_][A-Za-z0-9_]*:?\?' "$COMPOSE_FILE" | sed -e 's/^\${//' -e 's/:*?$//' | sort -u); do
+        for var in $(compose_text | grep -oE '\$\{[A-Za-z_][A-Za-z0-9_]*:?\?' | sed -e 's/^\${//' -e 's/:*?$//' | sort -u); do
             if ! contains_word "$var" "$ENV_KEYS" && ! contains_word "$var" "$SCRIPT_VARIABLES APP_ENV APP_FLOW APP_NAME APP_INSTANCE"; then
                 if contains_word "$var" "$MISSING"; then printf '%s=<unset>\n' "$var"; else printf '%s=%s\n' "$var" "${!var}"; fi
             fi
@@ -874,12 +1007,22 @@ cmd_printenv() {
 
 cmd_validate() {
     local rc=0 var used
-    # Every ${VAR} of the template is defined by compose.env, the identity / script set, or this shell.
-    used="$(grep -oE '\$\{[A-Za-z_][A-Za-z0-9_]*' "$COMPOSE_FILE" | sed 's/^\${//' | sort -u)"
+    # Every ${VAR} of the compose files is defined by the combined env, the identity / script set, or this shell.
+    used="$(compose_text | grep -oE '\$\{[A-Za-z_][A-Za-z0-9_]*' | sed 's/^\${//' | sort -u)"
     for var in $used; do
         if ! contains_word "$var" "$ENV_KEYS" && [ -z "${!var+set}" ] &&
-            ! grep -Eq "\\$\\{$var:?-" "$COMPOSE_FILE"; then
+            ! compose_text | grep -Eq "\\$\\{$var:?-"; then
             warn "template variable $var has no value and no default"
+            rc="$EXIT_FAILED"
+        fi
+    done
+    # Compose resolves a relative path of any -f file against the first file's directory (docker/), not the
+    # override's own: overrides use ${VAR} paths only.
+    local file hits
+    for file in ${OVERRIDE_FILES[@]+"${OVERRIDE_FILES[@]}"}; do
+        hits="$(grep -nE '^[^#]*([[:space:]:"'\''=-]|^)\.\.?/' "$file" || true)"
+        if [ -n "$hits" ]; then
+            warn "$(rel "$file"): a relative path resolves against docker/, not this file's directory; use a \${VAR} path: $(printf '%s' "$hits" | head -n 3 | tr '\n' ' ')"
             rc="$EXIT_FAILED"
         fi
     done
@@ -892,42 +1035,43 @@ cmd_validate() {
     return "$rc"
 }
 
-# IMAGE_TAG=<tag> as the one IMAGE_TAG line of compose.env: the first one replaced in place, later ones dropped,
-# appended when there is none, every other line kept. Written to a copy next to it (same mode) that is renamed
-# over it, so the box never holds a half-written compose.env; unchanged when it already says so.
+# IMAGE_TAG=<tag> as the one IMAGE_TAG line of the instance layer: the first one replaced in place, later ones dropped,
+# appended when there is none, every other line kept. Written to a copy next to it (same mode) that is renamed over
+# it, so the box never holds a half-written file; unchanged when it already says so. The next command regenerates
+# the combined env from it.
 cmd_record_tag() {
     local previous tmp
-    previous="$(env_value IMAGE_TAG)"
+    previous="$(layer_value "$INSTANCE_ENV" IMAGE_TAG)"
     if [ "$DRY_RUN" -eq 1 ]; then
-        printf '  %-13s %s\n' "write" "IMAGE_TAG=$RECORD_TAG into $(rel "$ENV_FILE") (now ${previous:-without IMAGE_TAG})"
+        printf '  %-13s %s\n' "write" "IMAGE_TAG=$RECORD_TAG into $(rel "$INSTANCE_ENV") (now ${previous:-without IMAGE_TAG})"
         return 0
     fi
-    tmp="$(mktemp "$CONFIG_DIR/.compose.env.XXXXXX")" || { warn "cannot create a file in $(rel "$CONFIG_DIR")"; return "$EXIT_FAILED"; }
-    if ! cp -p "$ENV_FILE" "$tmp" || ! awk -v tag="$RECORD_TAG" '
+    tmp="$(mktemp "$CONFIG_DIR/.${INSTANCE_ENV##*/}.XXXXXX")" || { warn "cannot create a file in $(rel "$CONFIG_DIR")"; return "$EXIT_FAILED"; }
+    if ! cp -p "$INSTANCE_ENV" "$tmp" || ! awk -v tag="$RECORD_TAG" '
         { line = $0; sub(/^[[:space:]]+/, "", line) }
         index(line, "IMAGE_TAG=") == 1 { if (!done) print "IMAGE_TAG=" tag; done = 1; next }
         { print }
-        END { if (!done) print "IMAGE_TAG=" tag }' "$ENV_FILE" >"$tmp"; then
+        END { if (!done) print "IMAGE_TAG=" tag }' "$INSTANCE_ENV" >"$tmp"; then
         rm -f "$tmp"
-        warn "could not write a new $(rel "$ENV_FILE")"
+        warn "could not write a new $(rel "$INSTANCE_ENV")"
         return "$EXIT_FAILED"
     fi
-    if cmp -s "$tmp" "$ENV_FILE"; then
+    if cmp -s "$tmp" "$INSTANCE_ENV"; then
         rm -f "$tmp"
-        info "$(rel "$ENV_FILE") already records IMAGE_TAG=$RECORD_TAG"
+        info "$(rel "$INSTANCE_ENV") already records IMAGE_TAG=$RECORD_TAG"
         return 0
     fi
-    if ! mv -f "$tmp" "$ENV_FILE"; then
+    if ! mv -f "$tmp" "$INSTANCE_ENV"; then
         rm -f "$tmp"
-        warn "could not replace $(rel "$ENV_FILE")"
+        warn "could not replace $(rel "$INSTANCE_ENV")"
         return "$EXIT_FAILED"
     fi
-    info "IMAGE_TAG=$RECORD_TAG recorded in $(rel "$ENV_FILE") (was ${previous:-unset}); this version directory keeps it (DL-41)"
+    info "IMAGE_TAG=$RECORD_TAG recorded in $(rel "$INSTANCE_ENV") (was ${previous:-unset}); this version directory keeps it (DL-41)"
 }
 
 cmd_app_config() {
     if [ "$OFFLINE" -eq 1 ]; then
-        compose run --rm --no-deps -T "$APP" --print-config | mask_stream
+        compose run --rm --no-deps -T "$SERVICE" --print-config | mask_stream
         return "${PIPESTATUS[0]}"
     fi
     local url="http://127.0.0.1:$ACTUATOR_PORT/actuator/connectorconfig"
@@ -958,6 +1102,7 @@ case "$COMMAND" in
         ;;
     app-config) cmd_app_config || rc=$? ;;
     printenv) if [ "$DRY_RUN" -eq 1 ]; then plan_step "print the resolved environment"; else cmd_printenv; fi ;;
+    compose-env) printf '%s\n' "$ENV_FILE" ;;
     health) cmd_health || rc=$? ;;
     status | ps) cmd_status || rc=$? ;;
     logs)
@@ -978,7 +1123,7 @@ case "$COMMAND" in
     shell)
         tty_flag=()
         [ -t 0 ] || tty_flag=(-T)
-        compose exec "${tty_flag[@]+"${tty_flag[@]}"}" "$APP" sh || rc=$?
+        compose exec "${tty_flag[@]+"${tty_flag[@]}"}" "$SERVICE" sh || rc=$?
         ;;
     version) cmd_version || rc=$? ;;
 esac

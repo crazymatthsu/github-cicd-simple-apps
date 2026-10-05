@@ -1,5 +1,5 @@
 # Helm values layer 3 (D11 §6.2) of local/cash/source-amps/reuters-fx.
-# image.tag equals IMAGE_TAG in the sibling compose.env (config-lint check 4; in *-dev both declare `main`, DL-40);
+# image.tag equals IMAGE_TAG in the sibling _docker-compose.instance.env (config-lint check 4; in *-dev both declare `main`, DL-40);
 # identity and the APP_* variables restate the directory path (config-lint check 4); app-facing variables
 # only, never secrets (D5 §6.3).
 image:

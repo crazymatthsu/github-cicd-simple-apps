@@ -96,13 +96,13 @@ jobs:
             echo "::error::no valid tag: input '$TAG_INPUT', image reference '$ref_tag'"
             exit 2
           fi
-          # Every instance directory of config/<env>/<flow>/<app>/ except the app-common layer (and helpers).
+          # Every instance directory of config/<env>/<flow>/<app>/ (the app's own layers are files, R-0008).
           targets='[]'
           for dir in config/"$DEPLOY_ENV"/*/"$DEPLOY_APP"/*/; do
             [[ -d $dir ]] || continue
             instance=$(basename "$dir")
             flow=$(basename "$(dirname "$(dirname "$dir")")")
-            case $instance in app-common | _* | .*) continue ;; esac
+            case $instance in _* | .*) continue ;; esac
             case $flow in _* | .*) continue ;; esac
             targets=$(jq -c --arg i "$flow/$DEPLOY_APP/$instance" --arg ns "$flow" '. + [{instance: $i, namespace: $ns}]' <<<"$targets")
           done

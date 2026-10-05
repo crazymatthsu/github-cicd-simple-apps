@@ -1,4 +1,4 @@
-# Config lint (D5 §6.5, D7 §5.1): naming, required files, identity, allowed compose.env variables,
+# Config lint (D5 §6.5, D7 §5.1): naming, required files, identity, allowed env layer variables,
 # compose rendering, merged-config validation, parity and tag policy — all in `./gradlew configLint`
 # (buildlogic.config-lint), so a laptop runs the same check. Called by pr.yml and main.yml, and runs
 # on its own for pull requests that touch the config tree (config lives in this repo, DL-06).
@@ -12,7 +12,8 @@ on:
     paths:
       - 'config/**'
       - '**/helm/**'
-      - '**/docker/docker-compose.yml'
+      - 'docker/docker-compose.yml'
+      - '**/docker/docker-compose.override.yml'
 
 permissions:
   contents: read

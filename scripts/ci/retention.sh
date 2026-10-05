@@ -8,7 +8,8 @@
 #   pr-<n>-<sha7>   deleted once pull request #<n> has been closed (merged or not) for PR_GRACE_DAYS days
 #   *-rc.<n>        the RC_KEEP newest are kept, and every one younger than RC_MIN_AGE_DAYS; the rest go
 # Never deleted:
-#   - a version carrying a tag that config/**/compose.env (IMAGE_TAG) or config/**/values.yaml (tag:)
+#   - a version carrying a tag that config/**/_docker-compose.instance.env (IMAGE_TAG) or
+#     config/**/_helm-values.instance.yaml (tag:)
 #     references on this checkout, or that the last successful GitHub Deployment of a dev env names (its
 #     payload's tag and images; the dev tree itself declares `main`, DL-40) — the in-use protection;
 #   - a version carrying a release tag (x.y.z) or a convenience tag (main, latest, x, x.y);
@@ -73,9 +74,9 @@ if [[ -d $config_dir ]]; then
     [[ -n $tag ]] && in_use[$tag]=1
   done < <(
     {
-      grep -rhE '^[[:space:]]*IMAGE_TAG=' "$config_dir" --include=compose.env 2>/dev/null |
+      grep -rhE '^[[:space:]]*IMAGE_TAG=' "$config_dir" --include=_docker-compose.instance.env 2>/dev/null |
         sed -E 's/^[[:space:]]*IMAGE_TAG=["'\'']?([^"'\''[:space:]#]*).*/\1/'
-      grep -rhE '^[[:space:]]*tag:[[:space:]]*' "$config_dir" --include=values.yaml --include=values.yml 2>/dev/null |
+      grep -rhE '^[[:space:]]*tag:[[:space:]]*' "$config_dir" --include=_helm-values.instance.yaml 2>/dev/null |
         sed -E 's/^[[:space:]]*tag:[[:space:]]*["'\'']?([^"'\''[:space:]#]*).*/\1/'
     } | sort -u
   )

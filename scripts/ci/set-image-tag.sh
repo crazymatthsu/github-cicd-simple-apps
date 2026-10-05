@@ -2,9 +2,10 @@
 # set-image-tag.sh — set the image tag in AppInstance config files (D4 §6.4, D5 §6.8).
 #
 # Usage: set-image-tag.sh <tag> <file>...
-#   compose.env  IMAGE_TAG=<tag>  (the line is replaced in place, or appended when missing)
-#   values.yaml  .image.tag       (only when the file already has an `image` mapping — demo step 2;
-#                                  needs mikefarah yq v4, as on GitHub-hosted runners)
+#   _docker-compose.instance.env  IMAGE_TAG=<tag>  (the line is replaced in place, or appended when missing)
+#   _helm-values.instance.yaml    .image.tag       (only when the file already has an `image` mapping — demo step 2;
+#                                                   needs mikefarah yq v4, as on GitHub-hosted runners)
+#   (the instance layers of R-0008: the only ones that hold the tag)
 # Prints each file whose content changed. Touches nothing else in the files.
 # Exit codes: 0 ok (also when nothing changed) · 2 usage · 4 file missing or of an unsupported kind.
 set -euo pipefail
@@ -24,14 +25,14 @@ for file in "$@"; do
   [[ -f $file ]] || { echo "set-image-tag.sh: $file not found" >&2; exit 4; }
   tmp=$(mktemp)
   case "$(basename "$file")" in
-    compose.env)
+    _docker-compose.instance.env)
       awk -v tag="$tag" '
         /^IMAGE_TAG=/ { if (!done) { print "IMAGE_TAG=" tag; done = 1 }; next }
         { print }
         END { if (!done) print "IMAGE_TAG=" tag }
       ' "$file" > "$tmp"
       ;;
-    values.yaml | values.yml)
+    _helm-values.instance.yaml)
       cp "$file" "$tmp"
       if [[ $(yq '.image | tag' "$file") == '!!map' ]]; then
         TAG="$tag" yq -i '.image.tag = strenv(TAG)' "$tmp"
@@ -39,7 +40,7 @@ for file in "$@"; do
       ;;
     *)
       rm -f "$tmp"
-      echo "set-image-tag.sh: unsupported file $file (expected compose.env or values.yaml)" >&2
+      echo "set-image-tag.sh: unsupported file $file (expected _docker-compose.instance.env or _helm-values.instance.yaml)" >&2
       exit 4
       ;;
   esac

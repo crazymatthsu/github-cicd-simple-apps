@@ -312,8 +312,8 @@ jobs:
           fi
           files=()
           for app in $(jq -r 'keys[] | sub("^.*:"; "")' <<<"$IMAGES"); do
-            for f in config/us-qa/*/"$app"/*/compose.env config/us-qa/*/"$app"/*/values.yaml; do
-              [[ -f $f && $f != */app-common/* && $f != */_common/* ]] && files+=("$f")
+            for f in config/us-qa/*/"$app"/*/_docker-compose.instance.env config/us-qa/*/"$app"/*/_helm-values.instance.yaml; do
+              [[ -f $f ]] && files+=("$f")
             done
           done
           if [[ ${#files[@]} -eq 0 ]]; then

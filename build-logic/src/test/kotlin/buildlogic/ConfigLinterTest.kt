@@ -11,11 +11,18 @@ class ConfigLinterTest {
     @TempDir
     lateinit var root: File
 
+    /** The one compose template (R-0008); its comment names a required variable that must not count. */
     private val template: File by lazy {
-        File(root, "source-database/docker/docker-compose.yml").apply {
+        File(root, "docker/docker-compose.yml").apply {
             parentFile.mkdirs()
-            writeText("services:\n  app:\n    image: \${IMAGE_REPO:?x}/\${APP_NAME:?x}:\${IMAGE_TAG:?x}\n" +
-                "    environment:\n      SPRING_DATASOURCE_PASSWORD: \${SPRING_DATASOURCE_PASSWORD:?secret}\n")
+            writeText("# \${COMMENTED:?not a variable}\nservices:\n  app:\n    image: \${IMAGE_REPO:?x}/\${APP_NAME:?x}:\${IMAGE_TAG:?x}\n")
+        }
+    }
+    /** source-database's own override: the secret it needs in every env. */
+    private val appOverride: File by lazy {
+        File(root, "source-database/docker/docker-compose.override.yml").apply {
+            parentFile.mkdirs()
+            writeText("services:\n  app:\n    environment:\n      SPRING_DATASOURCE_PASSWORD: \${SPRING_DATASOURCE_PASSWORD:?secret}\n")
         }
     }
     private val chart: File get() = File(root, "source-database/helm/source-database")
@@ -34,11 +41,11 @@ class ConfigLinterTest {
             "  JAVA_OPTS: \"-XX:MaxRAMPercentage=60\"\n$extraEnv"
 
     private fun validInstance(env: String, instance: String, tag: String = "local") {
-        write("$env/cash/source-database/app-common/application.yml", "connector:\n  source:\n    port: 1433\n")
-        write("$env/cash/source-database/app-common/values.yaml", "resources:\n  limits:\n    memory: 768Mi\nenv:\n  TZ: UTC\n")
-        write("$env/cash/source-database/$instance/application.yml", "connector:\n  source:\n    host: db\n")
-        write("$env/cash/source-database/$instance/compose.env", composeEnv(env, "cash", "source-database", instance, tag = tag))
-        write("$env/cash/source-database/$instance/values.yaml", instanceValues(env, instance, tag))
+        write("$env/cash/source-database/application.app.yml", "connector:\n  source:\n    port: 1433\n")
+        write("$env/cash/source-database/_helm-values.app.yaml", "resources:\n  limits:\n    memory: 768Mi\nenv:\n  TZ: UTC\n")
+        write("$env/cash/source-database/$instance/application.instance.yml", "connector:\n  source:\n    host: db\n")
+        write("$env/cash/source-database/$instance/_docker-compose.instance.env", composeEnv(env, "cash", "source-database", instance, tag = tag))
+        write("$env/cash/source-database/$instance/_helm-values.instance.yaml", instanceValues(env, instance, tag))
     }
 
     /** A kubeconform answer in the shape of `-output json -summary`. */
@@ -56,8 +63,8 @@ class ConfigLinterTest {
         completeEnvs: Set<String> = emptySet(),
         requireRender: Boolean = false,
         charts: Map<String, File> = mapOf("source-database" to chart),
-    ) = ConfigLinter(config, mapOf("source-database" to template), completeEnvs, renderer, requireRender, charts, helm,
-        validator, rendered)
+    ) = ConfigLinter(config, setOf("source-database"), template, mapOf("source-database" to appOverride), completeEnvs,
+        renderer, requireRender, charts, helm, validator, rendered)
 
     private fun lint(renderer: ComposeRenderer? = null): List<Finding> =
         linter(renderer).lint().filter { it.severity != Severity.TODO }
@@ -66,13 +73,15 @@ class ConfigLinterTest {
     private fun List<Finding>.text() = joinToString("\n")
 
     @Test
-    fun `the shared layer is the cluster's _common under the flow, never under the env (DL-44)`() {
+    fun `the shared layer is the cluster's application_flow_yml in the flow directory, never under the env (DL-44)`() {
         validInstance("local", "trades-db-to-amps")
-        write("local/cash/_common/application.yml", "logging:\n  structured:\n    format:\n      console: ecs\n")
-        assertEquals(emptyList<Finding>(), lint().filter { it.check == 1 }, lint().text())
+        write("local/cash/application.flow.yml", "logging:\n  structured:\n    format:\n      console: ecs\n")
+        assertEquals(emptyList<Finding>(), lint(), lint().text())
         write("local/_common/application.yml", "a: 1\n")
+        write("local/cash/_common/application.yml", "a: 1\n")
         val messages = lint().text()
-        assertTrue(messages.contains("config/local/_common/ moved to config/local/<flow>/_common/"), messages)
+        assertTrue(messages.contains("config/local/_common/ removed: nothing is shared at the env level"), messages)
+        assertTrue(messages.contains("config/local/cash/_common: the cluster layer is files now: config/local/cash/application.flow.yml"), messages)
     }
 
     @Test
@@ -95,15 +104,19 @@ class ConfigLinterTest {
         assertEquals(emptyList<Finding>(), findings)
         assertEquals(2, requests.size)
         assertEquals("config-lint-placeholder", requests[0].environment["SPRING_DATASOURCE_PASSWORD"])
+        assertFalse("COMMENTED" in requests[0].environment, "a variable in a comment is not required: ${requests[0].environment}")
         assertEquals("local-cash-source-database-trades-db-to-amps", requests[0].environment["PROJECT"])
+        assertEquals(listOf(template, appOverride), requests[0].composeFiles)
+        assertEquals(File(config, "local/cash/source-database/application.app.yml").absolutePath, requests[0].environment["APP_APP_YML"])
+        assertFalse("FLOW_APP_YML" in requests[0].environment, "no flow layer: the template mounts /dev/null")
     }
 
     @Test
     fun `naming, identity and allow-list violations are reported`() {
         validInstance("local", "42")
-        write("local/cash/source-database/42/compose.env",
-            composeEnv("local", "cash", "source-database", "other", "SPRING_DATASOURCE_PASSWORD=x\nFOO=1\nCONFIG_DIR=/x\n"))
-        write("local/fx/source-database/app-common/application.yml", "a: 1\n")
+        write("local/cash/source-database/42/_docker-compose.instance.env",
+            composeEnv("local", "cash", "source-database", "other", "SPRING_DATASOURCE_PASSWORD=x\nFOO=1\nCOMPOSE_ENV_FILE=/x\n"))
+        write("local/fx/source-database/application.app.yml", "a: 1\n")
         write("us-uat/README.md", "x")
         val findings = lint()
         val messages = findings.text()
@@ -111,7 +124,7 @@ class ConfigLinterTest {
         assertTrue(messages.contains("never a bare number"), messages)
         assertTrue(messages.contains("SPRING_DATASOURCE_PASSWORD is forbidden"), messages)
         assertTrue(messages.contains("FOO is not an allowed"), messages)
-        assertTrue(messages.contains("CONFIG_DIR is set by run-compose.sh"), messages)
+        assertTrue(messages.contains("COMPOSE_ENV_FILE is set by run-compose.sh"), messages)
         assertTrue(messages.contains("APP_INSTANCE=other does not match"), messages)
         assertTrue(messages.contains("flow 'fx'"), messages)
         assertTrue(messages.contains("env 'us-uat'"), messages)
@@ -120,19 +133,19 @@ class ConfigLinterTest {
 
     @Test
     fun `unknown apps, missing files and missing targets are reported`() {
-        write("us-dev/cash/source-nothing/app-common/application.yml", "a: 1\n")
-        write("us-dev/cash/source-database/app-common/application.yml", "a: 1\n")
-        write("us-dev/cash/source-database/trades-db-to-amps/application.yml", "a: 1\n")
+        write("us-dev/cash/source-nothing/application.app.yml", "a: 1\n")
+        write("us-dev/cash/source-database/application.app.yml", "a: 1\n")
+        write("us-dev/cash/source-database/trades-db-to-amps/application.instance.yml", "a: 1\n")
         val messages = lint().text()
         assertTrue(messages.contains("'source-nothing' is not a deployable Gradle subproject"), messages)
-        assertTrue(messages.contains("trades-db-to-amps/compose.env: required file missing"), messages)
+        assertTrue(messages.contains("trades-db-to-amps/_docker-compose.instance.env: required file missing"), messages)
         assertTrue(messages.contains("us-dev/cash/workflows-config.yml: required in every flow of a *-dev env"), messages)
     }
 
     @Test
     fun `secrets in YAML and floating tags in prod fail`() {
         validInstance("us-prod", "positions-db-to-deephaven", tag = "latest")
-        write("us-prod/cash/source-database/positions-db-to-deephaven/application.yml",
+        write("us-prod/cash/source-database/positions-db-to-deephaven/application.instance.yml",
             "spring:\n  datasource:\n    password: hunter2hunter2\n")
         val findings = lint()
         val messages = findings.text()
@@ -191,35 +204,127 @@ class ConfigLinterTest {
     @Test
     fun `checks 7 and 8 are reported as TODO`() {
         validInstance("local", "trades-db-to-amps")
-        val todo = ConfigLinter(config, mapOf("source-database" to template), emptySet()).lint().filter { it.severity == Severity.TODO }
+        val todo = ConfigLinter(config, setOf("source-database"), completeEnvs = emptySet()).lint().filter { it.severity == Severity.TODO }
         assertEquals(listOf(7, 8), todo.map { it.check })
     }
 
-    // --- demo step 2: values.yaml (checks 3, 4, 10) and helm (check 12) ------------------------------------
+    // --- R-0008: layer files, env layers, the compose file chain ---------------------------------------------
 
     @Test
-    fun `check 3 requires values_yaml in app-common and in every instance`() {
+    fun `the env layers merge flow, app, instance into the env file check 6 renders with, after the whole -f chain`() {
         validInstance("local", "trades-db-to-amps")
-        File(config, "local/cash/source-database/app-common/values.yaml").delete()
-        File(config, "local/cash/source-database/trades-db-to-amps/values.yaml").delete()
+        write("local/cash/_docker-compose.flow.env", "IMAGE_REPO=ghcr.io/o/flow\nTZ=UTC\nJAVA_OPTS=-Xflow\n")
+        write("local/cash/source-database/_docker-compose.app.env", "JAVA_OPTS=-Xapp\nMEM_LIMIT=1g\n")
+        write("local/cash/_docker-compose.flow.yml", "services:\n  app:\n    mem_limit: \${MEM_LIMIT:-1g}\n")
+        write("local/cash/source-database/trades-db-to-amps/_docker-compose.instance.yml", "services:\n  app:\n    cpus: 1\n")
+        write("local/cash/application.flow.yml", "a: 1\n")
+        var combined = ""
+        val requests = mutableListOf<ComposeRenderRequest>()
+        val findings = lint { request -> requests += request; combined = request.envFile.readText(); CommandResult(0, "") }
+        assertEquals(emptyList<Finding>(), findings.filter { it.severity == Severity.ERROR }, findings.text())
+        val vars = combined.lines().filter { it.isNotBlank() }.associate { it.substringBefore('=') to it.substringAfter('=') }
+        // The instance layer wins per key (composeEnv sets IMAGE_REPO and JAVA_OPTS), the lower layers fill the rest.
+        assertEquals("ghcr.io/o/github-cicd-simple-apps", vars["IMAGE_REPO"])
+        assertEquals("-XX:MaxRAMPercentage=60", vars["JAVA_OPTS"])
+        assertEquals("1g", vars["MEM_LIMIT"])
+        assertEquals(listOf(template, appOverride, File(config, "local/cash/_docker-compose.flow.yml"),
+            File(config, "local/cash/source-database/trades-db-to-amps/_docker-compose.instance.yml")), requests.single().composeFiles)
+        assertEquals(File(config, "local/cash/application.flow.yml").absolutePath, requests.single().environment["FLOW_APP_YML"])
+    }
+
+    @Test
+    fun `check 5 keeps the image tag, the identity and the ports in the instance layer`() {
+        validInstance("local", "trades-db-to-amps")
+        write("local/cash/_docker-compose.flow.env", "IMAGE_TAG=main\nACTUATOR_HOST_PORT=18080\nTZ=UTC\n")
+        write("local/cash/source-database/_docker-compose.app.env", "APP_INSTANCE=shared\nPROJECT=x\nJAVA_OPTS=-Xapp\n")
+        val messages = lint().filter { it.check == 5 }.text()
+        for (expected in listOf(
+            "local/cash/_docker-compose.flow.env: IMAGE_TAG belongs in the instance layer only",
+            "local/cash/_docker-compose.flow.env: ACTUATOR_HOST_PORT belongs in the instance layer only",
+            "local/cash/source-database/_docker-compose.app.env: APP_INSTANCE belongs in the instance layer only",
+            "local/cash/source-database/_docker-compose.app.env: PROJECT is set by run-compose.sh",
+        )) {
+            assertTrue(messages.contains(expected), "missing '$expected' in:\n$messages")
+        }
+        assertFalse(messages.contains("TZ"), messages)
+        assertFalse(messages.contains("JAVA_OPTS"), messages)
+    }
+
+    @Test
+    fun `IMAGE_REPO may come from any layer but must come from one`() {
+        validInstance("local", "trades-db-to-amps")
+        val env = File(config, "local/cash/source-database/trades-db-to-amps/_docker-compose.instance.env")
+        env.writeText(env.readText().lines().filterNot { it.startsWith("IMAGE_REPO=") }.joinToString("\n"))
+        assertTrue(lint().text().contains("IMAGE_REPO missing in every env layer of the instance"), lint().text())
+        write("local/cash/_docker-compose.flow.env", "IMAGE_REPO=ghcr.io/o/github-cicd-simple-apps\n")
+        assertFalse(lint().text().contains("IMAGE_REPO missing"), lint().text())
+    }
+
+    @Test
+    fun `layer files belong to the directory of their level, and the layout before R-0008 is named`() {
+        validInstance("local", "trades-db-to-amps")
+        write("local/cash/source-database/application.instance.yml", "a: 1\n")
+        write("local/cash/application.app.yml", "a: 1\n")
+        write("local/cash/source-database/trades-db-to-amps/compose.env", "IMAGE_TAG=local\n")
+        write("local/cash/source-database/trades-db-to-amps/values.yaml", "a: 1\n")
+        write("local/cash/source-database/app-common/application.yml", "a: 1\n")
+        write("local/cash/source-database/trades-db-to-amps/_docker/x.yml", "a: 1\n")
+        write("local/cash/source-database/notes.txt", "x\n")
+        write("local/cash/source-database/trades-db-to-amps/extra.env", "A=1\n")
+        val messages = lint().text()
+        for (expected in listOf(
+            "local/cash/source-database/application.instance.yml: a instance-layer file in the app level's directory: it " +
+                "belongs in config/<env>/<flow>/<AppName>/<AppInstance>/",
+            "local/cash/application.app.yml: a app-layer file in the flow level's directory: it belongs in config/<env>/<flow>/<AppName>/",
+            "trades-db-to-amps/compose.env: the layout before R-0008: rename it to _docker-compose.instance.env",
+            "trades-db-to-amps/values.yaml: the layout before R-0008: rename it to _helm-values.instance.yaml",
+            "local/cash/source-database/app-common: the app layer is files now",
+            "trades-db-to-amps/_docker: layer directories are flat",
+            "local/cash/source-database/notes.txt: unexpected file in the app level's directory",
+            "trades-db-to-amps/extra.env: forbidden: the only env file of this level is _docker-compose.instance.env",
+        )) {
+            assertTrue(messages.contains(expected), "missing '$expected' in:\n$messages")
+        }
+    }
+
+    @Test
+    fun `check 6 rejects relative paths in compose overrides, which resolve against docker`() {
+        validInstance("local", "trades-db-to-amps")
+        write("local/cash/source-database/_docker-compose.app.yml", "services:\n  app:\n    volumes:\n      - ./certs:/certs:ro\n" +
+            "      - \${CERTS_DIR:-/etc/certs}:/more:ro\n")
+        appOverride.writeText("services:\n  app:\n    env_file:\n      - ../secrets.env\n")
+        val findings = lint().filter { it.check == 6 }
+        val messages = findings.text()
+        assertEquals(2, findings.size, messages)
+        assertTrue(messages.contains("source-database/_docker-compose.app.yml: './certs:/certs:ro' is a relative path"), messages)
+        assertTrue(messages.contains("docker-compose.override.yml: '../secrets.env' is a relative path"), messages)
+    }
+
+    // --- demo step 2: Helm values (checks 3, 4, 10) and helm (check 12) -----------------------------------
+
+    @Test
+    fun `check 3 requires the Helm values of the app and of every instance`() {
+        validInstance("local", "trades-db-to-amps")
+        File(config, "local/cash/source-database/_helm-values.app.yaml").delete()
+        File(config, "local/cash/source-database/trades-db-to-amps/_helm-values.instance.yaml").delete()
         val findings = lint().filter { it.check == 3 }
         val messages = findings.text()
         assertEquals(2, findings.size, messages)
-        assertTrue(messages.contains("app-common/values.yaml: required file missing (Helm values layer 2"), messages)
-        assertTrue(messages.contains("trades-db-to-amps/values.yaml: required file missing (Helm values layer 3"), messages)
+        assertTrue(messages.contains("source-database/_helm-values.app.yaml: required file missing (Helm values layer 2"), messages)
+        assertTrue(messages.contains("trades-db-to-amps/_helm-values.instance.yaml: required file missing (Helm values layer 3"), messages)
         assertTrue(helmRequests.isEmpty(), "no helm run without the values layers: $helmRequests")
     }
 
     @Test
-    fun `check 4 compares identity, APP variables and image_tag with the path and compose_env`() {
+    fun `check 4 compares identity, APP variables and image_tag with the path and the instance env layer`() {
         validInstance("us-dev", "trades-db-to-amps", tag = "0.1.0-rc.39")
         write("us-dev/cash/workflows-config.yml", "env: us-dev\nflow: cash\ntargets:\n  - instance: source-database/trades-db-to-amps\n" +
             "    kind: compose\n    host: h\n")
-        write("us-dev/cash/source-database/trades-db-to-amps/values.yaml",
+        write("us-dev/cash/source-database/trades-db-to-amps/_helm-values.instance.yaml",
             "image:\n  tag: \"0.1.0-rc.38\"\nidentity:\n  env: us-dev\n  flow: cash\n  app: source-database\n" +
                 "  instance: positions-db-to-deephaven\nenv:\n  APP_ENV: us-dev\n  APP_FLOW: swap\n  APP_NAME: source-database\n" +
                 "  JAVA_OPTS: \"-XX:MaxRAMPercentage=75\"\n  SPRING_DATASOURCE_PASSWORD: x\n  MEM_LIMIT: 1g\n  IMAGE_TAG: x\n")
-        write("us-dev/cash/source-database/app-common/values.yaml",
+        write("us-dev/cash/source-database/_helm-values.app.yaml",
             "image:\n  tag: \"0.1.0\"\nenv:\n  TZ: UTC\n  APP_INSTANCE: shared\n  ACTUATOR_HOST_PORT: \"18081\"\n")
         val findings = lint()
         val messages = findings.text()
@@ -227,13 +332,13 @@ class ConfigLinterTest {
             "identity.instance=positions-db-to-deephaven does not match the directory path (trades-db-to-amps)",
             "env.APP_FLOW=swap does not match the directory path (cash)",
             "env.APP_INSTANCE=shared does not match the directory path (trades-db-to-amps)",
-            "image.tag '0.1.0-rc.38' differs from IMAGE_TAG '0.1.0-rc.39' in compose.env",
+            "image.tag '0.1.0-rc.38' differs from IMAGE_TAG '0.1.0-rc.39' in _docker-compose.instance.env",
             "env.SPRING_DATASOURCE_PASSWORD is forbidden",
             "env.MEM_LIMIT is not an app-facing variable",
             "env.IMAGE_TAG is not an app-facing variable",
             "env.ACTUATOR_HOST_PORT is not an app-facing variable",
-            "app-common/values.yaml: image.tag belongs in <AppInstance>/values.yaml",
-            "app-common/values.yaml: env.APP_INSTANCE belongs in <AppInstance>/values.yaml",
+            "_helm-values.app.yaml: image.tag belongs in <AppInstance>/_helm-values.instance.yaml",
+            "_helm-values.app.yaml: env.APP_INSTANCE belongs in <AppInstance>/_helm-values.instance.yaml",
         )) {
             assertTrue(messages.contains(expected), "missing '$expected' in:\n$messages")
         }
@@ -245,11 +350,11 @@ class ConfigLinterTest {
     @Test
     fun `check 4 requires the identity map and every APP variable`() {
         validInstance("local", "trades-db-to-amps")
-        write("local/cash/source-database/trades-db-to-amps/values.yaml", "image:\n  tag: \"local\"\nenv:\n  TZ: UTC\n")
+        write("local/cash/source-database/trades-db-to-amps/_helm-values.instance.yaml", "image:\n  tag: \"local\"\nenv:\n  TZ: UTC\n")
         val messages = lint().filter { it.check == 4 }.text()
         assertTrue(messages.contains("identity missing: must restate the directory path"), messages)
         for (key in ConfigRules.IDENTITY) assertTrue(messages.contains("env.$key missing"), messages)
-        assertTrue(messages.contains("JAVA_OPTS is set in compose.env (-XX:MaxRAMPercentage=60) but not in the values env"), messages)
+        assertTrue(messages.contains("JAVA_OPTS is set in the compose env layers (-XX:MaxRAMPercentage=60) but not in the values env"), messages)
     }
 
     @Test
@@ -257,9 +362,9 @@ class ConfigLinterTest {
         validInstance("us-prod", "trades-db-to-amps", tag = "1.4.2")
         validInstance("us-prod", "positions-db-to-deephaven", tag = "1.4.2")
         validInstance("local", "trades-db-to-amps", tag = "1.0")
-        write("us-prod/cash/source-database/trades-db-to-amps/values.yaml",
+        write("us-prod/cash/source-database/trades-db-to-amps/_helm-values.instance.yaml",
             instanceValues("us-prod", "trades-db-to-amps", "1.4").replace("image:\n", "image:\n  digest: sha256:abc\n"))
-        write("local/cash/source-database/trades-db-to-amps/values.yaml",
+        write("local/cash/source-database/trades-db-to-amps/_helm-values.instance.yaml",
             instanceValues("local", "trades-db-to-amps").replace("tag: \"local\"", "tag: 1.0"))
         val findings = lint().filter { it.check == 10 }
         val messages = findings.text()
@@ -293,7 +398,7 @@ class ConfigLinterTest {
     fun `check 12 failures are errors, and a missing or old Helm is reported once`() {
         validInstance("local", "trades-db-to-amps")
         validInstance("local", "positions-db-to-deephaven")
-        val lintFails = linter(helm = { r -> CommandResult(if (r.mode == HelmMode.LINT) 1 else 0, "[ERROR] values.yaml: - at '/env/SPRING_X': false schema") })
+        val lintFails = linter(helm = { r -> CommandResult(if (r.mode == HelmMode.LINT) 1 else 0, "[ERROR] _helm-values.instance.yaml: - at '/env/SPRING_X': false schema") })
             .lint().filter { it.check == 12 }
         assertEquals(2, lintFails.size, lintFails.text())
         assertTrue(lintFails.all { it.severity == Severity.ERROR && it.message.contains("helm lint failed") }, lintFails.text())

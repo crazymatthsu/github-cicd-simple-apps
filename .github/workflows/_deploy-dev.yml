@@ -27,7 +27,7 @@
 # and the run is recorded as a GitHub Deployment of the env's Environment (<env>, D12 §6.7), one per run, whose
 # payload names per instance the tag, the digest-pinned image, the box or cluster and the result, plus the
 # config tree's git SHA (the run's commit) and, per pooled flow, the version directory; the job summary is the
-# human-readable copy and the version directories' compose.env (record-tag) the second one. qa and prod are never
+# human-readable copy and the version directories' _docker-compose.instance.env (record-tag) the second one. qa and prod are never
 # touched: the job refuses any env that is not
 # *-dev, and so do run-compose.sh and helm-deploy-instance.sh.
 name: _deploy-dev
@@ -176,7 +176,7 @@ jobs:
           # bundle from this checkout (validated from inside with IMAGE_TAG=<tag>), syncs it as a NEW version
           # directory /apps/<user>/versions/<project>/<YYYYMMDD-HHMMSS>/ to every box of the pool (DL-41, DL-46),
           # records the tag in it on every box (IMAGE_TAG=<tag> run-compose.sh ... record-tag: the directory's
-          # compose.env names what it runs; the tree's says `main`, DL-40), resolves each instance's box
+          # _docker-compose.instance.env names what it runs; the tree's says `main`, DL-40), resolves each instance's box
           # (pinned → discovered → assigned) and runs, there, from the new directory,
           #   run-compose.sh <env> <flow> <app> <inst> pull → start → health
           # then, once every instance passed, `run-compose.sh activate` on every box: current → the new version
@@ -300,9 +300,9 @@ jobs:
               elif [[ ! -f $wrapper ]]; then
                 echo "::error::$instance: $wrapper not found"
                 result="failed: no run-compose.sh"
-              elif ! scripts/ci/set-image-tag.sh "$DEPLOY_TAG" "$candidate/$DEPLOY_ENV/$instance/compose.env" >/dev/null; then
-                echo "::error::$instance: config/$DEPLOY_ENV/$instance/compose.env missing"
-                result="failed: no compose.env"
+              elif ! scripts/ci/set-image-tag.sh "$DEPLOY_TAG" "$candidate/$DEPLOY_ENV/$instance/_docker-compose.instance.env" >/dev/null; then
+                echo "::error::$instance: config/$DEPLOY_ENV/$instance/_docker-compose.instance.env missing"
+                result="failed: no _docker-compose.instance.env"
               # Validate as the host would run it: GITHUB_RUN_ID would switch run-compose.sh to the CI
               # project name (ci-<run>-<attempt>-...), which the dev host never uses.
               elif ! env -u GITHUB_RUN_ID -u GITHUB_RUN_ATTEMPT CONFIG_ROOT="$candidate" \
@@ -468,7 +468,7 @@ jobs:
           # ref = this commit (the config tree deployed), payload = the tag, this run's digest-pinned images and
           # every target with its box or cluster and its result, plus the version directory of every pooled flow.
           # The tree's dev files say `main`; the literal tag lives here and in the version directories'
-          # compose.env (record-tag) — never in a commit to main.
+          # _docker-compose.instance.env (record-tag) — never in a commit to main.
           if [[ ! -f $RUNNER_TEMP/targets.json ]]; then
             echo "::warning::no targets were resolved, so there is no deployment to record"
             exit 0

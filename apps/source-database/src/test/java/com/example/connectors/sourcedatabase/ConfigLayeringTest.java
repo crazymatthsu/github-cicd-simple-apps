@@ -26,7 +26,8 @@ import static org.assertj.core.api.Assertions.assertThat;
 
 /**
  * The rendered-config test of D5 §8 (R2): the jar's import list, pointed at a temporary tree instead of
- * /config and /secrets, applies jar defaults < flow (the cluster layer) < app-common < instance < secrets.
+ * /config and /secrets, applies jar defaults < flow (the cluster layer) < app < instance < secrets. Each layer is one
+ * file of the config tree (application.<layer>.yml, R-0008) mounted at /config/<flow|common|instance>/application.yml.
  */
 class ConfigLayeringTest {
 
@@ -73,8 +74,8 @@ class ConfigLayeringTest {
             ConfigurableEnvironment environment = context.getEnvironment();
             assertThat(environment.getProperty("connector.source.host")).as("instance > flow")
                     .isEqualTo("sql-trades.us-dev.example.com");
-            assertThat(environment.getProperty("connector.source.port")).as("app-common > flow").isEqualTo("1433");
-            assertThat(environment.getProperty("connector.source.poll-interval")).as("app-common > jar default (30s)")
+            assertThat(environment.getProperty("connector.source.port")).as("app > flow").isEqualTo("1433");
+            assertThat(environment.getProperty("connector.source.poll-interval")).as("app > jar default (30s)")
                     .isEqualTo("5s");
             assertThat(environment.getProperty("connector.sink.type")).as("jar default").isEqualTo("stub");
             assertThat(environment.getProperty("spring.datasource.password")).as("secrets config tree")

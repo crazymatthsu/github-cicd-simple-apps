@@ -1,0 +1,8 @@
+# source-database in every env (R-0008): merged right after the shared docker/docker-compose.yml. Only what belongs to
+# the app wherever it runs; an env / flow / instance difference goes in the config tree's _docker-compose.<layer>.yml.
+services:
+  app:
+    environment:
+      # Secrets pass through from the invoking shell only — never from an env layer or git (D2 §8.1).
+      SPRING_DATASOURCE_USERNAME: ${SPRING_DATASOURCE_USERNAME:?set in the shell, never in git}
+      SPRING_DATASOURCE_PASSWORD: ${SPRING_DATASOURCE_PASSWORD:?set in the shell, never in git}

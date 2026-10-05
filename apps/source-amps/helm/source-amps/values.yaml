@@ -1,6 +1,6 @@
-# Chart defaults = values layer 1 (D11 §6.2, skeleton §8.2). Layer 2 is
-# config/<env>/<flow>/<AppName>/app-common/values.yaml, layer 3 config/<env>/<flow>/<AppName>/<AppInstance>/values.yaml
-# (later -f wins; maps deep-merge, lists are replaced). The application.yml layers arrive as file values
+# Chart defaults = values layer 1 (D11 §6.2, skeleton §8.2). Layer 2 is config/<env>/<flow>/<AppName>/_helm-values.app.yaml,
+# layer 3 config/<env>/<flow>/<AppName>/<AppInstance>/_helm-values.instance.yaml (R-0008)
+# (later -f wins; maps deep-merge, lists are replaced). The application.<layer>.yml files arrive as file values
 # (appConfig, appFiles). values.schema.json rejects unknown top-level keys and secret-bearing env names.
 # The one deployer is scripts/helm-deploy-instance.sh (README.md has the flag list).
 
@@ -22,7 +22,7 @@ identity:                             # the instance values set all four (the co
   app: ""                             # and app must be this chart's name
   instance: ""
 env: {}                               # map -> container env (sorted by name); the instance values set APP_ENV,
-                                      # APP_FLOW, APP_NAME, APP_INSTANCE, JAVA_OPTS, LOG_LEVEL_ROOT, app-common TZ
+                                      # APP_FLOW, APP_NAME, APP_INSTANCE, JAVA_OPTS, LOG_LEVEL_ROOT, the app layer TZ
 appConfig: {}                         # flow | common | instance -> /config/<layer>/application.yml (--set-file)
 appFiles: {}                          # <layer>: { <file name>: <content> } -> /config/<layer>/<file name> (--set-file)
 secrets:

@@ -26,6 +26,9 @@ __pycache__/
 # Local env files: never committed (secrets pass through the shell, D2 §8.1)
 *.local.env
 
+# The combined compose envs scripts/run-compose.sh generates on every command (R-0008): derived, never committed
+/.run/
+
 # JVM leftovers
 *.class
 *.log
