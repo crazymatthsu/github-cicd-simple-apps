@@ -1,64 +1,26 @@
 # Documentation of github-cicd-simple-apps
 
-This repository is a **project repository** of the Deephaven data platform: one release line, the connector apps.
-The platform's design documents D0–D12 and its decision log DL-01 … DL-46 live in
-[github-demo/docs](https://github.com/crazymatthsu/github-demo/tree/main/docs); the repository contract this
-layout follows is D12 (`docs/12-repository-layout-and-pipeline-contract.md`) with ADR DL-42. This directory holds
-only what is specific to this repository.
-
 | Document | What |
 |---|---|
-| [`adr/`](adr/README.md) | decisions of this repository (R-0001: the extraction) |
-| [`../config/README.md`](../config/README.md) | the configuration tree and the host bundle |
-| [`../test-infra/README.md`](../test-infra/README.md) | compose stacks, kind tier, how the integration tests run |
-| `../apps/<AppName>/README.md`, `../apps/<AppName>/helm/<AppName>/README.md` | one app and its chart |
+| [`adr/`](adr/README.md) | **The repository contract**: the ADRs; checklists for adding an app, adding an instance or creating a repository from this one; known gaps; open decisions |
+| [`../config/README.md`](../config/README.md) | the configuration tree in practice: files per level, host pools, the deploy inventory |
+| [`../test-infra/README.md`](../test-infra/README.md) | the compose stacks and how the integration tests run, on a laptop and in CI |
+| [`../test-infra/kind/README.md`](../test-infra/kind/README.md) | the kind tier of the provisional Helm path |
+| `../apps/<AppName>/README.md` | one app: what it does, its configuration keys, its actuator |
+| `../apps/<AppName>/helm/<AppName>/README.md` | its chart (provisional) |
 
-## The layout against the contract (D12 §6.2)
+## Where to find what
 
-| Contract | Here |
+| Question | Answer in |
 |---|---|
-| `platform.yml` | platform `v1`, kind `app`, registry `ghcr.io/crazymatthsu`, project `github-cicd-simple-apps` (`apps_dir: apps`), `dev_envs: [us-dev]` |
-| `apps/<AppName>/{build.gradle.kts, src/main, src/test, src/integrationTest, docker/Dockerfile, docker/docker-compose.yml, helm/<AppName>/}` | `source-kafka`, `source-amps`, `source-database`; no app carries a `docker/Dockerfile`, `scripts/entrypoint.sh` or `docker/docker-compose.yml`: every image is built from the shared `docker/spring-boot.Dockerfile` and `docker/entrypoint.sh` ([R-0007](adr/R-0007-shared-dockerfile.md)) and every instance runs from the shared `docker/docker-compose.yml` ([R-0008](adr/R-0008-compose-config-layers.md)); an app adds `docker/docker-compose.override.yml` only for what it needs in every env (`source-database`: its datasource secrets) |
-| `framework/<name>` (DL-43; `libs/` before) | `connectors-framework` |
-| `config/<env>/<flow>/_common/` (the cluster layer, DL-44), `config/<env>/<flow>/<AppName>/<AppInstance>/` and one `workflows-config.yml` per flow | `local/cash`, `us-dev/cash` (inventory schema v1.3; the v2 schema of DL-40 / DL-41 arrives with their implementation); **deviation** ([R-0008](adr/R-0008-compose-config-layers.md)): the layers are files in the directory of their level — `<flow>/application.flow.yml` replaces `_common/`, `<AppName>/application.app.yml` and `_helm-values.app.yaml` replace `app-common/`, compose variables come in `_docker-compose.<layer>.env` layers merged into one generated env |
-| `test-infra/`, `docs/`, `.github/CODEOWNERS` | present |
-| no per-app `scripts/run-compose.sh` / `scripts/smoke.sh` wrappers | removed: `scripts/run-compose.sh <env> <flow> <AppName> <AppInstance> <command>` finds the app under `apps/`; an app that needs checks of its own adds `apps/<AppName>/scripts/smoke.sh` |
-| one shared compose template with per-app overrides; one library chart | compose **done** ([R-0008](adr/R-0008-compose-config-layers.md)): `docker/docker-compose.yml` plus `apps/<AppName>/docker/docker-compose.override.yml` and the config tree's `_docker-compose.<layer>.yml`; the library chart **not yet** — every app still ships its chart (Helm deferred until the EKS work) |
-| thin, generated trigger workflows and `affected-map.yml` | **not yet** — hand-written copies (`render-workflows.sh` does not exist); keep `.github/affected-map.yml` in step with `apps/` |
-| `uses: <org>/platform-ci/...@v1`, plugins by version | **not yet** — vendored copies (README) |
+| What is a project, an env, a flow, an instance? | [ADR-0002](adr/0002-one-repository-one-project-one-release-line.md) to [ADR-0004](adr/0004-environments-and-runtimes.md), and the glossary in [`adr/README.md`](adr/README.md) |
+| Which files may an app, the framework or the configuration tree contain? | [ADR-0005](adr/0005-repository-layout-and-shared-tooling.md), [ADR-0006](adr/0006-apps-and-framework-modules.md), [ADR-0011](adr/0011-configuration-tree-and-spring-layers.md) |
+| What does each workflow do, and why? | [ADR-0021](adr/0021-ci-layering.md) to [ADR-0024](adr/0024-ephemeral-ci-environments.md), [ADR-0027](adr/0027-continuous-deployment-to-dev-and-the-deployment-record.md), [ADR-0029](adr/0029-release-and-promotion.md) |
+| How do I run, inspect or roll back an instance? | [ADR-0017](adr/0017-run-compose-operations-cli-and-runtime-posture.md), [ADR-0018](adr/0018-on-prem-host-layout-versioned-bundles.md), [ADR-0028](adr/0028-host-pool-deployment.md), and `scripts/run-compose.sh --help` |
+| Which repository settings must be applied by hand? | [ADR-0020](adr/0020-branching-protection-and-merge-rules.md), rule 8 |
 
-## Pipeline
+## Documentation rules
 
-| Workflow | Trigger | Does |
-|---|---|---|
-| `pr.yml` | branch push, pull request, merge queue | detect affected → lint (hadolint, ShellCheck, script tests, actionlint) → build, with images `pr-<n>-<sha7>` on pull requests → config-lint → component integration tests → kind deploy test → **`pr-gate`**, the one required check |
-| `main.yml` | push to `main`, `hotfix/**` | build all → component integration tests → system test (`source-database` against the platform's Deephaven server image, `DEEPHAVEN_SERVER_IMAGE` in `test-infra/compose/versions.env`) → publish (`<next>-rc.<n>`, `sha-<sha7>`, `main`) → kind deploy → deploy-dev (`main` only), recorded as a GitHub Deployment of Environment `us-dev` (DL-40) |
-| `release-please.yml` | push to `main` | the release PR; merging it creates the tag `vX.Y.Z` and dispatches `release.yml` |
-| `release.yml` | tag `v*` | assert `printVersion` = tag → wait for the tested `main.yml` run → retag its digests → SBOMs → GitHub Release → `us-qa` bump PR (skipped while `config/us-qa` does not exist) |
-| `nightly.yml` | 03:17 UTC | GHCR retention (dry run unless told otherwise), teardown drill |
-| `config-lint.yml` | reusable | `./gradlew configLint` |
-
-**No workflow writes to `main`** (DL-40, ADR R-0002): no job holds `contents: write`. The dev tree declares its
-intent (`IMAGE_TAG=main`, `image.tag: main`); `deploy-dev` pins the literal version with the `IMAGE_TAG` override,
-`record-tag` writes it into the boxes' `_docker-compose.instance.env`, and the run is recorded as a GitHub Deployment of Environment
-`us-dev` whose payload names, per instance, the tag, the digest-pinned image, the box or cluster and the result, plus
-the config tree's git SHA and the version directory per pooled flow. The boxes hold versioned bundles under
-`/apps/<user>/versions/<project>/` with `current` the live one (DL-41, DL-46, ADR R-0006). Still open from DL-40 /
-DL-41: the per-flow deploy policy (`deploy.on-merge`, `deploy.schedule`), the manual deploy and rollback dispatches,
-declared placement (the `instances` map) and the short form of `run-compose.sh` on a box.
-
-## Repository settings (D12 §6.10)
-
-No file can set these; apply them once in the repository settings:
-
-1. **Actions → General → Workflow permissions**: "Allow GitHub Actions to create and approve pull requests" —
-   `release-please.yml` opens the release PR, `release.yml` the qa bump PR.
-2. **Environment `us-dev`** (named like the env, D12 §6.7): created by the first `deploy-dev` run; add the secret
-   `DEV_DEPLOY_SSH_KEY` (and `config/us-dev/known_hosts` in the tree) once boxes exist — until then the runner plays
-   every box (transport `local`). The Environment `dev` of the first run is unused and can be deleted.
-3. **Ruleset on `main`** (and `hotfix/**`): pull request required, one approval, required check `pr-gate`, linear
-   history, no bypass for GitHub Actions — nothing here needs one (DL-40).
-4. **Packages**: the first `main.yml` run creates `ghcr.io/crazymatthsu/github-cicd-simple-apps/<AppName>`, linked to
-   this repository and private by default; make them public or grant `packages: read` to their consumers.
-5. **Optional**: the secret `RETENTION_TOKEN` (read and delete packages) and the repository variable
-   `RETENTION_DRY_RUN=false` for the nightly sweep; the label `ci:full`; the Renovate app.
+- Decisions — and the rules they set — are made only in ADRs ([ADR-0001](adr/0001-adrs-are-the-repository-contract.md)).
+- A README lives next to what it describes and explains how to use it. It must not contradict an ADR.
+- `CHANGELOG.md` is written by the release tooling and never edited by hand.
