@@ -1,5 +1,7 @@
 package com.example.connectors.framework;
 
+import java.util.Properties;
+
 import org.junit.jupiter.api.Test;
 
 import org.springframework.mock.env.MockEnvironment;
@@ -53,9 +55,37 @@ class ConnectorIdentityTest {
     }
 
     @Test
+    void everyStageOfThePlatformIsAnEnv() {
+        for (String env : new String[] {"us-dev", "us-qa", "jp-uat", "us-prod", "us-parallel"}) {
+            assertThat(new ConnectorIdentity(env, "cash", "source-database", "trades").env()).isEqualTo(env);
+        }
+    }
+
+    @Test
+    void theVocabularyIsTheGeneratedResourceOfPlatformYml() {
+        ConnectorIdentity.Vocabulary vocabulary = ConnectorIdentity.Vocabulary.current();
+
+        assertThat(vocabulary.stages()).contains("dev");
+        assertThat(ConnectorIdentity.Vocabulary.load(getClass().getClassLoader())).isEqualTo(vocabulary);
+        assertThatThrownBy(() -> ConnectorIdentity.Vocabulary.load(new ClassLoader(null) { }))
+                .isInstanceOf(IllegalStateException.class)
+                .hasMessageContaining("META-INF/platform/identity.properties is not on the classpath");
+        Properties withoutFlows = new Properties();
+        withoutFlows.setProperty("regions", "us");
+        withoutFlows.setProperty("stages", "dev");
+        assertThatThrownBy(() -> ConnectorIdentity.Vocabulary.of(withoutFlows, "identity.properties"))
+                .hasMessageContaining("identity.properties: flows is empty");
+    }
+
+    @Test
     void rejectsTokensOutsideTheNamingModel() {
-        assertThatThrownBy(() -> new ConnectorIdentity("us-uat", "cash", "source-database", "trades"))
-                .hasMessageContaining("APP_ENV");
+        assertThatThrownBy(() -> new ConnectorIdentity("us-stage", "cash", "source-database", "trades"))
+                .hasMessageContaining("APP_ENV='us-stage' must be local or <region>-<stage>")
+                .hasMessageContaining("(platform.yml)");
+        assertThatThrownBy(() -> new ConnectorIdentity("xx-dev", "cash", "source-database", "trades"))
+                .hasMessageContaining("APP_ENV='xx-dev'");
+        assertThatThrownBy(() -> new ConnectorIdentity("us", "cash", "source-database", "trades"))
+                .hasMessageContaining("APP_ENV='us'");
         assertThatThrownBy(() -> new ConnectorIdentity("us-dev", "fx", "source-database", "trades"))
                 .hasMessageContaining("APP_FLOW");
         assertThatThrownBy(() -> new ConnectorIdentity("us-dev", "cash", "Source_Database", "trades"))

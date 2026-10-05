@@ -10,9 +10,10 @@
 // `./gradlew :<AppName>:stageDockerContext`, then `docker buildx build build/docker` from the subproject.
 // Tags come from buildlogic.git-version (ADR-0010); labels and build args from project.version and git (ADR-0009).
 //
-// Properties: -Pimage.registry (env IMAGE_REGISTRY, default ghcr.io/crazymatthsu), -Pimage.tags=a,b,
+// Properties: -Pimage.registry (env IMAGE_REGISTRY, default the registry of platform.yml), -Pimage.tags=a,b,
 // -Pimage.engine=auto|docker|podman (env CONTAINER_ENGINE), -Pimage.requireEngine=true (default when CI=true),
-// -Pimage.arg.BASE_IMAGE=<ref> (env BASE_IMAGE; -Pimage.arg.<ARG>=<ref> for any other build argument),
+// -Pimage.arg.BASE_IMAGE=<ref> (env BASE_IMAGE, default <platform.yml registry>/base/jre21:latest;
+// -Pimage.arg.<ARG>=<ref> for any other build argument),
 // -Pimage.extraArgs="--cache-from ...", -Pimage.allowLocalPush=true, -Pimage.sourceUrl=<repo url>,
 // -Pimage.pushAttempts=3 (retries of a failed `push`; pushes of one build run one at a time, see ImagePushLock),
 // -PpushConvenienceTags=false (pushImage leaves out the floating tags main / latest / X / X.Y, e.g. so that
@@ -24,6 +25,7 @@ import buildlogic.ImagePushLock
 import buildlogic.PrintImageRefTask
 import buildlogic.PushImageTask
 import buildlogic.buildlogicProperty
+import buildlogic.platformValue
 import org.gradle.api.provider.Provider
 
 plugins {
@@ -34,8 +36,12 @@ val image = extensions.create<DockerImageExtension>("dockerImage")
 image.registry.convention(
     providers.gradleProperty("image.registry")
         .orElse(providers.environmentVariable("IMAGE_REGISTRY"))
-        .orElse("ghcr.io/crazymatthsu"),
+        .orElse(platformValue("registry")),
 )
+// The project of platform.yml (ADR-0030), also rootProject.name.
+val projectName: String = platformValue("project")
+// The company base images live in the registry of platform.yml: <registry>/base/<name> (ADR-0009).
+val defaultBaseImage: String = "${platformValue("registry").trimEnd('/')}/base/jre21:latest"
 // Images are <registry>/<project>/<AppName> (ADR-0010): the project is the release line — the parent Gradle
 // path when an app is nested (:deephaven-connectors:source-kafka -> "deephaven-connectors"),
 // else the root project, i.e. the repository (:source-kafka -> "github-cicd-simple-apps", platform.yml).
@@ -51,7 +57,7 @@ val githubRepository: String? = providers.environmentVariable("GITHUB_REPOSITORY
 val githubRunId: String? = providers.environmentVariable("GITHUB_RUN_ID").orNull
 val sourceUrlValue: String = providers.gradleProperty("image.sourceUrl").orNull
     ?: if (githubServer != null && githubRepository != null) "$githubServer/$githubRepository"
-    else "https://github.com/crazymatthsu/github-cicd-simple-apps"
+    else "unknown"
 val buildUrlValue: String = if (githubServer != null && githubRepository != null && githubRunId != null)
     "$githubServer/$githubRepository/actions/runs/$githubRunId" else "local"
 val versionValue: String = version.toString()
@@ -71,13 +77,13 @@ val imageLabels: Provider<Map<String, String>> = image.imageName.zip(
     providers.provider {
         mapOf(
             "version" to versionValue, "sha" to gitShaValue, "kind" to versionKindValue.lowercase(),
-            "source" to sourceUrlValue, "build" to buildUrlValue,
+            "source" to sourceUrlValue, "build" to buildUrlValue, "project" to projectName,
         )
     },
 ) { imageName, facts ->
     mapOf(
         "org.opencontainers.image.title" to imageName,
-        "org.opencontainers.image.description" to "$imageName (github-cicd-simple-apps, Deephaven connectors)",
+        "org.opencontainers.image.description" to "$imageName (${facts.getValue("project")})",
         "org.opencontainers.image.version" to facts.getValue("version"),
         "org.opencontainers.image.revision" to facts.getValue("sha"),
         "org.opencontainers.image.source" to facts.getValue("source"),
@@ -88,10 +94,12 @@ val imageLabels: Provider<Map<String, String>> = image.imageName.zip(
     )
 }
 // -Pimage.arg.<ARG>=<ref>; for the apps' BASE_IMAGE also the environment variable BASE_IMAGE (CI exports the
-// jre21 base it resolved or bootstrapped). Every other build argument comes from -Pimage.arg.<ARG> only: an
-// environment variable of the same name may mean something else (DEEPHAVEN_IMAGE is test-infra's server image).
+// jre21 base it resolved or bootstrapped), else <registry of platform.yml>/base/jre21:latest — the Dockerfile names no
+// registry. Every other build argument comes from -Pimage.arg.<ARG> only: an environment variable of the same name
+// may mean something else (DEEPHAVEN_IMAGE is test-infra's server image).
 val argProperties: Provider<Map<String, String>> = providers.gradlePropertiesPrefixedBy("image.arg.")
-val baseImageEnvironment: Provider<String> = providers.environmentVariable("BASE_IMAGE").orElse("")
+val baseImageEnvironment: Provider<String> = providers.environmentVariable("BASE_IMAGE").filter { it.isNotBlank() }
+    .orElse(defaultBaseImage)
 val baseImageOverride: Provider<String> = image.baseImageArg.zip(argProperties.zip(baseImageEnvironment) { p, e -> p to e }) { arg, (props, env) ->
     props["image.arg.$arg"]?.takeIf { it.isNotBlank() } ?: if (arg == "BASE_IMAGE") env else ""
 }
@@ -113,7 +121,13 @@ val stageDockerContext = tasks.register<Sync>("stageDockerContext") {
     group = "container image"
     description = "Stages the minimal image build context (Dockerfile, entrypoint.sh, application.jar) under build/docker/."
     into(layout.buildDirectory.dir("docker"))
-    from(dockerfileToUse) { rename { "Dockerfile" } }
+    // The Dockerfile names no registry (ADR-0030): the staged copy defaults BASE_IMAGE to the base image of
+    // platform.yml's registry, so a by-hand build of the staged context needs no --build-arg (ADR-0009).
+    val baseImageDefault = defaultBaseImage
+    from(dockerfileToUse) {
+        rename { "Dockerfile" }
+        filter { line: String -> if (line == "ARG BASE_IMAGE") "ARG BASE_IMAGE=$baseImageDefault" else line }
+    }
     from(sharedEntrypoint)
 }
 plugins.withId("org.springframework.boot") {

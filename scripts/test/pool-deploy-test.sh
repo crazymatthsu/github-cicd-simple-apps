@@ -14,11 +14,7 @@ REPO="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd -P)"
 readonly REPO POOL_DEPLOY="$REPO/scripts/pool-deploy.sh"
 readonly H1=dev-cash-01.us-dev.example.com H2=dev-cash-02.us-dev.example.com
 readonly TRADES=cash/source-database/trades-db-to-amps POSITIONS=cash/source-database/positions-db-to-deephaven
-# The layout of a box (ADR-0018): the project's versions under the deploy user's directory, `current` the live one.
-readonly PROJECT=github-cicd-simple-apps ROOT=/apps/deploy/versions/github-cicd-simple-apps
 readonly V0=20261004-110000 V1=20261004-120000 V2=20261004-130000 V3=20261004-140000 V4=20261004-150000
-# The commands a box runs: the new version's run-compose.sh (a deploy) and the current one's (discovery, rollback).
-readonly NEW="$ROOT/$V1/scripts/run-compose.sh" CUR="$ROOT/current/scripts/run-compose.sh"
 readonly CASES="bundle activate plan_assigns plan_pinned discovered two_boxes move versions_local dry_run health_fails
     record_tag record_first known_hosts refusals guard ssh_deploy rollback_ssh local_execute"
 
@@ -26,6 +22,11 @@ for tool in yq jq rsync git; do
     command -v "$tool" >/dev/null 2>&1 || { echo "pool-deploy-test: $tool is needed" >&2; exit 2; }
 done
 yq --version 2>/dev/null | grep -q mikefarah || { echo "pool-deploy-test: mikefarah yq v4 is needed" >&2; exit 2; }
+# The layout of a box (ADR-0018): the project's versions under the deploy user's directory, `current` the live one.
+PROJECT="$(yq '.projects[0].name' "$REPO/platform.yml")"
+readonly PROJECT ROOT="/apps/deploy/versions/$PROJECT"
+# The commands a box runs: the new version's run-compose.sh (a deploy) and the current one's (discovery, rollback).
+readonly NEW="$ROOT/$V1/scripts/run-compose.sh" CUR="$ROOT/current/scripts/run-compose.sh"
 if command -v sha256sum >/dev/null 2>&1; then SHA256=(sha256sum); else SHA256=(shasum -a 256); fi
 # Only what each case sets: nothing from the caller's shell steers the scripts under test.
 unset CONFIG_ROOT POOL_TRANSPORT POOL_LOCAL_ROOT POOL_LOCAL_EXECUTE POOL_SSH POOL_RSYNC POOL_SSH_OPTS POOL_PEER_CHECK \
@@ -84,7 +85,7 @@ if [ "$cmd" = status ]; then
     case " ${STUB_RUNNING:-} " in *" $host:$inst "*) running=true image="ghcr.io/o/r/source-database:t0" ;; esac
     echo "NAME    IMAGE    SERVICE    STATUS"
     printf '{"project":"us-dev-cash-source-database-%s","running":%s,"desired":"ghcr.io/o/r/source-database:1","runningImage":"%s","runningId":"","desiredId":"","drift":"false","bundleRoot":"%s"}\n' \
-        "$inst" "$running" "$image" "/apps/deploy/versions/github-cicd-simple-apps/$current"
+        "$inst" "$running" "$image" "${dir%/*}/$current"
     [ "$running" = true ] || exit 1
 fi
 exit 0
@@ -201,7 +202,7 @@ case_bundle() { # the layout and manifest for us-dev/cash; every instance valida
     run "$POOL_DEPLOY" us-dev cash bundle --out "$b" --tag t1
     expect_rc 0
     m="$b/.platform-bundle"
-    for f in .platform-bundle scripts/run-compose.sh scripts/smoke.sh docker/docker-compose.yml \
+    for f in .platform-bundle platform.yml scripts/run-compose.sh scripts/smoke.sh docker/docker-compose.yml \
         apps/source-database/docker/docker-compose.override.yml config/us-dev/cash/application.flow.yml \
         config/us-dev/cash/_docker-compose.flow.env config/us-dev/cash/workflows-config.yml \
         config/us-dev/cash/source-database/application.app.yml config/us-dev/cash/source-database/_docker-compose.app.env \
@@ -654,6 +655,19 @@ case_refusals() { # env, flow, pool, version and usage rules
     expect_rc 3
     run "$POOL_DEPLOY" us-prod cash deploy --tag t1
     expect_rc 3
+    run "$POOL_DEPLOY" us-uat cash plan
+    expect_rc 3
+    expect_in "the promoted envs are deployed from the configuration repository" "$ERR"
+    run "$POOL_DEPLOY" jp-dev cash plan
+    expect_rc 3
+    expect_in "env 'jp-dev' refused: it is not a dev env of this repository" "$ERR"
+    # The vocabulary is platform.yml's (ADR-0030).
+    run "$POOL_DEPLOY" us-stage cash plan
+    expect_rc 2
+    expect_in "with a region of: us jp and a stage of: dev qa uat prod parallel (platform.yml)" "$ERR"
+    run "$POOL_DEPLOY" us-dev fx plan
+    expect_rc 2
+    expect_in "flow 'fx' must be one of: cash deriv swap (platform.yml)" "$ERR"
     cfg="$(fixture refusals)"
     run env CONFIG_ROOT="$cfg" "$POOL_DEPLOY" us-dev deriv plan --dry-run
     expect_rc 4

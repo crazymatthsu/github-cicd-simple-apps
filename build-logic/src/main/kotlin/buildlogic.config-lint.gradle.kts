@@ -16,6 +16,7 @@
 // manifests in build/reports/config-lint/rendered/<env>/<flow>/<AppName>/<AppInstance>.yaml; kubeconform
 // (-strict, Kubernetes 1.37.0) validates them when it is on the PATH.
 import buildlogic.ConfigLintTask
+import buildlogic.platformList
 
 // Evaluated lazily, once every subproject is configured: whether a subproject applies the plugin is known only then.
 val deployableApps: Provider<List<Project>> = provider {
@@ -35,6 +36,13 @@ tasks.register<ConfigLintTask>("configLint") {
     description = "Lints the config/ tree (ADR-0014 checks 1–6, 9–12; 7–8 TODO)."
     configDir = layout.projectDirectory.dir("config")
     apps = deployableApps.map { projects -> projects.map { it.name }.toSet() }
+    // The vocabulary, runtimes and dev envs of platform.yml (ADR-0030): names are checked against them, and an env
+    // other than local and the dev envs does not belong in this repository (ADR-0004).
+    regions = platformList("regions")
+    stages = platformList("stages")
+    flows = platformList("flows")
+    kinds = platformList("kinds")
+    devEnvs = platformList("devEnvs")
     template = layout.projectDirectory.file("docker/docker-compose.yml")
     appOverrides = overrideFiles.map { files -> files.mapValues { it.value.absolutePath } }
     appOverrideFiles.from(overrideFiles.map { it.values })

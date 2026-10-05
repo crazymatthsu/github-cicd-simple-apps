@@ -2,10 +2,11 @@
 #
 #   build (all, images pushed with the pre-release tags) ─┬─ integration-test (all, component)
 #                                                         └─ config-lint
-#   integration-test → system-test (the platform's Deephaven server image, ADR-0023) → publish (verify + `main` tag)
-#   → kind-deploy (ADR-0019: one Helm release per us-dev instance of source-database in a throwaway
-#     kind cluster, readiness, helm test, smoke diff) → deploy-dev (Environment us-dev, main only: compose
-#     pools + Helm into kind-ci) → GitHub Deployment record
+#   integration-test → system-test (the reference app with the platform's Deephaven server image, ADR-0023)
+#   → publish (verify + `main` tag) → kind-deploy (ADR-0019: per dev env, one Helm release per instance of the
+#     reference app in a throwaway kind cluster, readiness, helm test, smoke diff) → deploy-dev (per dev env, its
+#     Environment, main only: compose pools + Helm into kind-ci) → GitHub Deployment record
+# The dev envs and the reference app are the project values of platform.yml (ADR-0030), read by the platform job.
 #
 # No workflow writes to main (ADR-0020, ADR-0027): the dev tree declares `main`, the Deployment record names the literal
 # version, and no job here holds `contents: write` — so no loop guard is needed.
@@ -25,6 +26,22 @@ permissions:
   contents: read
 
 jobs:
+  platform:
+    name: platform.yml
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    outputs:
+      dev-envs: ${{ steps.platform.outputs.dev-envs }}
+      reference-app: ${{ steps.platform.outputs.reference-app }}
+      reference-project: ${{ steps.platform.outputs.reference-project }}
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          sparse-checkout: .github
+
+      - id: platform
+        uses: ./.github/actions/platform-manifest
+
   build:
     uses: ./.github/workflows/_gradle-build.yml
     permissions:
@@ -59,15 +76,15 @@ jobs:
       retention-days: 14
 
   system-test:
-    needs: [build, integration-test]
+    needs: [platform, build, integration-test]
     uses: ./.github/workflows/_integration-test.yml
     permissions:
       contents: read
       packages: read
     with:
-      # The reference scenario (ADR-0023) against this run's images and the platform's Deephaven server image
-      # (DEEPHAVEN_SERVER_IMAGE in test-infra/compose/versions.env, ADR-0025).
-      project: ':source-database'
+      # The reference scenario (ADR-0023): the reference app of platform.yml against this run's images and the
+      # platform's Deephaven server image (DEEPHAVEN_SERVER_IMAGE in test-infra/compose/versions.env, ADR-0025).
+      project: ${{ needs.platform.outputs.reference-project }}
       images: ${{ needs.build.outputs.images }}
       level: system
       ci-build-image: ${{ needs.build.outputs.ci-build-image }}
@@ -88,30 +105,39 @@ jobs:
       tags: ${{ needs.build.outputs.image-tags }}
 
   kind-deploy:
-    # Proves the chart and the us-dev config tree with exactly the published digests before deploy-dev
+    # Proves the chart and each dev env's config tree with exactly the published digests before deploy-dev
     # (ADR-0019); the cluster is deleted and leak-checked in always() steps (ADR-0024).
-    needs: [build, publish]
+    needs: [platform, build, publish]
+    strategy:
+      fail-fast: false
+      matrix:
+        env: ${{ fromJSON(needs.platform.outputs.dev-envs) }}
     uses: ./.github/workflows/_kind-deploy.yml
     permissions:
       contents: read
       packages: read
     with:
-      env: us-dev
-      app: source-database
+      env: ${{ matrix.env }}
+      app: ${{ needs.platform.outputs.reference-app }}
       images: ${{ needs.build.outputs.images }}
       tag: ${{ needs.build.outputs.version }}
       retention-days: 14
 
   deploy-dev:
-    needs: [build, publish, kind-deploy]
+    # Every dev env of platform.yml (ADR-0004, ADR-0027), each in its own Environment.
+    needs: [platform, build, publish, kind-deploy]
     if: github.ref == 'refs/heads/main'
+    strategy:
+      fail-fast: false
+      matrix:
+        env: ${{ fromJSON(needs.platform.outputs.dev-envs) }}
     uses: ./.github/workflows/_deploy-dev.yml
     permissions:
       contents: read # no workflow writes to main (ADR-0020)
       deployments: write # the GitHub Deployment record
       packages: read # the Helm adapter pulls this run's images into its kind cluster
     with:
-      env: us-dev
+      env: ${{ matrix.env }}
       tag: ${{ needs.build.outputs.version }}
       images: ${{ needs.build.outputs.images }}
     secrets: inherit

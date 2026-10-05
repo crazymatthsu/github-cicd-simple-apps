@@ -1,6 +1,7 @@
 # Reusable: Gradle build, unit tests, quality gates and images (ADR-0021).
 #
-#   probe    (runner host)  is ghcr.io/crazymatthsu/base/ci-build:latest published? plan the Gradle tasks
+#   probe    (runner host)  is <registry>/base/ci-build:latest published (the registry of platform.yml)? plan the
+#                           Gradle tasks
 #   build    (ci-build container when published, else the runner host with setup-java — first-run
 #             bootstrap)  ./gradlew build → printVersion → buildImages → pushImages (tags from Gradle, ADR-0010)
 #   collect  (runner host)  resolve the pushed tags to digests → `images` output for the IT matrix
@@ -59,10 +60,6 @@ on:
 permissions:
   contents: read
 
-env:
-  # Registry namespace of every image in the demo; must match the buildlogic.docker-image default.
-  IMAGE_NAMESPACE: ghcr.io/crazymatthsu
-
 jobs:
   probe:
     name: probe
@@ -72,6 +69,7 @@ jobs:
       contents: read
       packages: read
     outputs:
+      registry: ${{ steps.platform.outputs.registry }}
       ci-build-image: ${{ steps.base.outputs.ci-build }}
       jre21-image: ${{ steps.base.outputs.jre21 }}
       docker-gid: ${{ steps.socket.outputs.gid }}
@@ -91,10 +89,15 @@ jobs:
 
       - uses: ./.github/actions/registry-login
 
+      # The registry of every image, base images included (ADR-0010, ADR-0030).
+      - id: platform
+        uses: ./.github/actions/platform-manifest
+
       - name: Probe the published base images
         id: base
         env:
           REBUILD: ${{ inputs.rebuild-base }}
+          REGISTRY: ${{ steps.platform.outputs.registry }}
         run: |
           set -euo pipefail
           # ci-build decides where the build job runs (ADR-0021); jre21 is handed to the build job so it
@@ -103,7 +106,7 @@ jobs:
           for name in ci-build jre21; do
             ref=""
             if [[ $REBUILD != true ]]; then
-              ref=$(scripts/ci/resolve-image.sh "$IMAGE_NAMESPACE/base/$name:latest") || ref=""
+              ref=$(scripts/ci/resolve-image.sh "$REGISTRY/base/$name:latest") || ref=""
             fi
             echo "$name=$ref" >> "$GITHUB_OUTPUT"
             echo "- base/$name: ${ref:-not used (not published yet, or rebuilt from this change)}" >> "$GITHUB_STEP_SUMMARY"
@@ -225,6 +228,7 @@ jobs:
           ensure-base: ${{ env.IMAGE_BUILD_TASKS != '' && 'jre21' || '' }}
           jre21-image: ${{ needs.probe.outputs.jre21-image }}
           rebuild-base: ${{ inputs.rebuild-base }}
+          image-namespace: ${{ needs.probe.outputs.registry }}
 
       - name: Build environment
         env:

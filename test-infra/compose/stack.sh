@@ -40,8 +40,9 @@ Environment
   APP_IMAGE                image under test; adds docker/docker-compose.yml, the app's override and the instance's
                            config-tree overrides to the stack, with the combined env scripts/run-compose.sh writes
   APP_ENV, APP_FLOW, APP_INSTANCE
-                           identity of the app instance (default local, cash, and the instance named
-                           by the project's test-infra/testdata manifests)
+                           identity of the app instance (default local, the one flow of config/<env>/ that
+                           configures the app, and the instance named by the project's test-infra/testdata
+                           manifests)
   IT_SA_PASSWORD           SQL Server sa password (generated when unset; reused on a re-run)
   IT_TABLE_PREFIX          Deephaven table prefix for the run (default it_<sha7>_)
   STACK_WAIT_TIMEOUT       seconds for each up --wait (default 180); STACK_SKIP_PULL=1 skips the pull
@@ -269,17 +270,6 @@ short_sha() {
 }
 
 # The AppInstance the project's test cases run against (manifest key `instance`), when they agree.
-# The instance directories of config/<env>/<flow>/<app>, one per line (the app's own layers are files, ADR-0011).
-instance_dirs() {
-  local d name
-  for d in "$1"/*/; do
-    [[ -d $d ]] || continue
-    name=$(basename "$d")
-    [[ $name == _* || $name == .* ]] && continue
-    printf '%s\n' "$name"
-  done
-}
-
 manifest_instance() {
   local f instance found=''
   for f in "$TEST_INFRA_DIR/testdata/$1"/*/manifest.yml; do
@@ -299,10 +289,24 @@ manifest_instance() {
 # (ADR-0012): identity, the Spring layer files, the combined env, the image under test. APP_OVERRIDES: the
 # instance's config-tree compose overrides that exist (the shared template and the app's override come from cmd_up).
 prepare_app() {
-  local app=$1 base config_root=${CONFIG_ROOT:-$REPO_ROOT/config} file
+  local app=$1 base config_root=${CONFIG_ROOT:-$REPO_ROOT/config} file dir
   # Absolute: compose resolves a relative path against the first compose file's directory.
   if [[ -d $config_root ]]; then config_root=$(cd "$config_root" && pwd -P); fi
-  export APP_NAME=${APP_NAME:-$app} APP_ENV=${APP_ENV:-local} APP_FLOW=${APP_FLOW:-cash}
+  export APP_NAME=${APP_NAME:-$app} APP_ENV=${APP_ENV:-local}
+  # The flow: APP_FLOW, else the one flow of config/<env>/ that configures the app (the flows of platform.yml,
+  # ADR-0030: none is a default).
+  if [[ -z ${APP_FLOW:-} ]]; then
+    local flows=()
+    for dir in "$config_root/$APP_ENV"/*/"$APP_NAME"/; do
+      if [[ -d $dir ]]; then flows+=("$(basename "$(dirname "$dir")")"); fi
+    done
+    case ${#flows[@]} in
+      0) usage_error "up: no flow of $(rel "$config_root/$APP_ENV") configures $APP_NAME: add config/$APP_ENV/<flow>/$APP_NAME/ (ADR-0011), or set APP_FLOW" ;;
+      1) APP_FLOW=${flows[0]} ;;
+      *) usage_error "up: $APP_NAME is configured in several flows of $(rel "$config_root/$APP_ENV") (${flows[*]}); set APP_FLOW" ;;
+    esac
+  fi
+  export APP_FLOW
   base=$config_root/$APP_ENV/$APP_FLOW/$APP_NAME
   # The instance whose config the app under test runs with (ADR-0025): APP_INSTANCE, else the instance the
   # app's test-case manifest names, else the app's only instance directory under config/<env>/<flow>/<app>
@@ -312,12 +316,16 @@ prepare_app() {
     APP_INSTANCE=$(manifest_instance "$app")
   fi
   if [[ -z $APP_INSTANCE ]]; then
-    local candidates
-    candidates=$(instance_dirs "$base")
-    case $(wc -w <<<"$candidates") in
+    # The instance directories of config/<env>/<flow>/<app> (the app's own layers are files, ADR-0011).
+    local candidates=() name
+    for dir in "$base"/*/; do
+      name=$(basename "$dir")
+      if [[ -d $dir && $name != _* && $name != .* ]]; then candidates+=("$name"); fi
+    done
+    case ${#candidates[@]} in
       0) usage_error "up: no instance for $app: $(rel "$base") has no instance directory. Add one (ADR-0011), set APP_INSTANCE, or add a test-infra/testdata/$app/<case>/manifest.yml that names one" ;;
-      1) APP_INSTANCE=$candidates ;;
-      *) usage_error "up: $app has several instances under $(rel "$base") ($(printf '%s' "$candidates" | tr '\n' ' ')); set APP_INSTANCE or add a test-infra/testdata/$app/<case>/manifest.yml that names one" ;;
+      1) APP_INSTANCE=${candidates[0]} ;;
+      *) usage_error "up: $app has several instances under $(rel "$base") (${candidates[*]}); set APP_INSTANCE or add a test-infra/testdata/$app/<case>/manifest.yml that names one" ;;
     esac
   fi
   export APP_INSTANCE
@@ -481,10 +489,11 @@ cmd_up() {
     [[ $APP_IMAGE =~ $re && ( ${APP_IMAGE##*/} == *:* || $APP_IMAGE == *@* ) ]] \
       || usage_error "up: APP_IMAGE '$APP_IMAGE' must be <registry>/<path>/<AppName>:<tag>, <...>@sha256:<digest>, or both"
     # The shared compose template (ADR-0012), then the app's own override when it has one: apps/<AppName>/
-    # (ADR-0006), else the directory of the Gradle path (a monorepo nesting its apps, e.g. deephaven-connectors/<AppName>/).
+    # (ADR-0006), else the directory of the Gradle path (a monorepo nesting its apps, e.g. deephaven-connectors/<AppName>/),
+    # else any <dir>/<AppName>/ (platform.yml's apps_dir, ADR-0030).
     app_file=$REPO_ROOT/docker/docker-compose.yml
     [[ -f $app_file ]] || usage_error "up: APP_IMAGE is set but docker/docker-compose.yml (the shared compose template) is missing"
-    for candidate in "$REPO_ROOT/apps/$app" "$REPO_ROOT/$project_dir"; do
+    for candidate in "$REPO_ROOT/apps/$app" "$REPO_ROOT/$project_dir" "$REPO_ROOT"/*/"$app"; do
       if [[ -f $candidate/docker/docker-compose.override.yml ]]; then app_override=$candidate/docker/docker-compose.override.yml; break; fi
     done
   fi

@@ -46,13 +46,13 @@
       }
     },
     "identity": {
-      "description": "The identity tuple of the instance (ADR-0003): equal to the config-tree path.",
+      "description": "The identity tuple of the instance (ADR-0003): equal to the config-tree path. The schema checks its shape; helm-deploy-instance.sh and config-lint check the regions, stages and flows against platform.yml (ADR-0030).",
       "type": "object",
       "additionalProperties": false,
       "required": ["env", "flow", "app", "instance"],
       "properties": {
-        "env": { "type": "string", "pattern": "^(local|[a-z]{2}-(dev|qa|prod))$" },
-        "flow": { "enum": ["cash", "deriv", "swap"] },
+        "env": { "type": "string", "pattern": "^(local|[a-z]{2}-[a-z0-9]+)$" },
+        "flow": { "$ref": "#/$defs/token" },
         "app": { "$ref": "#/$defs/token", "maxLength": 20 },
         "instance": { "$ref": "#/$defs/token", "maxLength": 32 }
       }

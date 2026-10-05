@@ -9,7 +9,7 @@ description: >-
 type: application
 # Chart semver: bump when templates, values or the schema change. The running image is image.tag (the
 # instance values or --set-string image.tag=<tag>), never appVersion.
-version: 0.1.0
+version: 0.1.2
 appVersion: "0.1.0"
 home: https://github.com/crazymatthsu/github-cicd-simple-apps
 sources:

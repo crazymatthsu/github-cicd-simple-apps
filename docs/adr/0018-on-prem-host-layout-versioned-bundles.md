@@ -2,7 +2,7 @@
 
 | | |
 |---|---|
-| Status | Accepted |
+| Status | Accepted. Rule 2 superseded in part by [ADR-0030](0030-platform-yml-declares-every-project-value.md) |
 | Date | 2026-10-04 |
 | Applies to | every on-prem host of every env |
 | Enforced by | `run-compose.sh activate` and `record-tag` (refuse outside a version directory, or across project, env or flow); `pool-deploy.sh` (builds, hashes and verifies bundles); config-lint check 11 (`pool.keep` ≥ 2, no `pool.root`, a box in one flow only); `scripts/test/pool-deploy-test.sh` |

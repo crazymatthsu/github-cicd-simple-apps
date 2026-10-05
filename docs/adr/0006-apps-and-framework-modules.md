@@ -2,7 +2,7 @@
 
 | | |
 |---|---|
-| Status | Accepted |
+| Status | Accepted. Rule 6 superseded in part by [ADR-0030](0030-platform-yml-declares-every-project-value.md) |
 | Date | 2026-10-04 |
 | Applies to | every app and library module |
 | Enforced by | `settings.gradle.kts` discovery; config-lint check 2 (configured apps are deployable subprojects; every deployable app is configured in `local`); `AbstractConnectorApplicationTest` in each app |

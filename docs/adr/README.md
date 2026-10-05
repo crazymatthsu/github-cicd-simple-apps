@@ -50,6 +50,7 @@ flowchart LR
 | You want to understand… | Read |
 |---|---|
 | what a project, an env, a flow and an instance are | [ADR-0002](0002-one-repository-one-project-one-release-line.md), [ADR-0003](0003-identity-tuple-names-every-instance.md), [ADR-0004](0004-environments-and-runtimes.md) |
+| where the project values come from, and which tool reads which | [ADR-0030](0030-platform-yml-declares-every-project-value.md) |
 | what an app may contain, and what is shared tooling | [ADR-0005](0005-repository-layout-and-shared-tooling.md), [ADR-0006](0006-apps-and-framework-modules.md) |
 | how configuration reaches a running container | [ADR-0011](0011-configuration-tree-and-spring-layers.md), [ADR-0012](0012-compose-template-and-generated-env.md), [ADR-0013](0013-secrets.md) |
 | how an instance is operated and rolled back on a host | [ADR-0017](0017-run-compose-operations-cli-and-runtime-posture.md), [ADR-0018](0018-on-prem-host-layout-versioned-bundles.md), [ADR-0028](0028-host-pool-deployment.md) |
@@ -62,13 +63,14 @@ flowchart LR
 |---|---|---|
 | **Foundations** | | |
 | [0001](0001-adrs-are-the-repository-contract.md) | Decisions are numbered ADRs with MUST/SHOULD rules and an "Enforced by" line. ADR-0001 to ADR-0999 are the shared contract; a repository's own decisions start at ADR-1000. | Accepted |
-| [0002](0002-one-repository-one-project-one-release-line.md) | A repository is one project of Spring Boot apps and libraries, released together as `vX.Y.Z`. `platform.yml` declares only what the tree cannot derive. | Accepted |
+| [0002](0002-one-repository-one-project-one-release-line.md) | A repository is one project of Spring Boot apps and libraries, released together as `vX.Y.Z`. `platform.yml` declares only what the tree cannot derive. | Accepted; rule 5 superseded by ADR-0030 |
 | [0003](0003-identity-tuple-names-every-instance.md) | `<env>/<flow>/<AppName>/<AppInstance>` is the configuration path and the source of every name. | Accepted |
 | [0004](0004-environments-and-runtimes.md) | Only local and dev are configured and deployed here. qa, uat, prod and parallel are configured and deployed from a separate configuration repository, promoted by pull request. On-prem compose runs every env until EKS. | Accepted |
-| [0005](0005-repository-layout-and-shared-tooling.md) | One skeleton for every repository. Shared tooling is copied unchanged, project files are the project's own, and changes to the tooling are made here first. | Accepted |
-| [0006](0006-apps-and-framework-modules.md) | `apps/<AppName>/` holds an app's code and only the infrastructure that differs between apps. `framework/<name>/` holds shared libraries, never deployed. | Accepted |
+| [0005](0005-repository-layout-and-shared-tooling.md) | One skeleton for every repository. Shared tooling is copied unchanged, project files are the project's own, and changes to the tooling are made here first. | Accepted; rule 5 superseded in part by ADR-0030 |
+| [0006](0006-apps-and-framework-modules.md) | `apps/<AppName>/` holds an app's code and only the infrastructure that differs between apps. `framework/<name>/` holds shared libraries, never deployed. | Accepted; rule 6 superseded in part by ADR-0030 |
+| [0030](0030-platform-yml-declares-every-project-value.md) | `platform.yml` declares every project value: registry, project, group, apps directory, runtimes, reference app, dev envs, regions, stages and flows. The build validates it on every run, and every tool reads it; none hard-codes a value. | Accepted |
 | **Build and artifacts** | | |
-| [0007](0007-gradle-build-with-convention-plugins.md) | Convention plugins in `build-logic/`, one version catalog and the Spring Boot BOM give reproducible, cached builds; a module declares only its plugins and dependencies. | Accepted |
+| [0007](0007-gradle-build-with-convention-plugins.md) | Convention plugins in `build-logic/`, one version catalog and the Spring Boot BOM give reproducible, cached builds; a module declares only its plugins and dependencies. | Accepted; rule 3 superseded in part by ADR-0030 |
 | [0008](0008-versions-derived-from-git.md) | Versions come from git tags and Conventional Commits on every build. No version file exists. | Accepted |
 | [0009](0009-one-shared-image-definition.md) | One Dockerfile and a three-file build context for every app; images are non-root and layered, and Gradle builds them with docker or podman. | Accepted |
 | [0010](0010-image-tags-digests-promotion-retention.md) | Images are `<registry>/<project>/<AppName>` with immutable version and sha tags. They move by digest, are promoted by re-tagging, and the retention sweep keeps everything in use. | Accepted |
@@ -80,9 +82,9 @@ flowchart LR
 | **Runtime operations** | | |
 | [0015](0015-actuator-health-and-metrics-contract.md) | Every app exposes `health`, `info`, `prometheus` and `connectorconfig` on port 8080. Readiness is `readinessState` plus `connector`, the identity is on every meter, and one test checks all of it. | Accepted |
 | [0016](0016-logging-and-startup-configuration-summary.md) | Logs go to stdout with the identity on every line. The masked effective configuration is available at start-up, from an endpoint, and offline. | Accepted |
-| [0017](0017-run-compose-operations-cli-and-runtime-posture.md) | `run-compose.sh` operates every compose-run instance of this repository — laptop, CI, dev host — with safety rules and an audit line; the shared template hardens every container. | Accepted |
-| [0018](0018-on-prem-host-layout-versioned-bundles.md) | Hosts keep `/apps/<user>/versions/<project>/<version>/` per deploy, with `current` the live one. Activation is atomic, and rollback points `current` back. | Accepted |
-| [0019](0019-kubernetes-and-helm-are-provisional.md) | Charts, Helm values, the Helm deploy script, check 12 and the kind tier are kept working, not extended, until the EKS design. | Accepted |
+| [0017](0017-run-compose-operations-cli-and-runtime-posture.md) | `run-compose.sh` operates every compose-run instance of this repository — laptop, CI, dev host — with safety rules and an audit line; the shared template hardens every container. | Accepted; rule 5 superseded in part by ADR-0030 |
+| [0018](0018-on-prem-host-layout-versioned-bundles.md) | Hosts keep `/apps/<user>/versions/<project>/<version>/` per deploy, with `current` the live one. Activation is atomic, and rollback points `current` back. | Accepted; rule 2 superseded in part by ADR-0030 |
+| [0019](0019-kubernetes-and-helm-are-provisional.md) | Charts, Helm values, the Helm deploy script, check 12 and the kind tier are kept working, not extended, until the EKS design. | Accepted; rule 2 superseded in part by ADR-0030 |
 | **Source control** | | |
 | [0020](0020-branching-protection-and-merge-rules.md) | `main` and `hotfix/*` change only by squash-merged pull request with `pr-gate` green. Pull-request titles are Conventional Commits, and no workflow writes to protected branches. | Accepted |
 | **CI** | | |
@@ -106,10 +108,11 @@ flowchart LR
 | app | a deployable Spring Boot service, `apps/<AppName>/`, one image |
 | library | a module under `framework/`, built and released with the apps, never deployed |
 | shared tooling | the files copied unchanged into every repository built from this one ([ADR-0005](0005-repository-layout-and-shared-tooling.md)) |
-| project values | what the shared tooling needs to know about a project; declared in `platform.yml` |
-| env | `local`, or `<region>-<stage>` |
-| stage | `dev`, `qa`, `uat`, `prod`, `parallel` |
+| project values | what the shared tooling needs to know about a project; declared in `platform.yml` ([ADR-0030](0030-platform-yml-declares-every-project-value.md)) |
+| env | `local`, or `<region>-<stage>` with a region and a stage of `platform.yml` |
+| stage | `dev`, `qa`, `uat`, `prod`, `parallel` (`stages` in `platform.yml`) |
 | dev env | an env this repository configures and deploys (`dev_envs`) |
+| reference app | the app of the system test, the kind deployment test and the nightly teardown drill (`reference_app`) |
 | promoted env | `qa`, `uat`, `prod` or `parallel`: configured in and deployed from the configuration repository, immutable tags only ([ADR-0004](0004-environments-and-runtimes.md)) |
 | configuration repository | the separate repository holding the configuration of the promoted envs |
 | flow, cluster | a business flow; one flow in one env is one cluster, with its own boxes and inventory |
@@ -168,11 +171,12 @@ flowchart LR
 ### Create a repository from this one ([ADR-0005](0005-repository-layout-and-shared-tooling.md))
 
 1. Copy this repository at a release tag. Keep the shared tooling unchanged.
-2. Set the project values:
-   - the repository name, `rootProject.name` and `platform.yml` `projects[0].name`, all equal;
-   - `registry` and `dev_envs` in `platform.yml`;
+2. Set the project values ([ADR-0030](0030-platform-yml-declares-every-project-value.md)):
+   - in `platform.yml`: `registry`; `projects[0]` — `name` (the repository name, which the build checks in CI),
+     `group`, `apps_dir`, `kinds` and `reference_app`; `dev_envs`; `regions`, `stages` and `flows`;
    - `component` in `release-please-config.json`;
-   - until G7 is closed, the hard-coded values listed there.
+   - the registry paths in the package rules of `renovate.json`;
+   - a GitHub Environment named after each dev env.
 3. Replace the project files with the new project's own:
    - `apps/`, the domain code under `framework/`, `config/`;
    - `test-infra/testdata/`, the dependency stacks, `versions.env`, `stacks.yml`;
@@ -191,14 +195,8 @@ that opens a gap adds a row.
 
 | # | Gap | ADR |
 |---|---|---|
-| G2 | `ConnectorIdentity` does not accept the stages `uat` and `parallel`, so the app image refuses to start in those envs, wherever it is deployed. Config-lint allows only the regions `us` and `jp`; the other implementations accept any two letters. | [0003](0003-identity-tuple-names-every-instance.md) |
-| G3 | Config-lint check 1 does not know the stages `uat` and `parallel`, and check 10 treats only `qa` and `prod` as promoted envs that require immutable tags. This matters once the configuration repository reuses config-lint. | [0010](0010-image-tags-digests-promotion-retention.md), [0014](0014-config-lint-enforces-the-config-contract.md) |
-| G4 | `release.yml`'s bump job commits to `config/us-qa` in this repository; it must open the pull request in the configuration repository. | [0029](0029-release-and-promotion.md) |
-| G5 | This repository's config-lint accepts promoted-env directories, and CODEOWNERS still carries `config/*-qa/` and `config/*-prod/` rules. | [0004](0004-environments-and-runtimes.md), [0011](0011-configuration-tree-and-spring-layers.md) |
+| G4 | `release.yml`'s bump job commits to `config/us-qa` in this repository, and names the apps `source-*`; it must open the pull request in the configuration repository. | [0029](0029-release-and-promotion.md) |
 | G6 | `us-dev/cash/source-database/positions-db-to-deephaven` is a `kind: helm` target on the throwaway `kind-ci` cluster, so it runs nowhere after the deploy job. | [0004](0004-environments-and-runtimes.md), [0019](0019-kubernetes-and-helm-are-provisional.md) |
-| G7 | Project values are hard-coded in shared tooling: the registry `ghcr.io/crazymatthsu` (`_gradle-build.yml`, `nightly.yml`, `setup-build-env`, `buildlogic.docker-image`, the Dockerfile's base image and source label); `group = "com.example.connectors"`; `us-dev`, `:source-database` and the nightly drill image in the trigger workflows. | [0002](0002-one-repository-one-project-one-release-line.md), [0005](0005-repository-layout-and-shared-tooling.md), [0021](0021-ci-layering.md) |
-| G8 | The flows `cash deriv swap` are hard-coded in four places, and the identity vocabulary is not declared in `platform.yml`. | [0003](0003-identity-tuple-names-every-instance.md) |
-| G9 | `platform.yml`'s `dev_envs`, `apps_dir` and `kinds` are read by nothing, and nothing checks that `rootProject.name` equals `projects[0].name`. | [0002](0002-one-repository-one-project-one-release-line.md) |
 | G10 | `.github/affected-map.yml` and `test-infra/compose/stacks.yml` are maintained by hand. An app missing from the map's `projects` is silently left out of the integration-test matrix, of publishing and of releases. | [0006](0006-apps-and-framework-modules.md), [0022](0022-pull-request-pipeline.md), [0025](0025-integration-tests-on-compose-stacks.md) |
 | G11 | The framework mixes the generic operational contract with the connector domain. The `server`, `management` and `logging` blocks are copied into every app, and the secret-property list exists twice (config-lint, `SecretMasker`). | [0006](0006-apps-and-framework-modules.md), [0013](0013-secrets.md), [0015](0015-actuator-health-and-metrics-contract.md), [0016](0016-logging-and-startup-configuration-summary.md) |
 | G12 | `buildlogic.integration-test` and `it-runner.yml` hard-wire the Deephaven client and the Deephaven and SQL Server endpoints. | [0007](0007-gradle-build-with-convention-plugins.md), [0025](0025-integration-tests-on-compose-stacks.md) |

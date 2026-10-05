@@ -88,4 +88,5 @@ so that registry caches hit. And they have to run as a non-root user, with the c
 - The base images are a supply-chain dependency outside the repository. `setup-build-env` has a bootstrap path that
   builds them locally from `docker/base/<name>/Dockerfile` when they are not published. Here that path has nothing
   to build (known gap).
-- The Dockerfile's source label and its default base image name this project's registry (known gap).
+- The Dockerfile names no registry: Gradle passes the base image, `<registry>/base/jre21` of `platform.yml`, and the
+  labels ([ADR-0030](0030-platform-yml-declares-every-project-value.md)).

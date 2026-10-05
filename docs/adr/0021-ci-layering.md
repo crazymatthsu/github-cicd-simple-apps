@@ -103,7 +103,6 @@ CI must also be reproducible locally, with the same commands.
 
 - Copying CI into a new repository means copying the shared tooling and setting the project values.
 - A CI fix is usually a script fix, which can be tested without pushing.
-- Some workflows still hold this project's values. The trigger workflows name the dev env `us-dev`, and the app
-  `source-database` for the system test and the kind deployment test. The registry namespace is written in
-  `_gradle-build.yml` and `nightly.yml`. The workflows should read these values from `platform.yml` or derive them
-  (known gap).
+- The workflows read the registry, the dev envs and the reference app from `platform.yml` through the
+  `platform-manifest` action ([ADR-0030](0030-platform-yml-declares-every-project-value.md)). Only `release.yml`'s
+  version bump still names project values, `config/us-qa` and the apps `source-*` (known gap).

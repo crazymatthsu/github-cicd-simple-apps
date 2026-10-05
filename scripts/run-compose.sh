@@ -14,7 +14,6 @@ set -euo pipefail
 
 readonly EXIT_FAILED=1 EXIT_USAGE=2 EXIT_REFUSED=3 EXIT_CONFIG=4 EXIT_ENGINE=5 EXIT_TIMEOUT=124
 readonly COMMANDS="start stop down restart config app-config printenv compose-env health status ps logs pull validate record-tag exec shell version"
-readonly FLOWS="cash deriv swap"
 readonly COMPOSE_ENV_ALLOWED="IMAGE_REPO IMAGE_TAG APP_ENV APP_FLOW APP_NAME APP_INSTANCE JAVA_OPTS TZ LOG_LEVEL_ROOT LOGS_DIR DATA_DIR MEM_LIMIT"
 # Only the instance layer may set these (plus *_HOST_PORT): the image tag, the identity and the published ports.
 readonly INSTANCE_ONLY="IMAGE_TAG APP_ENV APP_FLOW APP_NAME APP_INSTANCE"
@@ -30,8 +29,9 @@ usage() {
     cat <<'EOF'
 Usage: run-compose.sh <env> <flow> <AppName> <AppInstance> <command> [args] [options]
 
-  <env>          local | <region>-<stage> (only local and *-dev are allowed here)
-  <flow>         cash | deriv | swap
+  <env>          local | <region>-<stage>, a region and a stage of platform.yml (only local and the dev_envs of
+                 platform.yml are allowed here)
+  <flow>         a flow of platform.yml
   <AppName>      the app, e.g. source-database (apps/<AppName>)
   <AppInstance>  the pipeline, e.g. trades-db-to-amps (config/<env>/<flow>/<AppName>/<AppInstance>/)
 
@@ -99,7 +99,9 @@ secrets such as SPRING_DATASOURCE_PASSWORD are passed through from this shell, n
 
 Root: the nearest ancestor of this script holding a .platform-bundle marker (a host bundle synced by
 scripts/pool-deploy.sh as one version directory /apps/<user>/versions/<project>/<version>/, ADR-0018), else
-the git checkout, else the script's parent directory.
+the git checkout, else the script's parent directory. The root's platform.yml (a host bundle carries a copy)
+declares the regions, stages and flows names are checked against, and the dev_envs this script operates
+(ADR-0030).
 Pool guard (ADR-0028): on a box whose .platform-bundle lists more than one pool host (POOL_HOSTS), start and
 restart of an instance of that bundle's env and flow (never local) first ask every other box of the pool
   $POOL_SSH $POOL_SSH_OPTS <POOL_USER>@<box> -- <POOL_ROOT>/current/scripts/run-compose.sh
@@ -337,15 +339,60 @@ if [ "${#POSITIONAL[@]}" -lt 5 ]; then
 fi
 ENV_NAME="${POSITIONAL[0]}" FLOW="${POSITIONAL[1]}" APP="${POSITIONAL[2]}" INSTANCE="${POSITIONAL[3]}" COMMAND="${POSITIONAL[4]}"
 
+# --- the root and its platform.yml (ADR-0030) -------------------------------------------------------------
+
+BUNDLE_ROOT="$(find_bundle_root "$SCRIPT_DIR" || true)"
+if [ -n "$BUNDLE_ROOT" ]; then
+    REPO_ROOT="$BUNDLE_ROOT"
+else
+    REPO_ROOT="$(git -C "$SCRIPT_DIR" rev-parse --show-toplevel 2>/dev/null || (cd "$SCRIPT_DIR/.." && pwd -P))"
+fi
+PLATFORM_FILE="$REPO_ROOT/platform.yml"
+# The words of a one-line list of platform.yml (`<key>: [a, b]` at the top level); read without a YAML parser,
+# because the boxes have no yq. Exit 1: no such key; 2: not a one-line list.
+platform_list() { # <key>
+    awk -v k="$1" '
+    index($0, k ":") == 1 {
+        v = substr($0, length(k) + 2)
+        sub(/#.*$/, "", v)
+        gsub(/^[ \t]+|[ \t]+$/, "", v)
+        if (substr(v, 1, 1) != "[" || substr(v, length(v), 1) != "]") { bad = 1; exit }
+        v = substr(v, 2, length(v) - 2)
+        if (index(v, "[") || index(v, "]")) { bad = 1; exit }
+        gsub(/[ \t]/, "", v)
+        gsub(/,/, " ", v)
+        print v
+        found = 1
+        exit
+    }
+    END { if (bad) exit 2; if (!found) exit 1 }' "$PLATFORM_FILE"
+}
+read_platform_list() { # <key> <variable>
+    local words
+    if ! words="$(platform_list "$1")" || [ -z "$words" ]; then
+        die "$EXIT_CONFIG" "$(rel "$PLATFORM_FILE"): $1 must be a one-line list at the top level, e.g. '$1: [a, b]' (ADR-0030)"
+    fi
+    printf -v "$2" '%s' "$words"
+}
+[ -f "$PLATFORM_FILE" ] ||
+    die "$EXIT_CONFIG" "platform.yml not found in $REPO_ROOT: it declares the regions, stages, flows and dev envs (ADR-0030)"
+REGIONS="" STAGES="" FLOWS="" DEV_ENVS=""
+read_platform_list regions REGIONS
+read_platform_list stages STAGES
+read_platform_list flows FLOWS
+read_platform_list dev_envs DEV_ENVS
+
 # --- validation: usage (2), safety (3) --------------------------------------------------------------------
 
 contains_word "$COMMAND" "$COMMANDS" || die "$EXIT_USAGE" "unknown command '$COMMAND' (one of: $COMMANDS; activate takes no instance: run-compose.sh activate)"
-case "$ENV_NAME" in
-    local) ;;
-    [a-z][a-z]-dev | [a-z][a-z]-qa | [a-z][a-z]-prod) ;;
-    *) die "$EXIT_USAGE" "env '$ENV_NAME' must be local or <region>-<stage> (e.g. us-dev)" ;;
-esac
-contains_word "$FLOW" "$FLOWS" || die "$EXIT_USAGE" "flow '$FLOW' must be one of: $FLOWS"
+# local, or <region>-<stage> with a region and a stage of platform.yml (ADR-0003).
+if [ "$ENV_NAME" != local ]; then
+    region="${ENV_NAME%%-*}" stage="${ENV_NAME#*-}"
+    if [ "$region" = "$ENV_NAME" ] || ! contains_word "$region" "$REGIONS" || ! contains_word "$stage" "$STAGES"; then
+        die "$EXIT_USAGE" "env '$ENV_NAME' must be local or <region>-<stage> with a region of: $REGIONS and a stage of: $STAGES (platform.yml)"
+    fi
+fi
+contains_word "$FLOW" "$FLOWS" || die "$EXIT_USAGE" "flow '$FLOW' must be one of: $FLOWS (platform.yml)"
 is_token() { printf '%s' "$1" | grep -Eq '^[a-z0-9]([a-z0-9-]*[a-z0-9])?$'; }
 if ! is_token "$APP" || [ "${#APP}" -gt 20 ]; then
     die "$EXIT_USAGE" "AppName '$APP' must be lower-case kebab-case, at most 20 characters"
@@ -369,23 +416,18 @@ case "$COMMAND" in
     *) [ "${#CMD_ARGS[@]}" -eq 0 ] || die "$EXIT_USAGE" "unexpected argument(s) for $COMMAND: ${CMD_ARGS[*]}" ;;
 esac
 
-# Env allow-list (ADR-0017): --force never overrides it.
-case "$ENV_NAME" in
-    local | *-dev) ;;
-    *) die "$EXIT_REFUSED" "env '$ENV_NAME' refused: this repository operates local and *-dev only; the higher envs are deployed from the configuration repository (ADR-0004)" ;;
-esac
+# Env allow-list (ADR-0017): local and the dev envs of platform.yml; --force never overrides it.
+if [ "$ENV_NAME" != local ] && ! contains_word "$ENV_NAME" "$DEV_ENVS"; then
+    [ "${ENV_NAME#*-}" != dev ] ||
+        die "$EXIT_REFUSED" "env '$ENV_NAME' refused: it is not a dev env of this repository (platform.yml dev_envs: $DEV_ENVS) (ADR-0004)"
+    die "$EXIT_REFUSED" "env '$ENV_NAME' refused: this repository operates local and its dev envs ($DEV_ENVS) only; the promoted envs are deployed from the configuration repository (ADR-0004)"
+fi
 if [ "$COMMAND" = down ] && [ "$VOLUMES" -eq 1 ] && [ "$ENV_NAME" != local ] && [ "$FORCE" -eq 0 ]; then
     die "$EXIT_REFUSED" "down --volumes on a $ENV_NAME host removes data: add --force to confirm"
 fi
 
 # --- path resolution (ADR-0012, ADR-0017) and config-tree checks (4) --------------------------------------
 
-BUNDLE_ROOT="$(find_bundle_root "$SCRIPT_DIR" || true)"
-if [ -n "$BUNDLE_ROOT" ]; then
-    REPO_ROOT="$BUNDLE_ROOT"
-else
-    REPO_ROOT="$(git -C "$SCRIPT_DIR" rev-parse --show-toplevel 2>/dev/null || (cd "$SCRIPT_DIR/.." && pwd -P))"
-fi
 # The app directory adds what one app needs in every env; it is optional (a host bundle carries it only when the app
 # ships docker/docker-compose.override.yml or scripts/smoke.sh).
 is_app_dir() { [ -f "$1/build.gradle.kts" ] || [ -f "$1/docker/docker-compose.override.yml" ] || [ -f "$1/scripts/smoke.sh" ]; }

@@ -16,7 +16,6 @@ set -euo pipefail
 
 readonly EXIT_FAILED=1 EXIT_USAGE=2 EXIT_REFUSED=3 EXIT_CONFIG=4 EXIT_TOOL=5 EXIT_CONFLICT=6
 readonly COMMANDS="bundle plan sync discover deploy rollback status"
-readonly FLOWS="cash deriv swap"
 readonly HOST_RE='^[a-z0-9]([a-z0-9.-]*[a-z0-9])?$'
 readonly LOGIN_RE='^[a-z_][a-z0-9_-]{0,31}$'
 readonly PROJECT_RE='^[a-z0-9]([a-z0-9-]*[a-z0-9])?$'
@@ -106,12 +105,13 @@ Environment: CONFIG_ROOT (default <repo>/config) · POOL_SSH (ssh binary, defaul
   unknown host key is never accepted) · POOL_LOCAL_EXECUTE (local transport: true runs the commands for real) ·
   POOL_VERSION (the default of --version)
 Exit codes: 0 ok · 1 transport or command failure (after trying every box and instance) · 2 usage ·
-  3 refused (env not local / *-dev) · 4 config tree or targets error (no workflows-config.yml or no pool for the flow,
-  host not in the pool, missing files, no project in platform.yml, a bundle that does not validate or changed
+  3 refused (env not local or a dev env of platform.yml) · 4 config tree or targets error (no workflows-config.yml or no pool for the flow,
+  host not in the pool, missing files, no project or vocabulary in platform.yml, a bundle that does not validate or changed
   since it was built) · 5 tool missing (yq v4, jq, rsync, ssh, sha256sum, known_hosts) · 6 placement conflict (an
   instance running on more than one box, or on a box other than its pin without --move)
-Bundle: scripts/run-compose.sh and smoke.sh (the one implementation for every app, ADR-0017) and the one compose
-  template docker/docker-compose.yml (ADR-0012); per app with a directory under config/<env>/<flow>/, when the app ships
+Bundle: platform.yml (the vocabulary and dev envs run-compose.sh checks against, ADR-0030), scripts/run-compose.sh
+  and smoke.sh (the one implementation for every app, ADR-0017) and the one compose template docker/docker-compose.yml
+  (ADR-0012); per app with a directory under config/<env>/<flow>/, when the app ships
   them, its apps/<app>/docker/docker-compose.override.yml and scripts/smoke.sh; the flow's own layer files
   (application.flow.yml, _docker-compose.flow.env / .yml: the cluster layer, ADR-0011), config/<env>/<flow>/<app>/,
   config/<env>/<flow>/workflows-config.yml, and config/<env>/known_hosts when present. BUNDLE_SHA256 is the sha256 of
@@ -193,14 +193,34 @@ if [ "${#POSITIONAL[@]}" -ne 3 ]; then
 fi
 ENV_NAME="${POSITIONAL[0]}" FLOW="${POSITIONAL[1]}" COMMAND="${POSITIONAL[2]}"
 
+# --- platform.yml: the project, the vocabulary and the dev envs (ADR-0030) --------------------------------
+
+yq --version 2>/dev/null | grep -q mikefarah ||
+    die "$EXIT_TOOL" "mikefarah yq v4 is needed to read platform.yml and workflows-config.yml (preinstalled on GitHub-hosted runners)"
+PLATFORM_FILE="$REPO_ROOT/platform.yml"
+[ -f "$PLATFORM_FILE" ] ||
+    die "$EXIT_CONFIG" "platform.yml not found at the repository root (ADR-0030): it names the project, the vocabulary and the dev envs"
+platform_value() { yq "$1" "$PLATFORM_FILE" 2>/dev/null || true; }
+PROJECT_NAME="$(platform_value '.projects[0].name // ""')"
+REGIONS="$(platform_value '.regions // [] | join(" ")')"
+STAGES="$(platform_value '.stages // [] | join(" ")')"
+FLOWS="$(platform_value '.flows // [] | join(" ")')"
+DEV_ENVS="$(platform_value '.dev_envs // [] | join(" ")')"
+if [ -z "$REGIONS" ] || [ -z "$STAGES" ] || [ -z "$FLOWS" ] || [ -z "$DEV_ENVS" ]; then
+    die "$EXIT_CONFIG" "platform.yml: regions, stages, flows and dev_envs must be non-empty lists (ADR-0030)"
+fi
+
 # --- validation: usage (2), safety (3) --------------------------------------------------------------------
 
 contains_word "$COMMAND" "$COMMANDS" || die "$EXIT_USAGE" "unknown command '$COMMAND' (one of: $COMMANDS)"
-case "$ENV_NAME" in
-    local | [a-z][a-z]-dev | [a-z][a-z]-qa | [a-z][a-z]-prod) ;;
-    *) die "$EXIT_USAGE" "env '$ENV_NAME' must be local or <region>-<stage> (e.g. us-dev)" ;;
-esac
-contains_word "$FLOW" "$FLOWS" || die "$EXIT_USAGE" "flow '$FLOW' must be one of: $FLOWS"
+# local, or <region>-<stage> with a region and a stage of platform.yml (ADR-0003).
+if [ "$ENV_NAME" != local ]; then
+    region="${ENV_NAME%%-*}" stage="${ENV_NAME#*-}"
+    if [ "$region" = "$ENV_NAME" ] || ! contains_word "$region" "$REGIONS" || ! contains_word "$stage" "$STAGES"; then
+        die "$EXIT_USAGE" "env '$ENV_NAME' must be local or <region>-<stage> with a region of: $REGIONS and a stage of: $STAGES (platform.yml)"
+    fi
+fi
+contains_word "$FLOW" "$FLOWS" || die "$EXIT_USAGE" "flow '$FLOW' must be one of: $FLOWS (platform.yml)"
 case "$TRANSPORT" in ssh | local | dry-run) ;; *) die "$EXIT_USAGE" "--transport must be ssh, local or dry-run (was '$TRANSPORT')" ;; esac
 declare -A OPTION_COMMANDS=([--out]="bundle" [--tag]="bundle plan deploy" [--bundle]="sync deploy" [--report]="deploy rollback"
     [--version]="sync deploy" [--to]="rollback" [--json]="plan discover status" [--move]="deploy")
@@ -216,11 +236,13 @@ esac
 if [ "$TAG_SET" -eq 1 ] && ! [[ $TAG =~ $TAG_RE ]]; then die "$EXIT_USAGE" "--tag '$TAG' is not a valid image tag"; fi
 if [ -n "$VERSION" ] && ! [[ $VERSION =~ $VERSION_RE ]]; then die "$EXIT_USAGE" "--version '$VERSION' is not <YYYYMMDD-HHMMSS>"; fi
 if [ -n "$ROLLBACK_TO" ] && ! [[ $ROLLBACK_TO =~ $VERSION_RE ]]; then die "$EXIT_USAGE" "--to '$ROLLBACK_TO' is not a version (<YYYYMMDD-HHMMSS>)"; fi
-case "$ENV_NAME" in
-    local | *-dev) ;;
-    *) die "$EXIT_REFUSED" "env '$ENV_NAME' refused: host pools of this repository serve local and *-dev only;" \
-        "the higher envs are deployed from the configuration repository (ADR-0004)" ;;
-esac
+# Env allow-list (ADR-0004): local and the dev envs of platform.yml.
+if [ "$ENV_NAME" != local ] && ! contains_word "$ENV_NAME" "$DEV_ENVS"; then
+    [ "${ENV_NAME#*-}" != dev ] ||
+        die "$EXIT_REFUSED" "env '$ENV_NAME' refused: it is not a dev env of this repository (platform.yml dev_envs: $DEV_ENVS) (ADR-0004)"
+    die "$EXIT_REFUSED" "env '$ENV_NAME' refused: host pools of this repository serve local and its dev envs ($DEV_ENVS) only;" \
+        "the promoted envs are deployed from the configuration repository (ADR-0004)"
+fi
 EXECUTE=false
 [ "${POOL_LOCAL_EXECUTE:-false}" != true ] || EXECUTE=true
 if [ "$TRANSPORT" = local ] && [ -z "$LOCAL_ROOT" ]; then
@@ -232,8 +254,6 @@ fi
 
 # --- tools (5) --------------------------------------------------------------------------------------------
 
-yq --version 2>/dev/null | grep -q mikefarah ||
-    die "$EXIT_TOOL" "mikefarah yq v4 is needed to read workflows-config.yml (preinstalled on GitHub-hosted runners)"
 command -v jq >/dev/null 2>&1 || die "$EXIT_TOOL" "jq is needed (preinstalled on GitHub-hosted runners)"
 SHA256=()
 if command -v sha256sum >/dev/null 2>&1; then
@@ -251,8 +271,6 @@ trap cleanup EXIT
 
 # --- the project (platform.yml), the pool and the compose targets of <env>/<flow> (4) ---------------------
 
-[ -f "$REPO_ROOT/platform.yml" ] || die "$EXIT_CONFIG" "platform.yml not found at the repository root (ADR-0002): it names the project"
-PROJECT_NAME="$(yq '.projects[0].name // ""' "$REPO_ROOT/platform.yml" 2>/dev/null || true)"
 [[ $PROJECT_NAME =~ $PROJECT_RE ]] ||
     die "$EXIT_CONFIG" "platform.yml: projects[0].name '$PROJECT_NAME' is not a project name (lower-case kebab-case); it names the version directory /apps/<user>/versions/<project>/"
 CONFIG_ROOT="${CONFIG_ROOT:-$REPO_ROOT/config}"
@@ -539,6 +557,7 @@ build_bundle() { # <out> <tag>
         apps+=("$app")
         app_rels+=("$(app_rel "$app" || true)")
     done
+    copy_file platform.yml
     copy_file scripts/run-compose.sh
     copy_file scripts/smoke.sh
     copy_file docker/docker-compose.yml
@@ -564,7 +583,7 @@ build_bundle() { # <out> <tag>
     # The commit the bundle was built from; -dirty when a bundled file differs from it.
     git_sha="$(git -C "$REPO_ROOT" rev-parse HEAD 2>/dev/null || echo unknown)"
     if [ "$git_sha" != unknown ]; then
-        paths=(scripts/run-compose.sh scripts/smoke.sh docker/docker-compose.yml "$(rel "$ENV_DIR/$FLOW")" "$(rel "$KNOWN_HOSTS")")
+        paths=(platform.yml scripts/run-compose.sh scripts/smoke.sh docker/docker-compose.yml "$(rel "$ENV_DIR/$FLOW")" "$(rel "$KNOWN_HOSTS")")
         for rel in ${app_rels[@]+"${app_rels[@]}"}; do
             [ -z "$rel" ] || paths+=("$rel/docker/docker-compose.override.yml" "$rel/scripts")
         done

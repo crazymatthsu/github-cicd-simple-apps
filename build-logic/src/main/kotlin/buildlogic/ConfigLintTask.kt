@@ -5,6 +5,7 @@ import org.gradle.api.GradleException
 import org.gradle.api.file.ConfigurableFileCollection
 import org.gradle.api.file.DirectoryProperty
 import org.gradle.api.file.RegularFileProperty
+import org.gradle.api.provider.ListProperty
 import org.gradle.api.provider.MapProperty
 import org.gradle.api.provider.Property
 import org.gradle.api.provider.SetProperty
@@ -35,6 +36,24 @@ abstract class ConfigLintTask : DefaultTask() {
     /** Deployable AppNames: the subprojects that apply `buildlogic.docker-image` (ADR-0006). */
     @get:Input
     abstract val apps: SetProperty<String>
+
+    /** The identity vocabulary of platform.yml (ADR-0003, ADR-0030). */
+    @get:Input
+    abstract val regions: ListProperty<String>
+
+    @get:Input
+    abstract val stages: ListProperty<String>
+
+    @get:Input
+    abstract val flows: ListProperty<String>
+
+    /** The runtimes a deploy target may name (platform.yml `projects[0].kinds`). */
+    @get:Input
+    abstract val kinds: ListProperty<String>
+
+    /** The dev envs of platform.yml: with `local`, the only envs this repository's tree may hold (ADR-0004). */
+    @get:Input
+    abstract val devEnvs: ListProperty<String>
 
     /** The one compose template, `docker/docker-compose.yml` (ADR-0012). */
     @get:InputFile
@@ -173,6 +192,13 @@ abstract class ConfigLintTask : DefaultTask() {
         val linter = ConfigLinter(
             configRoot = configRoot,
             apps = apps.get(),
+            scope = LintScope(
+                regions = regions.get().toSet(),
+                stages = stages.get().toSet(),
+                flows = flows.get().toSet(),
+                kinds = kinds.get().toSet(),
+                envs = devEnvs.get().toSet(),
+            ),
             template = template.orNull?.asFile,
             appOverrides = appOverrides.get().mapValues { File(it.value) },
             completeEnvs = completeEnvs.get(),

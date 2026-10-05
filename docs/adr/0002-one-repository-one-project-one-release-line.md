@@ -2,11 +2,11 @@
 
 | | |
 |---|---|
-| Status | Accepted |
+| Status | Accepted. Rule 5 superseded by [ADR-0030](0030-platform-yml-declares-every-project-value.md) |
 | Date | 2026-10-04 |
 | Applies to | every repository built from this one |
-| Enforced by | `settings.gradle.kts` project discovery; `release.yml` (`printVersion` must equal the tag); `scripts/pool-deploy.sh`, `release.yml` and `scripts/ci/retention.sh` read the project from `platform.yml` |
-| Related | [ADR-0003](0003-identity-tuple-names-every-instance.md), [ADR-0006](0006-apps-and-framework-modules.md), [ADR-0008](0008-versions-derived-from-git.md), [ADR-0010](0010-image-tags-digests-promotion-retention.md) |
+| Enforced by | the `buildlogic.platform` settings plugin (`rootProject.name` from `platform.yml`, checked against the repository name in CI, [ADR-0030](0030-platform-yml-declares-every-project-value.md)); `release.yml` (`printVersion` must equal the tag); `scripts/pool-deploy.sh`, `release.yml` and `scripts/ci/retention.sh` read the project from `platform.yml` |
+| Related | [ADR-0003](0003-identity-tuple-names-every-instance.md), [ADR-0006](0006-apps-and-framework-modules.md), [ADR-0008](0008-versions-derived-from-git.md), [ADR-0010](0010-image-tags-digests-promotion-retention.md), [ADR-0030](0030-platform-yml-declares-every-project-value.md) |
 
 **In short:** A repository holds one project: a set of Spring Boot apps and the libraries they share, versioned and
 released together as `vX.Y.Z`. One release line means one tag series, one release pull request per release, and one
@@ -100,8 +100,4 @@ flowchart LR
 - Adding an app needs no new pipeline, tag series or release configuration
   ([ADR-0006](0006-apps-and-framework-modules.md)).
 - An app that needs its own cadence is moved to a new repository created from this one.
-- The tree does not fully conform yet. These known gaps are tracked in the index:
-  - `dev_envs`, `apps_dir` and `kinds` are declared, but nothing reads them;
-  - the identity vocabulary is not in the manifest yet;
-  - several project values are still hard-coded in the shared tooling;
-  - nothing checks that `rootProject.name` equals `projects[0].name`.
+- The manifest's full schema, the checks on it and the tools that read it are [ADR-0030](0030-platform-yml-declares-every-project-value.md).

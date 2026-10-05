@@ -12,7 +12,7 @@ description: >-
   deploying when any container would run an image that was not loaded.
 inputs:
   env:
-    description: Config env — local or a *-dev env (the script refuses qa and prod).
+    description: Config env — local or a dev env of platform.yml (the script deploys no other env).
     required: true
   flow:
     description: One instance — its flow (with app and instance). Leave empty when targets is used.

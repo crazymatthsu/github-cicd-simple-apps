@@ -58,9 +58,32 @@ fun interface ManifestValidator {
     fun validate(rendered: File): CommandResult?
 }
 
+/**
+ * What config-lint checks names and envs against: the identity vocabulary and the runtimes of platform.yml
+ * (ADR-0003, ADR-0030), and the envs the checked tree may hold (ADR-0004).
+ */
+data class LintScope(
+    val regions: Set<String>,
+    val stages: Set<String>,
+    val flows: Set<String>,
+    val kinds: Set<String>,
+    /** The envs the tree may hold besides `local` (platform.yml `dev_envs`); null: every env of the vocabulary. */
+    val envs: Set<String>?,
+) {
+    /** `local`, or `<region>-<stage>` with a region and a stage of the vocabulary. */
+    fun isEnv(env: String): Boolean =
+        env == LOCAL || (env.substringBefore('-', "") in regions && env.substringAfter('-', "") in stages)
+
+    /** Every stage but dev is promoted, so its tags are immutable (ADR-0004, ADR-0010). */
+    fun isPromoted(env: String): Boolean = env != LOCAL && env.substringAfter('-', "") != DEV_STAGE
+
+    companion object {
+        const val LOCAL = "local"
+        const val DEV_STAGE = "dev"
+    }
+}
+
 object ConfigRules {
-    val ENV = Regex("^(local|(us|jp)-(dev|qa|prod))$")
-    val FLOWS = setOf("cash", "deriv", "swap")
     val TOKEN = Regex("^[a-z0-9]([a-z0-9-]*[a-z0-9])?$")
     const val MAX_APP_NAME = 20
     const val MAX_APP_INSTANCE = 32
@@ -159,6 +182,8 @@ class ConfigLinter(
     private val configRoot: File,
     /** Deployable AppNames: the subprojects that apply `buildlogic.docker-image` (ADR-0006). */
     private val apps: Set<String>,
+    /** The vocabulary, runtimes and envs of platform.yml the tree is checked against (ADR-0030). */
+    private val scope: LintScope,
     /** The one compose template, `docker/docker-compose.yml` (ADR-0012); null: check 6 has nothing to render. */
     private val template: File? = null,
     /** AppName -> its `<subproject>/docker/docker-compose.override.yml`, for the apps that have one. */
@@ -219,7 +244,7 @@ class ConfigLinter(
         }
         findings += Finding(7, Severity.TODO, "config", "merged-configuration validation against " +
             "spring-configuration-metadata.json is not implemented yet (ADR-0014 check 7)")
-        findings += Finding(8, Severity.TODO, "config", "parity report across us-dev / us-qa / us-prod is not " +
+        findings += Finding(8, Severity.TODO, "config", "parity report across the envs is not " +
             "implemented yet (ADR-0014 check 8)")
         return findings.toList()
     }
@@ -229,8 +254,19 @@ class ConfigLinter(
 
     private fun lintEnv(envDir: File) {
         val env = envDir.name
-        if (!ConfigRules.ENV.matches(env)) {
-            error(1, envDir, "env '$env' must be local or <region>-<stage> with region us|jp and stage dev|qa|prod")
+        if (!scope.isEnv(env)) {
+            error(1, envDir, "env '$env' must be local or <region>-<stage> with a region of ${scope.regions.toList()} " +
+                "and a stage of ${scope.stages.toList()} (platform.yml)")
+            return
+        }
+        val envs = scope.envs
+        if (envs != null && env != LintScope.LOCAL && env !in envs) {
+            error(1, envDir, if (scope.isPromoted(env)) {
+                "env '$env' does not belong in this repository, which holds only local and its dev envs ${envs.sorted()}: " +
+                    "the promoted envs live in the configuration repository (ADR-0004)"
+            } else {
+                "env '$env' is not a dev env of this repository: add it to platform.yml dev_envs ${envs.sorted()} (ADR-0004)"
+            })
             return
         }
         val appsSeen = mutableSetOf<String>()
@@ -244,8 +280,8 @@ class ConfigLinter(
                 child.isDirectory && child.name == ConfigRules.COMMON -> error(1, child, "config/$env/_common/ removed: nothing is " +
                     "shared at the env level, the cluster <env>/<flow> is the first shared layer: config/$env/<flow>/application.flow.yml " +
                     "and _docker-compose.flow.env / .yml (ADR-0011)")
-                child.isDirectory && child.name in ConfigRules.FLOWS -> lintFlow(child, env, appsSeen)?.let { pools += it }
-                child.isDirectory -> error(1, child, "flow '${child.name}' must be one of ${ConfigRules.FLOWS.sorted()}")
+                child.isDirectory && child.name in scope.flows -> lintFlow(child, env, appsSeen)?.let { pools += it }
+                child.isDirectory -> error(1, child, "flow '${child.name}' must be one of ${scope.flows.toList()} (platform.yml)")
                 else -> error(1, child, "unexpected file in config/$env/ (expected known_hosts, <flow>/)")
             }
         }
@@ -524,7 +560,7 @@ class ConfigLinter(
     private fun checkTag(file: File, what: String, tag: String, env: String) {
         val bareTag = tag.substringBefore('@')
         if (!ConfigRules.DOCKER_TAG.matches(bareTag)) error(10, file, "$what '$tag' is not a valid image tag")
-        val immutableEnv = env.endsWith("-qa") || env.endsWith("-prod")
+        val immutableEnv = scope.isPromoted(env)
         if (immutableEnv && !ConfigRules.RELEASE_TAG.matches(tag)) {
             error(10, file, "$what '$tag' in $env must be an immutable release tag X.Y.Z (optionally " +
                 "@sha256:<digest>); floating tags are allowed only in *-dev and local (ADR-0010)")
@@ -844,7 +880,12 @@ class ConfigLinter(
             effective["user"]?.toString()?.let { user ->
                 if (!ConfigRules.LOGIN.matches(user)) error(11, file, "$where: user '$user' is not a valid login name")
             }
-            when (val kind = effective["kind"]?.toString()) {
+            val kind = effective["kind"]?.toString()
+            if ((kind == "compose" || kind == "helm") && kind !in scope.kinds) {
+                error(11, file, "$where: kind '$kind' is not a runtime of this project (platform.yml kinds: " +
+                    "${scope.kinds.joinToString()})")
+            }
+            when (kind) {
                 "compose" -> {
                     composeTargets++
                     lintComposePlacement(file, where, effective["host"]?.toString()?.takeIf { it.isNotBlank() },

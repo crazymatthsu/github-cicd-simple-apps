@@ -173,7 +173,7 @@ tasks.register<Exec>("devUp") {
         logger.lifecycle(
             "Dependencies are up (compose project $composeProject; the SQL Server password is IT_SA_PASSWORD in " +
                 "test-infra/compose/.state/$composeProject.env). Run an app against them with, e.g.:\n" +
-                "  DEPS_NETWORK=${composeProject}_default scripts/run-compose.sh local cash $appName <AppInstance> start",
+                "  DEPS_NETWORK=${composeProject}_default scripts/run-compose.sh local <flow> $appName <AppInstance> start",
         )
     }
 }
