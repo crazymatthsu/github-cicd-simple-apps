@@ -86,7 +86,7 @@ Options:
       ssh      $POOL_SSH $POOL_SSH_OPTS <user>@<host> -- '[IMAGE_TAG=<tag>] <root>/<version>/scripts/run-compose.sh
                <env> <flow> <app> <inst> <command>' (or .../activate), and rsync -az --delete over the same ssh into
                <root>/<version>/ (ADR-0018: the deploy user's forced command on every box; the boxes are provisioned
-               with /apps/<user>/versions/<project>/ and /apps/<user>/shared/<project>/)
+               with /apps/<user>/versions/<project>/ and /logs/<user>/<project>/)
       local    the runner plays every box: <local-root>/<host><root>/<version>/ per box (rsync -a --delete); per
                placement validate, record-tag --dry-run and start --dry-run, activate --dry-run per box, and the
                ssh commands are printed. With POOL_LOCAL_EXECUTE=true, discover / status / record-tag / pull /

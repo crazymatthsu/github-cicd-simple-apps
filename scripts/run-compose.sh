@@ -17,7 +17,7 @@ readonly COMMANDS="start stop down restart config app-config printenv compose-en
 readonly COMPOSE_ENV_ALLOWED="IMAGE_REPO IMAGE_TAG APP_ENV APP_FLOW APP_NAME APP_INSTANCE JAVA_OPTS TZ LOG_LEVEL_ROOT LOGS_DIR DATA_DIR MEM_LIMIT"
 # Only the instance layer may set these (plus *_HOST_PORT): the image tag, the identity and the published ports.
 readonly INSTANCE_ONLY="IMAGE_TAG APP_ENV APP_FLOW APP_NAME APP_INSTANCE"
-readonly SCRIPT_VARIABLES="COMPOSE_ENV_FILE FLOW_APP_YML APP_APP_YML INSTANCE_APP_YML PROJECT"
+readonly SCRIPT_VARIABLES="COMPOSE_ENV_FILE FLOW_APP_YML APP_APP_YML INSTANCE_APP_YML PROJECT INSTANCE_LOGS_DIR INSTANCE_DATA_DIR"
 # The compose service of every app (docker/docker-compose.yml); other containers reach it as its AppName.
 readonly SERVICE=app
 readonly IMAGE_TAG_PATTERN='^[A-Za-z0-9_][A-Za-z0-9_.-]{0,127}(@sha256:[0-9a-f]{64})?$'
@@ -60,7 +60,7 @@ Commands (ADR-0017):
 Host bundle form (a box of a host pool, ADR-0018):
   run-compose.sh activate [--keep N] [--previous | --to <version>] [--dry-run]
                         make this version directory, /apps/<user>/versions/<project>/<version>/, the box's `current`
-                        one (an atomic symlink switch), create shared/<project>/{logs,data} beside versions/, and
+                        one (an atomic symlink switch), create /logs/<user>/<project>/{logs,data}, and
                         remove the versions beyond the newest N (default 5; never current or the one it replaced).
                         --previous / --to <version> switch current to an older version instead (a rollback,
                         run through current/scripts/run-compose.sh). Prints `activated <version>` on stdout.
@@ -86,6 +86,10 @@ Files (ADR-0012; <c> = config/<env>/<flow>, every file optional unless marked):
   spring   <c>/application.flow.yml, <c>/<AppName>/application.app.yml (required),
            <c>/<AppName>/<AppInstance>/application.instance.yml (required), each mounted as one file at
            /config/{flow,common,instance}/application.yml (a missing flow layer mounts /dev/null)
+  host     LOGS_DIR and DATA_DIR of the env layers: absolute host paths, on a box /logs/<user>/<project>/logs
+           and /logs/<user>/<project>/data (ADR-0018). The instance mounts <dir>/<AppName>/<AppInstance> at
+           /app/logs and /app/data; start and restart create them, writable by the image's user. Unset: volumes
+           of the compose project
 
 Exit codes: 0 ok · 1 operation failed or check negative · 2 usage · 3 refused by a safety rule ·
             4 config tree error · 5 engine not found or not running · 124 timeout
@@ -189,7 +193,7 @@ bundle_value() {
 # atomically (a new symlink renamed over the old one); --previous / --to point it at an older version instead.
 # The newest --keep versions stay, and always current and the version it replaced, so a rollback stays possible.
 cmd_activate() {
-    local versions version target previous keep="${KEEP:-5}" tmp v key shared index=0 candidates=() kept=() removed=()
+    local versions version target previous keep="${KEEP:-5}" tmp v key user_dir logs_root index=0 candidates=() kept=() removed=()
     BUNDLE_ROOT="$(find_bundle_root "$SCRIPT_DIR" || true)"
     [ -n "$BUNDLE_ROOT" ] ||
         die "$EXIT_REFUSED" "activate switches the current version of a host bundle (a box synced by scripts/pool-deploy.sh) only; this is a checkout"
@@ -228,11 +232,15 @@ cmd_activate() {
         if [ "$index" -lt "$keep" ] || [ "$v" = "$target" ] || [ "$v" = "$previous" ]; then kept+=("$v"); else removed+=("$v"); fi
         index=$((index + 1))
     done
-    shared="$(dirname "$(dirname "$versions")")/shared/$(basename "$versions")"
+    # What survives a version change (ADR-0018): /logs/<user>/<project>/{logs,data} (LOGS_DIR, DATA_DIR), under the
+    # root that holds /apps/<user>/versions/<project>/ (/ on a box; a box directory of the local transport in tests).
+    user_dir="$(dirname "$(dirname "$versions")")"
+    logs_root="$(dirname "$(dirname "$user_dir")")"
+    logs_root="${logs_root%/}/logs/$(basename "$user_dir")/$(basename "$versions")"
     if [ "$DRY_RUN" -eq 1 ]; then
         printf 'run-compose.sh --dry-run: activate (nothing is executed)\n'
         printf '  %-13s %s\n' "versions" "$versions" "activate" "current -> $target (now ${previous:-none})" \
-            "shared" "$shared/{logs,data}" "keep" "${kept[*]}" "remove" "${removed[*]:--}"
+            "logs, data" "$logs_root/{logs,data}" "keep" "${kept[*]}" "remove" "${removed[*]:--}"
         return 0
     fi
     if [ "$target" = "$previous" ]; then
@@ -245,8 +253,7 @@ cmd_activate() {
         fi
         info "$versions/current -> $target (was ${previous:-none})"
     fi
-    # What survives a version change (ADR-0018): shared/<project>/{logs,data} beside versions/ (LOGS_DIR, DATA_DIR).
-    mkdir -p "$shared/logs" "$shared/data" 2>/dev/null || warn "could not create $shared/{logs,data}"
+    mkdir -p "$logs_root/logs" "$logs_root/data" 2>/dev/null || warn "could not create $logs_root/{logs,data}"
     for v in ${removed[@]+"${removed[@]}"}; do
         if rm -rf -- "${versions:?}/$v"; then info "removed version $v (keeping the newest $keep)"; else warn "could not remove $versions/$v"; fi
     done
@@ -637,6 +644,20 @@ fi
 export APP_ENV="$ENV_NAME" APP_FLOW="$FLOW" APP_NAME="$APP" APP_INSTANCE="$INSTANCE"
 export COMPOSE_ENV_FILE="$ENV_FILE" APP_APP_YML INSTANCE_APP_YML PROJECT
 if [ -f "$FLOW_APP_YML" ]; then export FLOW_APP_YML; else unset FLOW_APP_YML; fi
+# The instance's host directories (ADR-0018): LOGS_DIR and DATA_DIR of the env layers name the flow's directories,
+# and each instance mounts its own <dir>/<AppName>/<AppInstance>, so two instances on a box never share a file.
+# Unset, the template mounts volumes of the compose project instead.
+unset INSTANCE_LOGS_DIR INSTANCE_DATA_DIR
+for key in LOGS_DIR DATA_DIR; do
+    value="$(env_value "$key")"
+    [ -n "$value" ] || continue
+    case "$value" in
+        /*) ;;
+        *) die "$EXIT_CONFIG" "$key='$value' in the env layers must be an absolute host path (ADR-0018)" ;;
+    esac
+    printf -v "INSTANCE_$key" '%s' "${value%/}/$APP/$INSTANCE"
+    export "INSTANCE_$key"
+done
 # DEPS_NETWORK joins a running dependency stack's network: a generated override (literal values — podman-compose
 # reads an interpolated `external: false` as true), merged last.
 if [ -n "${DEPS_NETWORK:-}" ]; then
@@ -860,7 +881,8 @@ show_plan() {
         "env layers" "$(rel_list "${ENV_LAYERS[@]}")" "combined env" "$(rel "$ENV_FILE")" \
         "spring layers" "$(rel_list ${FLOW_APP_YML:+"$FLOW_APP_YML"} "$APP_APP_YML" "$INSTANCE_APP_YML")" "project" "$PROJECT" \
         "identity" "APP_ENV=$APP_ENV APP_FLOW=$APP_FLOW APP_NAME=$APP_NAME APP_INSTANCE=$APP_INSTANCE" \
-        "image" "$IMAGE_REF" "engine" "$ENGINE (${COMPOSE[*]})" "deps network" "${DEPS_NETWORK:--}"
+        "image" "$IMAGE_REF" "engine" "$ENGINE (${COMPOSE[*]})" "deps network" "${DEPS_NETWORK:--}" \
+        "logs, data" "${INSTANCE_LOGS_DIR:-volume logs}, ${INSTANCE_DATA_DIR:-volume data}"
     if [ -n "$BUNDLE_ROOT" ]; then
         printf '  %-13s %s %s/%s version %s, tag %s, %s files, sha256 %.12s…, pool %s\n' "host bundle" \
             "$(bundle_value BUNDLE_PROJECT)" "$(bundle_value BUNDLE_ENV)" "$(bundle_value BUNDLE_FLOW)" "$(basename "$BUNDLE_ROOT")" \
@@ -903,8 +925,24 @@ wait_ready() {
     return "$EXIT_TIMEOUT"
 }
 
+# The instance's host directories (ADR-0018), before its container starts: an engine would create a missing one as
+# root (docker) or refuse it (podman). The deploy user creates them and opens them to the image's non-root user,
+# whose uid differs from the deploy user's. A directory that cannot be prepared is a warning: the app still logs to
+# stdout, and the engine reports a mount it cannot make.
+prepare_host_dirs() {
+    local dir
+    for dir in ${INSTANCE_LOGS_DIR:+"$INSTANCE_LOGS_DIR"} ${INSTANCE_DATA_DIR:+"$INSTANCE_DATA_DIR"}; do
+        if [ "$DRY_RUN" -eq 1 ]; then
+            plan_step "mkdir -p $dir && chmod 0777 $dir"
+        elif ! { mkdir -p "$dir" && chmod 0777 "$dir"; } 2>/dev/null; then
+            warn "could not prepare $dir (ADR-0018): create it writable for the image's user (uid 10001)"
+        fi
+    done
+}
+
 cmd_start() {
     local rc=0 started
+    prepare_host_dirs
     started="$(date +%s)"
     if [ "$NO_WAIT" -eq 1 ]; then
         compose up -d || rc=$?
@@ -1035,6 +1073,7 @@ cmd_printenv() {
         printf 'COMPOSE_FILES=%s\nENV_LAYERS=%s\nCOMPOSE_ENV_FILE=%s\nPROJECT=%s\nENGINE=%s\nCOMPOSE=%s\n' \
             "${COMPOSE_FILES[*]}" "${ENV_LAYERS[*]}" "$ENV_FILE" "$PROJECT" "$ENGINE" "${COMPOSE[*]}"
         printf 'FLOW_APP_YML=%s\nAPP_APP_YML=%s\nINSTANCE_APP_YML=%s\n' "${FLOW_APP_YML:-}" "$APP_APP_YML" "$INSTANCE_APP_YML"
+        printf 'INSTANCE_LOGS_DIR=%s\nINSTANCE_DATA_DIR=%s\n' "${INSTANCE_LOGS_DIR:-}" "${INSTANCE_DATA_DIR:-}"
         printf 'APP_ENV=%s\nAPP_FLOW=%s\nAPP_NAME=%s\nAPP_INSTANCE=%s\nDEPS_NETWORK=%s\nSELINUX_LABEL_SHARED=%s\n' \
             "$APP_ENV" "$APP_FLOW" "$APP_NAME" "$APP_INSTANCE" "${DEPS_NETWORK:-}" "$SELINUX_LABEL_SHARED"
         printf '\n# ---- the combined env (%s) ----\n' "$(rel "$ENV_FILE")"

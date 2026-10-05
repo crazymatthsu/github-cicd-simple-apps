@@ -5,8 +5,9 @@
 # config tree's _docker-compose.<layer>.yml. Two callers set its variables:
 #  - scripts/run-compose.sh: identity (APP_ENV, APP_FLOW, APP_NAME, APP_INSTANCE from the config-tree path), the
 #    generated combined env COMPOSE_ENV_FILE (also passed with --env-file), the Spring layer files FLOW_APP_YML,
-#    APP_APP_YML, INSTANCE_APP_YML, PROJECT and the SELinux mount suffixes; with DEPS_NETWORK, an override that joins
-#    that network (below).
+#    APP_APP_YML, INSTANCE_APP_YML, PROJECT, the instance's host directories INSTANCE_LOGS_DIR and INSTANCE_DATA_DIR
+#    (when the env layers set LOGS_DIR / DATA_DIR) and the SELinux mount suffixes; with DEPS_NETWORK, an override that
+#    joins that network (below).
 #  - test-infra/compose/stack.sh up (APP_IMAGE set): merges this file into the dependency stack, on the stack's
 #    default network, with the same variables (ADR-0025).
 # Relative paths in any -f file resolve against this file's directory (docker/): overrides use variable-based paths only.
@@ -32,8 +33,12 @@ services:
       - ${FLOW_APP_YML:-/dev/null}:/config/flow/application.yml:ro${SELINUX_LABEL_SHARED:-}
       - ${APP_APP_YML:?run through run-compose.sh}:/config/common/application.yml:ro${SELINUX_LABEL_SHARED:-}
       - ${INSTANCE_APP_YML:?run through run-compose.sh}:/config/instance/application.yml:ro${SELINUX_LABEL_PRIVATE:-}
-      # Optional file appenders only; stdout is the log channel (ADR-0016). LOGS_DIR binds a host path.
-      - ${LOGS_DIR:-logs}:/app/logs
+      # Optional file appenders only; stdout is the log channel (ADR-0016). On a box the instance's own host
+      # directory <LOGS_DIR>/<AppName>/<AppInstance> (ADR-0018), else a volume of the compose project.
+      - ${INSTANCE_LOGS_DIR:-logs}:/app/logs:rw${SELINUX_LABEL_PRIVATE:-}
+      # What the app keeps across restarts and versions: on a box <DATA_DIR>/<AppName>/<AppInstance> (ADR-0018),
+      # else a volume of the compose project.
+      - ${INSTANCE_DATA_DIR:-data}:/app/data:rw${SELINUX_LABEL_PRIVATE:-}
     read_only: true
     tmpfs:
       - /tmp
@@ -72,6 +77,10 @@ services:
 
 volumes:
   logs:
+    labels:
+      com.example.ci.run: "${CI_RUN_ID:-local}"
+      com.example.ci.attempt: "${CI_RUN_ATTEMPT:-0}"
+  data:
     labels:
       com.example.ci.run: "${CI_RUN_ID:-local}"
       com.example.ci.attempt: "${CI_RUN_ATTEMPT:-0}"

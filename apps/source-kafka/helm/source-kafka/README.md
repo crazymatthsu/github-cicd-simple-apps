@@ -79,7 +79,7 @@ The pods of the connector add `app.kubernetes.io/component: connector` (the sele
 | `strategy` | `{ type: Recreate }` | `RollingUpdate` only for idempotent pipelines |
 | `terminationGracePeriodSeconds` | `30` | graceful shutdown ([ADR-0015](../../../../docs/adr/0015-actuator-health-and-metrics-contract.md)) |
 | `podSecurityContext`, `securityContext` | non-root 10001, `fsGroup` 10001, `RuntimeDefault` seccomp; read-only root, no privilege escalation, all capabilities dropped | Pod Security Standard `restricted` |
-| `tmp.sizeLimit`, `logs.sizeLimit` | `256Mi` | emptyDir `/tmp` and `/app/logs` |
+| `tmp.sizeLimit`, `logs.sizeLimit`, `data.sizeLimit` | `256Mi` | emptyDir `/tmp`, `/app/logs` and `/app/data` |
 | `topologySpread.*` | enabled, `topology.kubernetes.io/zone`, skew 1, `ScheduleAnyway` | instances of one app spread across zones |
 | `reloader.enabled` | `false` | Reloader annotation for the ESO-owned Secret |
 | `serviceMonitor.enabled`, `.interval`, `.path`, `.labels` | `false`, `30s`, `/actuator/prometheus`, `{}` | Prometheus Operator |

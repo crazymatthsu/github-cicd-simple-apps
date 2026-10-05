@@ -23,7 +23,9 @@ must not expose secrets.
 ## Decision
 
 1. **stdout is the log channel.** Apps log to stdout. File appenders are optional and write only to `/app/logs`
-   (`LOGS_DIR` on the host). The compose template rotates container logs (`json-file`, 10 MB × 3).
+   (on a box, the instance's `<LOGS_DIR>/<AppName>/<AppInstance>`,
+   [ADR-0018](0018-on-prem-host-layout-versioned-bundles.md)). The compose template rotates container logs
+   (`json-file`, 10 MB × 3).
 2. **Levels.** The root level is `logging.level.root: ${LOG_LEVEL_ROOT:INFO}`, and `LOG_LEVEL_ROOT` is an env-layer
    setting ([ADR-0012](0012-compose-template-and-generated-env.md)). Any other level is a property in a YAML
    layer.

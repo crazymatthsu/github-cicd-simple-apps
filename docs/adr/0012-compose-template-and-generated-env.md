@@ -95,9 +95,9 @@ flowchart LR
 
    | Layer | Variables |
    |---|---|
-   | any layer | `IMAGE_REPO`, `JAVA_OPTS`, `TZ`, `LOG_LEVEL_ROOT`, `LOGS_DIR`, `DATA_DIR`, `MEM_LIMIT` |
+   | any layer | `IMAGE_REPO`, `JAVA_OPTS`, `TZ`, `LOG_LEVEL_ROOT`, `MEM_LIMIT`; `LOGS_DIR` and `DATA_DIR`, absolute host paths of which each instance mounts `<AppName>/<AppInstance>` ([ADR-0018](0018-on-prem-host-layout-versioned-bundles.md)) |
    | instance layer only | `IMAGE_TAG`; `APP_ENV`, `APP_FLOW`, `APP_NAME`, `APP_INSTANCE` (restating the path); `*_HOST_PORT` (1024–65535, distinct per box) |
-   | never | `SPRING_*`, `LOGGING_*`, `MANAGEMENT_*`, `CONNECTOR_*`; the variables `run-compose.sh` sets (`COMPOSE_ENV_FILE`, `FLOW_APP_YML`, `APP_APP_YML`, `INSTANCE_APP_YML`, `PROJECT`); secrets |
+   | never | `SPRING_*`, `LOGGING_*`, `MANAGEMENT_*`, `CONNECTOR_*`; the variables `run-compose.sh` sets (`COMPOSE_ENV_FILE`, `FLOW_APP_YML`, `APP_APP_YML`, `INSTANCE_APP_YML`, `PROJECT`, `INSTANCE_LOGS_DIR`, `INSTANCE_DATA_DIR`); secrets |
 
    Comments stand on lines of their own, because docker compose and podman-compose read a trailing `#` differently.
 4. **One generated, combined env.** `run-compose.sh` merges the layers per key, and the later layer wins.
