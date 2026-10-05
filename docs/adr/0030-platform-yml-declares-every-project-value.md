@@ -163,4 +163,4 @@ flowchart LR
 - `apps_dir` lets a repository keep its apps in another directory without changing the tooling. That deviates from
   [ADR-0006](0006-apps-and-framework-modules.md), so such a repository records the deviation in an ADR of its own
   (ADR-1000 or later).
-- The project list of `.github/affected-map.yml` is still kept by hand (known gap in the index).
+- CI derives the project list from the build files ([ADR-0031](0031-ci-derives-the-projects-from-the-build-files.md)).

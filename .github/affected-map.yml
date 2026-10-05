@@ -5,20 +5,13 @@
 #
 # Glob syntax: `**` spans directories (also zero of them), `*` and `?` stay inside one path segment.
 # Every changed path is classified by the FIRST section that matches, in this order:
-#   docs → config → shared → paths → (no match: treated as shared, so an unmapped file can never
-#   silently skip the tests it affects). Keep this file in step with the repository tree: one `projects`
-#   entry and one `paths` glob per directory under apps/ (by hand until it is derived from the build, ADR-0022).
-# `base-images` and `deploy-test` are flags instead: any matching path raises them, whatever its class.
+#   docs → config → shared → a project's own directory → (no match: treated as shared, so an unmapped file
+#   can never silently skip the tests it affects).
+# The projects are not listed here: scripts/ci/projects.py derives them, whether each has an image and
+# integration tests, and the directory that selects it, from the build files (ADR-0031). A new app needs
+# no edit here. `base-images` and `deploy-test` are flags instead: any matching path raises them, whatever
+# its class.
 schema: 1
-
-# Every Gradle project CI knows: apps/<AppName> and framework/<name> are top-level projects (settings.gradle.kts).
-# `image`: has buildImage / pushImage / printImageRef (ADR-0007).
-# `it`: has an integrationTest task, so it joins the component IT matrix (ADR-0022).
-projects:
-  ":connectors-framework": { image: false, it: false }
-  ":source-kafka": { image: true, it: true }
-  ":source-amps": { image: true, it: true }
-  ":source-database": { image: true, it: true }
 
 # Nothing to build or test: when every changed path is here, the run is "docs-only" (ADR-0022).
 docs:
@@ -58,25 +51,16 @@ shared:
   - ".github/**"
   - ".hadolint.yaml"
 
-# Changes confined to one app.
-paths:
-  - glob: "apps/source-kafka/**"
-    projects: [":source-kafka"]
-  - glob: "apps/source-amps/**"
-    projects: [":source-amps"]
-  - glob: "apps/source-database/**"
-    projects: [":source-database"]
-
 # Company base images (ADR-0009) are built and published outside this repository; this repository only
-# consumes ghcr.io/crazymatthsu/base/*, so no path raises the flag.
+# consumes <registry>/base/* (platform.yml), so no path raises the flag.
 base-images: []
 
 # Kind deployment test (ADR-0019, ADR-0022): `deploy-test` is true when `full` is, or when a path
-# here changed — the charts, the config tree, the kind tier, the Helm deploy scripts and their actions,
-# or the app the test deploys. pr.yml then runs `kind-deploy` (PR and merge queue) when this run also
-# pushed the source-database image; without one (a config-only change builds nothing) config-lint's
-# helm lint / template / kubeconform per instance is the PR check, and main.yml's kind-deploy runs
-# before deploy-dev.
+# here changed — the charts, the config tree, the kind tier, the Helm deploy scripts and their actions —
+# or the directory of the app the test deploys, platform.yml's reference_app, which affected.py adds.
+# pr.yml then runs `kind-deploy` (PR and merge queue) when this run also pushed that app's image; without
+# one (a config-only change builds nothing) config-lint's helm lint / template / kubeconform per instance
+# is the PR check, and main.yml's kind-deploy runs before deploy-dev.
 deploy-test:
   - "**/helm/**"
   - "config/**"
@@ -86,4 +70,3 @@ deploy-test:
   - ".github/actions/kind-cluster/**"
   - ".github/actions/helm-deploy-instance/**"
   - ".github/workflows/_kind-deploy.yml"
-  - "apps/source-database/**"

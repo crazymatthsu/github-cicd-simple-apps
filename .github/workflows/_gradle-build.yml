@@ -81,11 +81,8 @@ jobs:
       image-push-tasks: ${{ steps.plan.outputs.image-push-tasks }}
       image-ref-tasks: ${{ steps.plan.outputs.image-ref-tasks }}
     steps:
+      # The whole tree: the projects are derived from the modules' build files (scripts/ci/projects.py, ADR-0031).
       - uses: actions/checkout@v7
-        with:
-          sparse-checkout: |
-            .github
-            scripts/ci
 
       - uses: ./.github/actions/registry-login
 
@@ -129,14 +126,15 @@ jobs:
           BUILD_IMAGES: ${{ inputs.build-images }}
         run: |
           set -euo pipefail
-          meta=$(yq -o=json -I=0 '.projects' .github/affected-map.yml)
+          # Every project, and whether it builds an image and has integration tests, from the build files (ADR-0031).
+          meta=$(python3 scripts/ci/projects.py | jq -c 'map_values({image, it})')
           all=$(jq -c 'keys_unsorted' <<<"$meta")
           if [[ $PROJECTS == all ]]; then
             selected=$all
           else
             selected=$(jq -c --argjson known "$all" '
               if type == "array" and length > 0 and all(.[]; . as $p | type == "string" and ($known | index($p)) != null)
-              then . else error("projects must be a non-empty JSON list of Gradle paths from .github/affected-map.yml") end
+              then . else error("projects must be a non-empty JSON list of the Gradle paths scripts/ci/projects.py derives") end
             ' <<<"$PROJECTS")
           fi
           images=$(jq -c --argjson meta "$meta" '[.[] | select($meta[.].image == true)]' <<<"$selected")

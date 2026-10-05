@@ -150,7 +150,8 @@ jobs:
           SHA: ${{ steps.tag.outputs.sha }}
         run: |
           set -euo pipefail
-          projects=$(yq -o=json -I=0 '.projects | to_entries | map(select(.value.image == true) | .key)' .github/affected-map.yml)
+          # The projects that build an image, derived from the build files (ADR-0031).
+          projects=$(python3 scripts/ci/projects.py --images)
           # Images are <registry>/<project>/<AppName> (ADR-0010): registry and release line from the manifest.
           registry=$(yq '.registry' platform.yml)
           project_name=$(yq '.projects[0].name' platform.yml)

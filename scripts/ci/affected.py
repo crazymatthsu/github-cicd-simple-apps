@@ -1,13 +1,16 @@
 #!/usr/bin/env python3
 """Affected-subproject detection for CI (ADR-0022).
 
-Maps the paths changed between two commits onto Gradle projects with .github/affected-map.yml and
-prints what the PR workflow must build and test. Standard library only; the YAML map is converted
-with `yq` (preinstalled on GitHub-hosted runners) or PyYAML when available.
+Maps the paths changed between two commits onto Gradle projects and prints what the PR workflow must build and
+test. The projects, and the directory that selects each one, are derived from the build files (projects.py,
+ADR-0031); .github/affected-map.yml holds only the path classes (docs, config, shared) and the flags. The
+reference app's directory (platform.yml) also raises `deploy-test`. Standard library only; the YAML map is
+converted with `yq` (preinstalled on GitHub-hosted runners) or PyYAML when available.
 
     python3 scripts/ci/affected.py --base origin/main            # what CI does for this branch
     python3 scripts/ci/affected.py --files a/b.java docs/x.md    # classify explicit paths
     python3 scripts/ci/affected.py --full --reason "label ci:full"
+    python3 scripts/ci/affected.py --root /path/to/repo --files apps/x/a.java   # another checkout
 
 Outputs (stdout as JSON; `key=value` lines appended to --github-output, a table to --summary):
   projects        JSON list of Gradle projects to build (every project when full)
@@ -18,7 +21,8 @@ Outputs (stdout as JSON; `key=value` lines appended to --github-output, a table 
   config-changed  true when config/** changed (config-lint must run)
   base-changed    true when a company base image changed (build it locally, do not pull it)
   deploy-test     true when the kind deployment test must run: full, or a path of the map's `deploy-test`
-                  section changed (charts, config, test-infra/kind, the Helm scripts and actions)
+                  section changed (charts, config, test-infra/kind, the Helm scripts and actions) or the
+                  reference app's directory
   reason          one line explaining the decision
 
 Exit codes: 0 success, 2 usage or map error, 3 git error.
@@ -32,6 +36,9 @@ import re
 import shutil
 import subprocess
 import sys
+
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+import projects as project_index  # noqa: E402  (scripts/ci/projects.py, beside this script)
 
 DEFAULT_MAP = ".github/affected-map.yml"
 # Sections that are plain glob lists. docs → config → shared classify a path (first match wins);
@@ -94,17 +101,23 @@ def load_map(path: str) -> dict:
 def validate_map(cfg: dict) -> None:
     if not isinstance(cfg, dict) or cfg.get("schema") != 1:
         fail("map must be a mapping with `schema: 1`", 2)
-    projects = cfg.get("projects")
-    if not isinstance(projects, dict) or not projects:
-        fail("map needs a non-empty `projects` mapping", 2)
-    for rule in cfg.get("paths", []):
-        unknown = [p for p in rule.get("projects", []) if p not in projects]
-        if unknown or "glob" not in rule:
-            fail(f"bad `paths` rule {rule!r} (unknown projects: {unknown})", 2)
+    for derived in ("projects", "paths"):
+        if derived in cfg:
+            fail(f"`{derived}` is derived from the build files (scripts/ci/projects.py, ADR-0031): remove it from the map", 2)
     for section in GLOB_SECTIONS:
         globs = cfg.get(section, [])
         if not isinstance(globs, list) or not all(isinstance(g, str) and g for g in globs):
             fail(f"`{section}` must be a list of glob strings", 2)
+
+
+def add_projects(cfg: dict, root: str) -> dict:
+    """The derived part of the map (ADR-0031): every project, the directory that selects it, and the reference app's
+    directory as a `deploy-test` path (the kind deployment test deploys that app)."""
+    index = project_index.derive(root)
+    cfg["projects"] = {path: {"image": entry["image"], "it": entry["it"]} for path, entry in index.items()}
+    cfg["paths"] = [{"glob": f"{entry['dir']}/**", "projects": [path]} for path, entry in index.items()]
+    cfg["deploy-test"] = [*cfg.get("deploy-test", []), f"{project_index.reference_dir(root, index)}/**"]
+    return cfg
 
 
 def git(*args: str) -> str:
@@ -261,6 +274,7 @@ def write_outputs(decision: dict, github_output: str | None, summary: str | None
 def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     parser.add_argument("--map", default=DEFAULT_MAP, help=f"path to the map (default {DEFAULT_MAP})")
+    parser.add_argument("--root", default=".", help="the repository root the projects are derived from (default .)")
     parser.add_argument("--base", default="", help="diff base commit or ref (default: merge-base with --default-branch)")
     parser.add_argument("--head", default="HEAD", help="head commit or ref (default HEAD)")
     parser.add_argument("--default-branch", default="origin/main", help="ref used when --base is empty")
@@ -273,6 +287,7 @@ def main() -> None:
 
     cfg = load_map(args.map)
     validate_map(cfg)
+    add_projects(cfg, args.root)
     if args.files is not None:
         files, note = args.files, "explicit --files"
     else:

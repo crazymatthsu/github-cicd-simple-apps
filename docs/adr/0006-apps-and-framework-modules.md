@@ -89,9 +89,9 @@ flowchart TD
 - A new app needs no change to the settings, the root build, the Dockerfile, the compose template or the workflow
   files.
 - It is not yet "just a directory", though:
-  - two maps must still be edited by hand, `.github/affected-map.yml`
-    ([ADR-0022](0022-pull-request-pipeline.md)) and `test-infra/compose/stacks.yml`
-    ([ADR-0025](0025-integration-tests-on-compose-stacks.md));
+  - `test-infra/compose/stacks.yml` must still be edited by hand
+    ([ADR-0025](0025-integration-tests-on-compose-stacks.md)); CI derives the app itself from its build file
+    ([ADR-0031](0031-ci-derives-the-projects-from-the-build-files.md));
   - the app also needs `local` configuration and, while Helm is provisional, a chart.
 
   The checklist in the index lists every step, and the hand-edited maps are a known gap.

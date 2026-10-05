@@ -89,9 +89,10 @@ flowchart LR
 | [0020](0020-branching-protection-and-merge-rules.md) | `main` and `hotfix/*` change only by squash-merged pull request with `pr-gate` green. Pull-request titles are Conventional Commits, and no workflow writes to protected branches. | Accepted |
 | **CI** | | |
 | [0021](0021-ci-layering.md) | Thin trigger workflows call reusable stage workflows, then composite actions, then scripts and Gradle tasks that run on a laptop. Least privilege, and JSON between stages. | Accepted |
-| [0022](0022-pull-request-pipeline.md) | Affected projects come from `affected-map.yml`: a fast tier on push, a full tier on pull requests and the merge queue. `pr-gate` is the only required check. | Accepted |
+| [0022](0022-pull-request-pipeline.md) | Affected projects come from the changed paths, classified by `affected-map.yml` and the projects' own directories: a fast tier on push, a full tier on pull requests and the merge queue. `pr-gate` is the only required check. | Accepted; rule 2 superseded in part by ADR-0031 |
 | [0023](0023-main-pipeline-build-once-test-publish.md) | Build once, run the component and system tests on those digests, then publish, then deploy dev. | Accepted |
 | [0024](0024-ephemeral-ci-environments.md) | Each job gets its own labelled stack or cluster, torn down in `always()` steps; a leak check and a nightly drill prove the teardown. | Accepted |
+| [0031](0031-ci-derives-the-projects-from-the-build-files.md) | CI derives the projects — which build an image, which have integration tests, which directory selects each — from the build files, with the build's own rules; the affected map keeps only path classes. | Accepted |
 | **Testing** | | |
 | [0025](0025-integration-tests-on-compose-stacks.md) | One `stack.sh` serves laptops and CI. Stacks are declared per project, the app under test runs as deployed, and tests run at a component and a system level. | Accepted |
 | [0026](0026-integration-test-data-and-comparison.md) | Test cases are `test-infra/testdata/<AppName>/<case>/`: a manifest, inputs, and canonical JSON Lines, compared by shared comparators with explicit tolerances. | Accepted |
@@ -142,9 +143,8 @@ flowchart LR
      `_docker-compose.instance.env`. The env file holds `IMAGE_TAG=local`, the identity restating the path, and a
      free `ACTUATOR_HOST_PORT`.
 5. In each dev env: the same files, with `IMAGE_TAG=main`, plus a target in the flow's `workflows-config.yml`.
-6. Register the app by hand (known gap G10):
-   - `.github/affected-map.yml`: a `projects` entry and a `paths` glob;
-   - `test-infra/compose/stacks.yml`: its dependency stacks.
+6. Declare its dependency stacks in `test-infra/compose/stacks.yml` (known gap G10). CI finds the app itself,
+   from its build file ([ADR-0031](0031-ci-derives-the-projects-from-the-build-files.md)).
 7. Integration tests in `src/integrationTest/java`, and a test case in `test-infra/testdata/<AppName>/<case>/`
    ([ADR-0025](0025-integration-tests-on-compose-stacks.md), [ADR-0026](0026-integration-test-data-and-comparison.md)).
 8. A chart: copy `apps/<other>/helm/<other>/` to `apps/<AppName>/helm/<AppName>/` and rename it. Required while Helm
@@ -197,7 +197,7 @@ that opens a gap adds a row.
 |---|---|---|
 | G4 | `release.yml`'s bump job commits to `config/us-qa` in this repository, and names the apps `source-*`; it must open the pull request in the configuration repository. | [0029](0029-release-and-promotion.md) |
 | G6 | `us-dev/cash/source-database/positions-db-to-deephaven` is a `kind: helm` target on the throwaway `kind-ci` cluster, so it runs nowhere after the deploy job. | [0004](0004-environments-and-runtimes.md), [0019](0019-kubernetes-and-helm-are-provisional.md) |
-| G10 | `.github/affected-map.yml` and `test-infra/compose/stacks.yml` are maintained by hand. An app missing from the map's `projects` is silently left out of the integration-test matrix, of publishing and of releases. | [0006](0006-apps-and-framework-modules.md), [0022](0022-pull-request-pipeline.md), [0025](0025-integration-tests-on-compose-stacks.md) |
+| G10 | `test-infra/compose/stacks.yml` is maintained by hand. A project without an entry fails when its stack starts, and an entry for a removed project goes unnoticed. | [0025](0025-integration-tests-on-compose-stacks.md) |
 | G11 | The framework mixes the generic operational contract with the connector domain. The `server`, `management` and `logging` blocks are copied into every app, and the secret-property list exists twice (config-lint, `SecretMasker`). | [0006](0006-apps-and-framework-modules.md), [0013](0013-secrets.md), [0015](0015-actuator-health-and-metrics-contract.md), [0016](0016-logging-and-startup-configuration-summary.md) |
 | G12 | `buildlogic.integration-test` and `it-runner.yml` hard-wire the Deephaven client and the Deephaven and SQL Server endpoints. | [0007](0007-gradle-build-with-convention-plugins.md), [0025](0025-integration-tests-on-compose-stacks.md) |
 | G13 | The base images and the system test's server image are built outside this repository. `setup-build-env`'s bootstrap path expects `docker/base/<name>/Dockerfile`, which does not exist here. | [0009](0009-one-shared-image-definition.md) |
