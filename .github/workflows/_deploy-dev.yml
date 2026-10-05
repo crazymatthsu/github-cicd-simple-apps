@@ -198,7 +198,7 @@ jobs:
           #   script with `activate [--keep N] [--previous | --to <version>]`, and the bundle sync (rsync --server
           #   into /apps/<user>/versions/<project>/<version>/, e.g. through rrsync), validates the arguments and
           #   execs them; the boxes are provisioned with /apps/<user>/versions/<project>/ and
-          #   /apps/<user>/shared/<project>/. A box that GitHub-hosted runners cannot reach gets a self-hosted
+          #   /logs/<user>/<project>/. A box that GitHub-hosted runners cannot reach gets a self-hosted
           #   runner on it (runs-on: [self-hosted, <host>]) running the same commands locally — the one
           #   self-hosted exception (ADR-0021).
           deployed=() failed=() placements=() pool_failed=()

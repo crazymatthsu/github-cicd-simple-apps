@@ -2,7 +2,7 @@
 {{- /*
 One Deployment per AppInstance, replicas 1 (ADR-0019). Everything the app reads at runtime is a read-only mount:
 the ConfigMap layers under /config/<layer>/, the Secret as a Spring config tree under /secrets/ (ADR-0013);
-/tmp and /app/logs are the only writable paths (ADR-0017). Probes and shutdown follow ADR-0015, sizing ADR-0009.
+/tmp, /app/logs and /app/data are the only writable paths (ADR-0017). Probes and shutdown follow ADR-0015, sizing ADR-0009.
 */}}
 {{- $items := include "connector.configItems" . | fromJsonArray }}
 apiVersion: apps/v1
@@ -105,6 +105,8 @@ spec:
               mountPath: /tmp
             - name: logs
               mountPath: /app/logs
+            - name: data
+              mountPath: /app/data
       volumes:
         - name: config
           configMap:
@@ -127,3 +129,6 @@ spec:
         - name: logs
           emptyDir:
             sizeLimit: {{ .Values.logs.sizeLimit }}
+        - name: data
+          emptyDir:
+            sizeLimit: {{ .Values.data.sizeLimit }}

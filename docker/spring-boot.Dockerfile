@@ -22,7 +22,8 @@ FROM ${BASE_IMAGE} AS layers
 USER root
 WORKDIR /build
 COPY application.jar .
-RUN java -Djarmode=tools -jar application.jar extract --layers --launcher --destination extracted
+RUN java -Djarmode=tools -jar application.jar extract --layers --launcher --destination extracted \
+    && mkdir -p runtime/data
 
 # Stage 2: the runtime image, least-changing layer first, so dependency layers stay byte-identical across
 # releases and the registry cache actually hits.
@@ -50,9 +51,12 @@ COPY --from=layers /build/extracted/spring-boot-loader/ ./
 COPY --from=layers /build/extracted/snapshot-dependencies/ ./
 COPY --from=layers /build/extracted/application/ ./
 COPY --chmod=0755 entrypoint.sh /app/entrypoint.sh
-# The base image provides /config (read-only mounts of the Spring layers, ADR-0011) and /app/logs (the only writable path
-# besides /tmp). No VOLUME: anonymous volumes would escape the CI leak check; compose and Kubernetes mount
-# tmpfs / emptyDir at run time instead (ADR-0017).
+# /app/data: what an app keeps across restarts and versions (DATA_DIR on a box, ADR-0018), owned by the app user like
+# the base image's /app/logs, so a fresh volume mounted there is writable.
+COPY --from=layers --chown=10001:10001 /build/runtime/ ./
+# The base image provides /config (read-only mounts of the Spring layers, ADR-0011) and /app/logs; /app/logs and
+# /app/data are the only writable paths besides /tmp. No VOLUME: anonymous volumes would escape the CI leak check;
+# compose and Kubernetes mount volumes / emptyDir at run time instead (ADR-0017).
 # Numeric user so that Kubernetes can verify runAsNonRoot (ADR-0019); the base image names it "app".
 USER 10001:10001
 EXPOSE 8080

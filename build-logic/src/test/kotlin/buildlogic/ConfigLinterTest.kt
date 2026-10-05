@@ -288,6 +288,32 @@ class ConfigLinterTest {
     }
 
     @Test
+    fun `LOGS_DIR and DATA_DIR are host paths, and every instance renders with its own directories (ADR-0018)`() {
+        validInstance("us-dev", "trades-db-to-amps")
+        validInstance("us-dev", "positions-db-to-deephaven")
+        write("us-dev/cash/workflows-config.yml", "env: us-dev\nflow: cash\ndefaults: { kind: compose, host: h }\ntargets:\n" +
+            "  - instance: source-database/trades-db-to-amps\n  - instance: source-database/positions-db-to-deephaven\n")
+        write("us-dev/cash/_docker-compose.flow.env", "LOGS_DIR=/logs/deploy/p/logs/\nDATA_DIR=/logs/deploy/p/data\n")
+        val requests = mutableListOf<ComposeRenderRequest>()
+        val findings = lint { request -> requests += request; CommandResult(0, "") }
+        assertEquals(emptyList<Finding>(), findings, findings.text())
+        val dirs = requests.associate { it.environment["APP_INSTANCE"] to (it.environment["INSTANCE_LOGS_DIR"] to it.environment["INSTANCE_DATA_DIR"]) }
+        assertEquals(mapOf(
+            "trades-db-to-amps" to ("/logs/deploy/p/logs/source-database/trades-db-to-amps" to
+                "/logs/deploy/p/data/source-database/trades-db-to-amps"),
+            "positions-db-to-deephaven" to ("/logs/deploy/p/logs/source-database/positions-db-to-deephaven" to
+                "/logs/deploy/p/data/source-database/positions-db-to-deephaven"),
+        ), dirs)
+
+        write("us-dev/cash/_docker-compose.flow.env", "LOGS_DIR=logs\nDATA_DIR=/logs/../etc\n")
+        write("us-dev/cash/source-database/_docker-compose.app.env", "INSTANCE_LOGS_DIR=/x\n")
+        val messages = lint().filter { it.check == 5 }.text()
+        assertTrue(messages.contains("LOGS_DIR=logs must be an absolute host path (ADR-0018)"), messages)
+        assertTrue(messages.contains("DATA_DIR=/logs/../etc must be an absolute host path"), messages)
+        assertTrue(messages.contains("INSTANCE_LOGS_DIR is set by run-compose.sh"), messages)
+    }
+
+    @Test
     fun `check 6 rejects relative paths in compose overrides, which resolve against docker`() {
         validInstance("local", "trades-db-to-amps")
         write("local/cash/source-database/_docker-compose.app.yml", "services:\n  app:\n    volumes:\n      - ./certs:/certs:ro\n" +

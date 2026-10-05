@@ -58,6 +58,7 @@ securityContext:
   capabilities: { drop: [ALL] }
 tmp: { sizeLimit: 256Mi }             # emptyDir /tmp (read-only root filesystem, ADR-0017)
 logs: { sizeLimit: 256Mi }            # emptyDir /app/logs (optional file appenders; stdout is the log channel)
+data: { sizeLimit: 256Mi }            # emptyDir /app/data (what the app keeps; persistent storage awaits the EKS design)
 topologySpread:                       # spread the instances of one app across zones
   enabled: true
   topologyKey: topology.kubernetes.io/zone

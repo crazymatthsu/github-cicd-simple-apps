@@ -279,8 +279,8 @@ case_activate() { # run-compose.sh activate: current -> this version, atomically
     expect_rc 0
     [ "$OUT" = "activated $V1" ] || fail "stdout is '$OUT', expected 'activated $V1'"
     [ "$(readlink "$vroot/current")" = "$V1" ] || fail "current -> $(readlink "$vroot/current" || echo none), expected $V1"
-    [ -d "$box/apps/deploy/shared/$PROJECT/logs" ] && [ -d "$box/apps/deploy/shared/$PROJECT/data" ] ||
-        fail "shared/$PROJECT/{logs,data} were not created beside versions/"
+    [ -d "$box/logs/deploy/$PROJECT/logs" ] && [ -d "$box/logs/deploy/$PROJECT/data" ] ||
+        fail "/logs/deploy/$PROJECT/{logs,data} were not created"
     expect_in 'cmd=activate opts="" result=0' "$ERR"
     # The same again is a no-op; a newer version replaces it; an instance command never activates.
     run "$vroot/$V1/scripts/run-compose.sh" activate
@@ -862,7 +862,7 @@ case_local_execute() { # POOL_LOCAL_EXECUTE=true: the real run-compose.sh comman
         grep -qx 'IMAGE_TAG=t1' "$(box_env "$boxes" "$box" "$V1")" || fail "$box: the new version does not record t1"
         [ ! -e "$boxes/$box$ROOT/current" ] || fail "$box: a failed deploy activated $V1"
     done
-    # A healthy engine: deployed, recorded, current -> V1 on both boxes, shared/ beside versions/.
+    # A healthy engine: deployed, recorded, current -> V1 on both boxes, /logs/<user>/<project>/ created.
     : >"$log"
     run env PATH="$DOCKER_BIN:$PATH" CONFIG_ROOT="$cfg" STUB_LOG="$log" STUB_HEALTHY=1 POOL_LOCAL_EXECUTE=true \
         SPRING_DATASOURCE_USERNAME=u SPRING_DATASOURCE_PASSWORD=p \
@@ -871,7 +871,7 @@ case_local_execute() { # POOL_LOCAL_EXECUTE=true: the real run-compose.sh comman
     [ "$OUT" = "deployed $TRADES@$H1=t1" ] || fail "stdout is '$OUT', expected the one deployed line"
     for box in "$H1" "$H2"; do
         [ "$(readlink "$boxes/$box$ROOT/current" 2>/dev/null)" = "$V1" ] || fail "$box: current -> $(readlink "$boxes/$box$ROOT/current" 2>/dev/null || echo none), expected $V1"
-        [ -d "$boxes/$box/apps/deploy/shared/$PROJECT/logs" ] || fail "$box: shared/$PROJECT/logs missing"
+        [ -d "$boxes/$box/logs/deploy/$PROJECT/logs" ] || fail "$box: /logs/deploy/$PROJECT/logs missing"
     done
     expect_in "deployed t1 as version $V1" "$ERR"
     # A second version: current moves, the first version keeps its own instance layer (t1).
