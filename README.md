@@ -1,25 +1,31 @@
 # github-cicd-simple-apps — Deephaven connector apps
 
-The connector apps of the Deephaven data platform — `source-kafka`, `source-amps`, `source-database` — and their
-shared library, extracted from the [`github-demo`](https://github.com/crazymatthsu/github-demo) monorepo as one
-**project repository** under the platform's repository contract (ADR DL-42 and design document D12 there): one
-release line, `apps/<AppName>` per deployable app, `framework/` for the shared code the apps are built on, the `config/` tree of the envs this
-repository deploys itself, and a `platform.yml` manifest for what the tree cannot derive. The apps are
-hello-world Spring Boot 4.1 / Java 21 services (identity, masked configuration summary, actuator); the plumbing
-around them is the point.
+The connector apps of the Deephaven data platform — `source-kafka`, `source-amps`, `source-database` — and the
+framework they share, as one **project repository**:
+
+- one release line;
+- `apps/<AppName>` per deployable app;
+- `framework/` for the shared code the apps are built on;
+- the `config/` tree of the envs this repository deploys itself;
+- a `platform.yml` manifest for what the tree cannot derive.
+
+The repository is also the reference implementation of the contract in [`docs/adr/`](docs/adr/README.md). Other
+Spring Boot apps follow that contract — in this repository, or in repositories created from it — to reuse its CI/CD
+workflows, configuration management and runtime operations. The apps are hello-world Spring Boot 4.1 / Java 21
+services (identity, masked configuration summary, actuator); the plumbing around them is the point.
 
 | Path | What |
 |---|---|
 | `platform.yml` | the manifest: platform major, registry, the one project (`github-cicd-simple-apps`) and its dev envs |
 | `apps/<AppName>/` | one Gradle project per deployable app: `src/{main,test,integrationTest}`, `helm/<AppName>/`, and only when the app needs it in every env `docker/docker-compose.override.yml` |
-| `docker/` | `spring-boot.Dockerfile` and `entrypoint.sh`: ONE image definition shared by every app, staged with its `application.jar` by `buildlogic.docker-image` ([R-0007](docs/adr/R-0007-shared-dockerfile.md)); `docker-compose.yml`: ONE compose template for every app and instance ([R-0008](docs/adr/R-0008-compose-config-layers.md)) |
-| `framework/connectors-framework/` | the framework the apps are built on: identity, `connector.*` properties, masked start-up summary, health, metrics tags, test fixtures (DL-43) |
-| `config/` | configuration tree `config/<env>/<flow>/<AppName>/<AppInstance>/`, each layer a file in the directory of its level — `application.<layer>.yml`, `_docker-compose.<layer>.env` / `.yml`, `_helm-values.<layer>.yaml` for the flow, app and instance — and one `workflows-config.yml` per dev flow ([`config/README.md`](config/README.md), [R-0008](docs/adr/R-0008-compose-config-layers.md)) |
+| `docker/` | `spring-boot.Dockerfile` and `entrypoint.sh`: one image definition shared by every app, staged with its `application.jar` by `buildlogic.docker-image` ([ADR-0009](docs/adr/0009-one-shared-image-definition.md)); `docker-compose.yml`: one compose template for every app and instance ([ADR-0012](docs/adr/0012-compose-template-and-generated-env.md)) |
+| `framework/connectors-framework/` | the framework the apps are built on: identity, `connector.*` properties, masked start-up summary, health, metrics tags, test fixtures ([ADR-0006](docs/adr/0006-apps-and-framework-modules.md)) |
+| `config/` | configuration tree `config/<env>/<flow>/<AppName>/<AppInstance>/`. Each layer is a file in the directory of its level — `application.<layer>.yml`, `_docker-compose.<layer>.env` / `.yml`, `_helm-values.<layer>.yaml` for the flow, app and instance — plus one `workflows-config.yml` per dev flow ([`config/README.md`](config/README.md), [ADR-0011](docs/adr/0011-configuration-tree-and-spring-layers.md)) |
 | `test-infra/` | compose stacks, kind tier, seeds and test data of the integration tests ([`test-infra/README.md`](test-infra/README.md)) |
-| `scripts/` | `run-compose.sh`, `smoke.sh`, `pool-deploy.sh`, `helm-deploy-instance.sh`, `scripts/ci/` — platform scripts, vendored (below) |
-| `build-logic/` | the Gradle convention plugins `buildlogic.*` — vendored (below) |
-| `.github/` | thin trigger workflows (`pr`, `main`, `release`, `release-please`, `nightly`, `config-lint`), the reusable `_*.yml` and the composite actions — vendored (below) |
-| `docs/` | this repository's documentation and ADRs ([`docs/README.md`](docs/README.md)); the platform design lives in github-demo |
+| `scripts/` | `run-compose.sh`, `smoke.sh`, `pool-deploy.sh`, `helm-deploy-instance.sh`, `scripts/ci/` — shared tooling (below) |
+| `build-logic/` | the Gradle convention plugins `buildlogic.*` — shared tooling (below) |
+| `.github/` | thin trigger workflows (`pr`, `main`, `release`, `release-please`, `nightly`, `config-lint`), the reusable `_*.yml` and the composite actions — shared tooling (below) |
+| `docs/` | the documentation index ([`docs/README.md`](docs/README.md)) and the repository contract ([`docs/adr/`](docs/adr/README.md)) |
 
 Images are `ghcr.io/crazymatthsu/github-cicd-simple-apps/<AppName>` — `<registry>/<project>/<AppName>` with the
 project of `platform.yml`. Versions come from git tags (`vX.Y.Z` releases, `<next>-rc.<n>` on `main`,
@@ -46,14 +52,13 @@ scripts/run-compose.sh --help
 `pr.yml` (affected build, lint, config-lint, images `pr-<n>-<sha7>`, component integration tests, kind deploy
 test; `pr-gate` is the one required check) → `main.yml` (build all, integration tests, system test against the
 platform's Deephaven server image, publish, kind deploy, deploy-dev) → `release-please.yml` / `release.yml`
-(release PR, tag, promote the tested digests, SBOMs, GitHub Release). Details and the repository settings the
-pipeline needs: [`docs/README.md`](docs/README.md).
+(release PR, tag, promote the tested digests, SBOMs, GitHub Release). The details are in ADR-0021 to ADR-0029, and
+the repository settings the pipeline needs are in [ADR-0020](docs/adr/0020-branching-protection-and-merge-rules.md).
 
-## What is vendored, and why
+## Shared tooling
 
-The contract (D12 §6.9) has every repository *consume* the workflows, actions, CI and runtime scripts and the
-convention plugins from a versioned `platform-ci` repository. That repository does not exist yet, so this one
-carries copies of `.github/workflows/_*.yml`, `.github/actions/`, `scripts/` and `build-logic/`, taken from
-github-demo at commit `d139d4c` and laid out so that they move out without a change to the apps. Until then a
-pipeline fix is made in github-demo and ported here, and vice versa. Design documents, ADRs, the company base
-images (`docker/base/`, `base-image.yml`) and the `gha-*` Claude Code skills stay in github-demo.
+This repository is the source of the shared tooling: `build-logic/`, `docker/`, `scripts/`, `.github/actions/`,
+the reusable `.github/workflows/_*.yml` and the test-infra scripts. A repository created from this one copies these
+files unchanged and takes its project values from its own `platform.yml`. A change to the shared tooling is made
+here first ([ADR-0005](docs/adr/0005-repository-layout-and-shared-tooling.md)). The checklists for adding an app
+or creating a repository are in [`docs/adr/README.md`](docs/adr/README.md).
