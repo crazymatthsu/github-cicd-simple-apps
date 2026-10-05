@@ -16,6 +16,46 @@ How to read it:
 This index is the living part of the folder: ADR statuses, checklists, known gaps and open decisions are kept up to
 date here. The ADRs themselves change only by supersession.
 
+## At a glance
+
+A change travels from a pull request to production like this.
+
+1. A pull request is tested; once `pr-gate` is green, it is squash-merged into `main`.
+2. `main` builds every image once, tests those exact images, publishes them, and deploys them to the dev envs.
+3. A release re-tags the same tested images; nothing is rebuilt.
+4. The promoted envs — qa, uat, prod and parallel — pick up a release only through pull requests in the separate
+   configuration repository.
+
+Every env runs on on-prem compose until EKS exists.
+
+```mermaid
+flowchart LR
+  subgraph here ["This repository"]
+    pr["Pull request<br/>fast and full tier, pr-gate"]
+    mainrun["main.yml<br/>build once, test, publish"]
+    devenv["Dev envs<br/>deployed on every tested commit"]
+    rel["release.yml<br/>re-tag the tested digests, SBOMs"]
+  end
+  subgraph cfgrepo ["Configuration repository"]
+    qa["qa"]
+    others["uat, prod, parallel"]
+  end
+  pr -->|squash merge| mainrun
+  mainrun -->|same digests| devenv
+  mainrun -->|release tag| rel
+  rel -->|version-bump pull request| qa
+  qa -.->|promotion pull requests| others
+```
+
+| You want to understand… | Read |
+|---|---|
+| what a project, an env, a flow and an instance are | [ADR-0002](0002-one-repository-one-project-one-release-line.md), [ADR-0003](0003-identity-tuple-names-every-instance.md), [ADR-0004](0004-environments-and-runtimes.md) |
+| what an app may contain, and what is shared tooling | [ADR-0005](0005-repository-layout-and-shared-tooling.md), [ADR-0006](0006-apps-and-framework-modules.md) |
+| how configuration reaches a running container | [ADR-0011](0011-configuration-tree-and-spring-layers.md), [ADR-0012](0012-compose-template-and-generated-env.md), [ADR-0013](0013-secrets.md) |
+| how an instance is operated and rolled back on a host | [ADR-0017](0017-run-compose-operations-cli-and-runtime-posture.md), [ADR-0018](0018-on-prem-host-layout-versioned-bundles.md), [ADR-0028](0028-host-pool-deployment.md) |
+| what CI does with a pull request and with `main` | [ADR-0021](0021-ci-layering.md) to [ADR-0024](0024-ephemeral-ci-environments.md) |
+| how a release reaches prod | [ADR-0010](0010-image-tags-digests-promotion-retention.md), [ADR-0029](0029-release-and-promotion.md) |
+
 ## The ADRs
 
 | ADR | Rule in one line | Status |
@@ -173,6 +213,7 @@ that opens a gap adds a row.
 | G20 | Config-lint checks 7 (merged configuration against metadata) and 8 (parity across envs) are not implemented. | [0014](0014-config-lint-enforces-the-config-contract.md) |
 | G21 | Comments in code and configuration, and the READMEs outside `docs/`, cite identifiers of retired documents instead of ADR numbers. | [0001](0001-adrs-are-the-repository-contract.md) |
 | G22 | Nothing checks that a derived repository's shared tooling is unchanged. | [0005](0005-repository-layout-and-shared-tooling.md) |
+| G23 | The merge queue is not enabled on `main`. Without it, a pull request from a fork merges with no integration test before the merge (`main.yml` still runs them after it). | [0020](0020-branching-protection-and-merge-rules.md), [0022](0022-pull-request-pipeline.md) |
 
 ## Open decisions
 

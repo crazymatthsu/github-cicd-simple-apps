@@ -8,12 +8,17 @@
 | Enforced by | `run-compose.sh activate` and `record-tag` (refuse outside a version directory, or across project, env or flow); `pool-deploy.sh` (builds, hashes and verifies bundles); config-lint check 11 (`pool.keep` ≥ 2, no `pool.root`, a box in one flow only); `scripts/test/pool-deploy-test.sh` |
 | Related | [ADR-0004](0004-environments-and-runtimes.md), [ADR-0012](0012-compose-template-and-generated-env.md), [ADR-0017](0017-run-compose-operations-cli-and-runtime-posture.md), [ADR-0028](0028-host-pool-deployment.md) |
 
+**In short:** Each deploy copies the complete runtime of one flow — scripts, compose template, configuration and
+image tag — into a new, time-stamped directory on each of the flow's hosts. A `current` symlink points at the live
+one. Switching that symlink makes a deploy atomic, and pointing it back is a rollback that restores the old
+configuration and image together.
+
 ## Context
 
-A deploy must switch a host from one complete state — scripts, template, configuration, image tag — to another in
-one step. A rollback must restore the previous configuration together with the previous image. Hosts must not
-need a git checkout, git credentials or a build. The layout is the same in every env served by compose
-([ADR-0004](0004-environments-and-runtimes.md)).
+A deploy must switch a host from one complete state to another in one step. That state is the scripts, the
+template, the configuration and the image tag. A rollback must restore the previous configuration together with
+the previous image. Hosts must not need a git checkout, git credentials or a build. The layout is the same in every
+env served by compose ([ADR-0004](0004-environments-and-runtimes.md)).
 
 ## Decision
 
@@ -27,7 +32,7 @@ need a git checkout, git credentials or a build. The layout is the same in every
    ```
 
    `<user>` is the pool's deploy user (`pool.user`, default `deploy`); `<project>` is the project of `platform.yml`.
-   The layout is fixed; an inventory cannot move the root.
+   The layout is fixed: an inventory cannot move the root.
 2. **A host bundle is the runtime of one `<env>/<flow>`:**
    - `scripts/run-compose.sh` and `scripts/smoke.sh`;
    - `docker/docker-compose.yml`;
@@ -41,7 +46,7 @@ need a git checkout, git credentials or a build. The layout is the same in every
 3. **The manifest.** `.platform-bundle` holds `KEY=value` lines: `BUNDLE_PROJECT`, `BUNDLE_ENV`, `BUNDLE_FLOW`,
    `BUNDLE_GIT_SHA`, `BUNDLE_TAG`, `BUNDLE_CREATED`, `BUNDLE_FILES`, `BUNDLE_SHA256`, `POOL_HOSTS`, `POOL_USER`,
    `POOL_ROOT`, `POOL_KEEP`. `BUNDLE_SHA256` is the sha256 of the sorted `<sha256>  <path>` listing of every file
-   except the manifest and `.run/`. It is read, never sourced.
+   except the manifest and `.run/`. The scripts read the manifest as data; they never source it.
 4. **One cluster per box.** A box serves exactly one `<env>/<flow>`: its `current` is that cluster's runtime.
 5. **The version directory records what it runs.** `run-compose.sh … record-tag` writes the deployed `IMAGE_TAG` into
    the version's `_docker-compose.instance.env`, before anything starts from it. It refuses to write outside a
@@ -54,9 +59,33 @@ need a git checkout, git credentials or a build. The layout is the same in every
      replaced.
    - `--previous` or `--to <version>` switch back instead.
    - It refuses a version of another project, env or flow.
+
+   A version directory moves through these states on a box, as the deploys and rollbacks of
+   [ADR-0028](0028-host-pool-deployment.md) run.
+
+   ```mermaid
+   stateDiagram-v2
+       state "Synced and verified, not live" as Synced
+       state "IMAGE_TAG recorded" as Tagged
+       state "Instances started from it" as Started
+       state "Live, current points here" as Live
+       state "On disk, not live" as Idle
+       [*] --> Synced : sync
+       Synced --> Tagged : record-tag
+       Tagged --> Started : pull, start, health
+       Started --> Live : activate, once every instance is healthy
+       Started --> Idle : a start or health fails, current stays
+       Live --> Idle : another version is activated
+       Idle --> Live : activate --previous or --to, a rollback
+       Idle --> [*] : removed, beyond the newest keep
+   ```
+
 7. **Operating on a host.** Every command runs through the live version:
    `/apps/<user>/versions/<project>/current/scripts/run-compose.sh <env> <flow> <AppName> <AppInstance> <command>`.
-8. **Access.** The deploy user's SSH key is restricted by a forced command to two things:
+   A deploy is the exception: it starts the instances from the new version directory, then activates it
+   ([ADR-0028](0028-host-pool-deployment.md)).
+8. **Access.** The deploy user's SSH key is restricted by a forced command, an SSH key setting that lets the host
+   decide what the key can run. It allows two things:
    - `run-compose.sh` with `pull`, `start`, `stop`, `health`, `status`, `record-tag` and `activate`;
    - `rsync --server` into `/apps/<user>/versions/<project>/<version>/`.
 
@@ -64,14 +93,14 @@ need a git checkout, git credentials or a build. The layout is the same in every
 
 ## Alternatives considered
 
-- **Syncing one directory in place.** No atomic switch; a rollback has to rebuild the previous state from records;
-  the configuration and the tag of the previous version are lost.
-- **A git checkout on every host.** Credentials on the hosts, partial states during a pull, and the tag lives in a
-  working-copy edit.
-- **OS packages** (rpm or deb) per release. Heavier to build and sign, and they still need per-host configuration
-  and an activation step.
-- **Configuration baked into the image.** One image per env, which breaks "the tested image is the deployed
-  image" ([ADR-0010](0010-image-tags-digests-promotion-retention.md)).
+- **Syncing one directory in place.** There would be no atomic switch. A rollback would have to rebuild the previous
+  state from records, and the configuration and the tag of the previous version would be lost.
+- **A git checkout on every host.** It puts credentials on the hosts and leaves partial states during a pull. The
+  tag would live in a working-copy edit.
+- **OS packages** (rpm or deb) per release. They are heavier to build and sign, and they still need per-host
+  configuration and an activation step.
+- **Configuration baked into the image.** That means one image per env, which breaks "the tested image is the
+  deployed image" ([ADR-0010](0010-image-tags-digests-promotion-retention.md)).
 
 ## Consequences
 
