@@ -4,7 +4,7 @@
 |---|---|
 | Status | Accepted |
 | Date | 2026-10-04 |
-| Applies to | every compose-run instance: laptops, CI test stacks and every on-prem env |
+| Applies to | every compose-run instance of this repository: laptops, CI test stacks and the dev hosts |
 | Enforced by | its own argument, safety and configuration checks (exit codes 2, 3, 4); ShellCheck and `scripts/test/pool-deploy-test.sh` in the `lint` job; the template's settings ([ADR-0012](0012-compose-template-and-generated-env.md)) |
 | Related | [ADR-0004](0004-environments-and-runtimes.md), [ADR-0012](0012-compose-template-and-generated-env.md), [ADR-0015](0015-actuator-health-and-metrics-contract.md), [ADR-0018](0018-on-prem-host-layout-versioned-bundles.md), [ADR-0028](0028-host-pool-deployment.md) |
 
@@ -49,8 +49,8 @@ implementations, differ in ways that break naive scripts.
    With rootless Podman every published port is 1024 or above, and on SELinux hosts the Spring layer mounts get
    `:z` or `:Z` labels.
 5. **Safety rules,** which `--force` never lifts unless noted:
-   - **Allowed envs:** `local` and every stage — `dev`, `qa`, `uat`, `prod`, `parallel` — for as long as compose is
-     the runtime ([ADR-0004](0004-environments-and-runtimes.md)).
+   - **Allowed envs:** `local` and `*-dev` only; this repository deploys and operates nothing else
+     ([ADR-0004](0004-environments-and-runtimes.md)).
    - `down --volumes` outside `local` requires `--force`.
    - **Pool guard:** before `start` or `restart`, the script asks the pool's other boxes whether the instance
      already runs there, and refuses (exit 3) if it does ([ADR-0028](0028-host-pool-deployment.md)). `--force`
@@ -88,6 +88,5 @@ implementations, differ in ways that break naive scripts.
 - Operators learn one CLI, valid for every app and env. Every action is auditable.
 - The script is a critical part of the shared tooling (about 1,100 lines of bash). It is covered by ShellCheck and
   by the stub-based tests of `scripts/test/`, and needs bash 4 or later on the hosts.
-- Known gaps:
-  - the env allow-list still refuses every env except `local` and `*-dev`;
-  - the stages and flows are hard-coded in the script ([ADR-0003](0003-identity-tuple-names-every-instance.md)).
+- Known gap: the stages and flows are hard-coded in the script
+  ([ADR-0003](0003-identity-tuple-names-every-instance.md)).
