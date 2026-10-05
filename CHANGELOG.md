@@ -1,5 +1,13 @@
 # Changelog
 
+## [0.3.0](https://github.com/crazymatthsu/github-cicd-simple-apps/compare/v0.2.0...v0.3.0) (2026-10-05)
+
+
+### Features
+
+* **compose:** one compose template; config layers are files merged into one generated env (R-0008) ([16c96d4](https://github.com/crazymatthsu/github-cicd-simple-apps/commit/16c96d4c498b537eb583e4a6400564c58ccd51de))
+* **compose:** one compose template; config layers are files merged into one generated env (R-0008) ([75e23f0](https://github.com/crazymatthsu/github-cicd-simple-apps/commit/75e23f07455a90f93ab46747106f8b99559d987f))
+
 ## [0.2.0](https://github.com/crazymatthsu/github-cicd-simple-apps/compare/v0.1.1...v0.2.0) (2026-10-04)
 
 
