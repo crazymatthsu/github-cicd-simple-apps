@@ -72,7 +72,7 @@ jobs:
       - name: hadolint (Dockerfiles, .hadolint.yaml)
         run: |
           set -euo pipefail
-          mapfile -t files < <(git ls-files -- 'Dockerfile' '**/Dockerfile')
+          mapfile -t files < <(git ls-files -- 'Dockerfile' '**/Dockerfile' '*.Dockerfile' '**/*.Dockerfile')
           if [[ ${#files[@]} -eq 0 ]]; then echo "no Dockerfiles"; exit 0; fi
           hadolint --config .hadolint.yaml "${files[@]}"
 

@@ -36,17 +36,17 @@ class ContainerEnginesTest {
 
     @Test
     fun `podman builds keep the docker manifest format`() {
-        val cmd = ContainerEngines.buildCommand(Engine(EngineKind.PODMAN, false), File("/ctx"), "docker/Dockerfile",
+        val cmd = ContainerEngines.buildCommand(Engine(EngineKind.PODMAN, false), File("/ctx"), "Dockerfile",
             listOf("r/a:1", "r/a:sha-1"), mapOf("GIT_SHA" to "x"), mapOf("k" to "v"), listOf("--pull"))
-        assertEquals(listOf("podman", "build", "--format", "docker", "--file", "/ctx/docker/Dockerfile",
+        assertEquals(listOf("podman", "build", "--format", "docker", "--file", "/ctx/Dockerfile",
             "--tag", "r/a:1", "--tag", "r/a:sha-1", "--build-arg", "GIT_SHA=x", "--label", "k=v", "--pull", "/ctx"), cmd)
     }
 
     @Test
     fun `buildx loads the result into the local image store`() {
-        val cmd = ContainerEngines.buildCommand(Engine(EngineKind.DOCKER, true), File("/ctx"), "docker/Dockerfile",
+        val cmd = ContainerEngines.buildCommand(Engine(EngineKind.DOCKER, true), File("/ctx"), "Dockerfile",
             listOf("r/a:1"), emptyMap(), emptyMap(), emptyList())
-        assertEquals(listOf("docker", "buildx", "build", "--load", "--file", "/ctx/docker/Dockerfile", "--tag", "r/a:1", "/ctx"), cmd)
+        assertEquals(listOf("docker", "buildx", "build", "--load", "--file", "/ctx/Dockerfile", "--tag", "r/a:1", "/ctx"), cmd)
     }
 
     @Test

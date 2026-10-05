@@ -1,5 +1,6 @@
 # hadolint configuration (D3 §6.4, D7 §6.4). Runs in the pr.yml `lint` job on every tracked Dockerfile:
-#   hadolint --config .hadolint.yaml $(git ls-files 'Dockerfile' '**/Dockerfile')
+#   hadolint --config .hadolint.yaml $(git ls-files 'Dockerfile' '**/Dockerfile' '*.Dockerfile' '**/*.Dockerfile')
+# i.e. docker/spring-boot.Dockerfile, shared by every app (R-0007), plus any app's docker/Dockerfile override.
 # Warnings fail the job; info-level findings are reported only.
 failure-threshold: warning
 
