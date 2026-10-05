@@ -1,5 +1,14 @@
 # Changelog
 
+## [0.4.0](https://github.com/crazymatthsu/github-cicd-simple-apps/compare/v0.3.0...v0.4.0) (2026-10-05)
+
+
+### Features
+
+* **config-lint:** every box of a pool needs a pinned host key (ADR-0028) ([#20](https://github.com/crazymatthsu/github-cicd-simple-apps/issues/20)) ([5bfd9d5](https://github.com/crazymatthsu/github-cicd-simple-apps/commit/5bfd9d56fefa49a3d4accf8ef364ca1df93774fe))
+* **platform:** platform.yml declares every project value, and the tooling reads it (ADR-0030) ([#18](https://github.com/crazymatthsu/github-cicd-simple-apps/issues/18)) ([220ab95](https://github.com/crazymatthsu/github-cicd-simple-apps/commit/220ab956376e3c873b0ade62fccebf927c1e122c))
+* **runtime:** logs and data under /logs/&lt;user&gt;/&lt;project&gt;/, one directory per instance (ADR-0018) ([#17](https://github.com/crazymatthsu/github-cicd-simple-apps/issues/17)) ([dcdbdab](https://github.com/crazymatthsu/github-cicd-simple-apps/commit/dcdbdab9eb80986bd0ad12d72f477ca27a41fa0a))
+
 ## [0.3.0](https://github.com/crazymatthsu/github-cicd-simple-apps/compare/v0.2.0...v0.3.0) (2026-10-05)
 
 
