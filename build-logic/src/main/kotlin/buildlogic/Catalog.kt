@@ -1,5 +1,6 @@
 package buildlogic
 
+import org.gradle.api.GradleException
 import org.gradle.api.Project
 import org.gradle.api.artifacts.MinimalExternalModuleDependency
 import org.gradle.api.artifacts.VersionCatalog
@@ -17,3 +18,12 @@ internal fun Project.catalogLibrary(alias: String): Provider<MinimalExternalModu
 /** Extra property written by the buildlogic.git-version settings plugin, with a fallback. */
 internal fun Project.buildlogicProperty(name: String, fallback: String): String =
     (findProperty("buildlogic.$name") as String?)?.takeIf { it.isNotBlank() } ?: fallback
+
+/** A project value of platform.yml, handed over by the buildlogic.platform settings plugin (ADR-0030). */
+internal fun Project.platformValue(key: String): String =
+    (findProperty("buildlogic.platform.$key") as String?)?.takeIf { it.isNotBlank() }
+        ?: throw GradleException("buildlogic.platform.$key is not set: settings.gradle.kts must apply the " +
+            "buildlogic.platform settings plugin, which reads platform.yml (ADR-0030)")
+
+/** A list value of platform.yml (see [platformValue]). */
+internal fun Project.platformList(key: String): List<String> = platformValue(key).split(',').filter { it.isNotBlank() }

@@ -41,13 +41,9 @@ concurrency:
 permissions:
   contents: read
 
-env:
-  IMAGE_NAMESPACE: ghcr.io/crazymatthsu
-  # The reference scenario (ADR-0024): Deephaven + SQL Server + the connector image, i.e. containers,
-  # named volumes and a network that could leak.
-  DRILL_PROJECT: ':source-database'
-  # <registry>/<project>/<AppName> of platform.yml (ADR-0010), at the `main` tag main.yml publishes.
-  DRILL_IMAGE: ghcr.io/crazymatthsu/github-cicd-simple-apps/source-database:main
+# The drills run the reference scenario (ADR-0024): the reference app of platform.yml (ADR-0030) with its dependency
+# stacks, i.e. containers, named volumes and a network that could leak. Its image is <registry>/<project>/<AppName>
+# (ADR-0010) at the `main` tag main.yml publishes; each drill job reads these values with the platform-manifest action.
 
 jobs:
   retention:
@@ -92,10 +88,15 @@ jobs:
     steps:
       - uses: actions/checkout@v7
 
+      - id: platform
+        uses: ./.github/actions/platform-manifest
+
       - uses: ./.github/actions/registry-login
 
       - name: Image under test (the last published main build)
         id: image
+        env:
+          DRILL_IMAGE: ${{ steps.platform.outputs.reference-image }}:main
         run: |
           set -euo pipefail
           if pinned=$(scripts/ci/resolve-image.sh "$DRILL_IMAGE"); then
@@ -116,7 +117,7 @@ jobs:
         if: steps.image.outputs.skip == 'false'
         with:
           command: up
-          project: ${{ env.DRILL_PROJECT }}
+          project: ${{ steps.platform.outputs.reference-project }}
 
       - name: Failing test (on purpose)
         id: forced
@@ -172,12 +173,16 @@ jobs:
             .github
             scripts/ci
 
+      - id: platform
+        uses: ./.github/actions/platform-manifest
+
       - uses: ./.github/actions/registry-login
 
       - name: Dispatch the self-cancelling drill and judge it
         id: judge
         env:
           GH_TOKEN: ${{ github.token }}
+          DRILL_IMAGE: ${{ steps.platform.outputs.reference-image }}:main
         run: |
           set -euo pipefail
           if ! scripts/ci/resolve-image.sh "$DRILL_IMAGE" >/dev/null; then
@@ -237,9 +242,14 @@ jobs:
     steps:
       - uses: actions/checkout@v7
 
+      - id: platform
+        uses: ./.github/actions/platform-manifest
+
       - uses: ./.github/actions/registry-login
 
       - name: Image under test
+        env:
+          DRILL_IMAGE: ${{ steps.platform.outputs.reference-image }}:main
         run: |
           set -euo pipefail
           pinned=$(scripts/ci/resolve-image.sh "$DRILL_IMAGE")
@@ -253,7 +263,7 @@ jobs:
       - uses: ./.github/actions/compose-stack
         with:
           command: up
-          project: ${{ env.DRILL_PROJECT }}
+          project: ${{ steps.platform.outputs.reference-project }}
 
       - name: Cancel this run while the stack is up
         env:

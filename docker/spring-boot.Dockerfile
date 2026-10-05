@@ -13,7 +13,9 @@
 #
 # The company base image (published outside this repository) carries the enterprise / demo CA in both
 # trust stores, tzdata, curl and the non-root user app (10001); this file never repeats that (ADR-0009).
-ARG BASE_IMAGE=ghcr.io/crazymatthsu/base/jre21:latest
+# No project value lives here (ADR-0030): the staged copy defaults BASE_IMAGE to <registry of platform.yml>/base/jre21:latest
+# (stageDockerContext), and Gradle passes it and the per-build labels, the source repository included.
+ARG BASE_IMAGE
 
 # Stage 1: explode the layered Spring Boot jar (Boot 4.1 tools jarmode). The base ends as user 10001, which
 # cannot write /build: this throwaway stage runs as root.
@@ -33,12 +35,11 @@ ARG APP_VERSION=0.0.0-dev
 ARG GIT_SHA=unknown
 ARG BUILD_URL=local
 ARG CREATED=unknown
-# buildImage also passes every label with --label, including the per-app title and com.example.app; these make a
-# hand-built image self-describing too (ADR-0009).
+# buildImage also passes every label with --label, including the per-app title, com.example.app and the source
+# repository; these make a hand-built image self-describing too (ADR-0009).
 LABEL org.opencontainers.image.version="${APP_VERSION}" \
       org.opencontainers.image.revision="${GIT_SHA}" \
       org.opencontainers.image.created="${CREATED}" \
-      org.opencontainers.image.source="https://github.com/crazymatthsu/github-cicd-simple-apps" \
       org.opencontainers.image.base.name="${BASE_IMAGE}" \
       com.example.git-sha="${GIT_SHA}" \
       com.example.build-url="${BUILD_URL}"

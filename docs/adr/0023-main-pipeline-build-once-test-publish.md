@@ -71,5 +71,4 @@ produce different bits. Publishing before the tests would let consumers pick up 
 - A green `main` run means its images are tested, published and running in dev. Any of them can be released.
 - A failing system test blocks publishing, the dev deploy and every release of that commit.
 - The build pushes `main` before the tests (known gap, [ADR-0010](0010-image-tags-digests-promotion-retention.md)).
-- The system test's project, the kind test's app and the dev env are written into `main.yml` instead of read from
-  `platform.yml` (known gap).
+- The system test's project, the kind test's app and the dev envs come from `platform.yml` ([ADR-0030](0030-platform-yml-declares-every-project-value.md)).

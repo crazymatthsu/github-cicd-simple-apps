@@ -1,0 +1,57 @@
+name: platform-manifest
+description: >-
+  The project values of platform.yml (ADR-0030) for the workflows, so none of them is hard-coded: the registry,
+  the project, the dev envs and the reference app. Needs a checkout holding platform.yml (a sparse checkout
+  includes the root files) and mikefarah yq (preinstalled on GitHub-hosted runners). The Gradle build validates
+  the whole file (the buildlogic.platform settings plugin); this action checks only the values it hands on.
+outputs:
+  registry:
+    description: The image registry and namespace, the <registry> of <registry>/<project>/<AppName> (ADR-0010).
+    value: ${{ steps.read.outputs.registry }}
+  project:
+    description: The project, projects[0].name (ADR-0002).
+    value: ${{ steps.read.outputs.project }}
+  dev-envs:
+    description: JSON list of the dev envs this repository configures and deploys, dev_envs (ADR-0004).
+    value: ${{ steps.read.outputs.dev-envs }}
+  reference-app:
+    description: The app of the system test, the kind deployment test and the teardown drill, projects[0].reference_app.
+    value: ${{ steps.read.outputs.reference-app }}
+  reference-project:
+    description: The Gradle path of the reference app, :<AppName>.
+    value: ${{ steps.read.outputs.reference-project }}
+  reference-image:
+    description: The reference app's image without a tag, <registry>/<project>/<AppName> (ADR-0010).
+    value: ${{ steps.read.outputs.reference-image }}
+runs:
+  using: composite
+  steps:
+    - id: read
+      shell: bash
+      run: |
+        set -euo pipefail
+        file="$GITHUB_WORKSPACE/platform.yml"
+        [[ -f $file ]] || { echo "::error::platform.yml not found at the repository root (ADR-0030)"; exit 1; }
+        registry=$(yq '.registry // ""' "$file")
+        project=$(yq '.projects[0].name // ""' "$file")
+        app=$(yq '.projects[0].reference_app // ""' "$file")
+        dev_envs=$(yq -o=json -I=0 '.dev_envs // []' "$file")
+        token='^[a-z0-9]([a-z0-9-]*[a-z0-9])?$'
+        problems=()
+        [[ $registry =~ ^[a-z0-9.-]+(:[0-9]+)?(/[a-z0-9._-]+)*$ ]] || problems+=("registry '$registry'")
+        [[ $project =~ $token ]] || problems+=("projects[0].name '$project'")
+        [[ $app =~ $token ]] || problems+=("projects[0].reference_app '$app'")
+        jq -e 'type == "array" and length > 0 and all(.[]; type == "string" and test("^[a-z]{2}-dev$"))' <<<"$dev_envs" >/dev/null ||
+          problems+=("dev_envs $dev_envs")
+        if [[ ${#problems[@]} -gt 0 ]]; then
+          echo "::error::platform.yml: not valid: ${problems[*]} (ADR-0030; ./gradlew help reports every problem of the file)"
+          exit 1
+        fi
+        {
+          echo "registry=$registry"
+          echo "project=$project"
+          echo "dev-envs=$dev_envs"
+          echo "reference-app=$app"
+          echo "reference-project=:$app"
+          echo "reference-image=$registry/$project/$app"
+        } >> "$GITHUB_OUTPUT"

@@ -2,7 +2,7 @@
 
 | | |
 |---|---|
-| Status | Accepted |
+| Status | Accepted. Rule 5 superseded in part by [ADR-0030](0030-platform-yml-declares-every-project-value.md) |
 | Date | 2026-10-04 |
 | Applies to | every repository built from this one |
 | Enforced by | review (CODEOWNERS: the shared tooling is owned by the platform maintainers); config-lint for `config/`; settings discovery for `apps/` and `framework/` |
@@ -98,7 +98,7 @@ repository forks the tooling, and every fix has to be found and repeated in each
 6. **This repository is the source of the shared tooling.** A change to the shared tooling is made here first,
    released with this repository, and copied from a tagged release into the repositories built from it. A derived
    repository, one built from this one, changes shared tooling only by copying a newer release of it. Until the
-   hard-coded project values move to `platform.yml` (known gap), a derived repository may edit exactly those values
+   hard-coded project values move to `platform.yml` ([ADR-0030](0030-platform-yml-declares-every-project-value.md)), a derived repository may edit exactly those values
    in shared tooling, and nothing else.
 
 How the shared tooling moves from this repository into a derived one:
@@ -143,6 +143,4 @@ flowchart LR
 - A fix that a derived repository needs in the shared tooling lands here first, then in every copy.
 - Nothing checks yet that a derived repository's shared tooling is unchanged, and how copies receive updates is
   undecided (index: known gaps and open decisions).
-- Today the trigger workflows, `_gradle-build.yml`, `nightly.yml`, `setup-build-env`, the image plugin and the
-  Dockerfile still contain this project's values (known gap). The "with project values" class shrinks as those
-  values move to `platform.yml`.
+- The shared tooling reads the project values from `platform.yml` ([ADR-0030](0030-platform-yml-declares-every-project-value.md)).

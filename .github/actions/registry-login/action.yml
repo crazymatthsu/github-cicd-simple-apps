@@ -5,9 +5,11 @@ description: >-
   Enterprise: JFrog Artifactory through GitHub OIDC (ADR-0021) — stubbed below.
 inputs:
   registry:
-    description: Registry host (ghcr.io in the demo; artifactory.<company>.com in the enterprise).
+    description: >-
+      Registry host (ghcr.io in the demo; artifactory.<company>.com in the enterprise). Empty: the host of the
+      registry in platform.yml (ADR-0030).
     required: false
-    default: ghcr.io
+    default: ''
   mode:
     description: "'token' (username + password/token) or 'oidc' (GitHub OIDC → registry identity; not implemented)."
     required: false
@@ -23,11 +25,27 @@ inputs:
 runs:
   using: composite
   steps:
+    - name: Registry host
+      id: host
+      shell: bash
+      env:
+        REGISTRY: ${{ inputs.registry }}
+      run: |
+        set -euo pipefail
+        if [[ -z $REGISTRY ]]; then
+          # The registry of platform.yml: a plain top-level line, read without yq (a job container may lack it).
+          REGISTRY=$(awk '/^registry:/ { sub(/^registry:[ \t]*/, ""); sub(/#.*$/, ""); sub(/[ \t]+$/, ""); print; exit }' \
+            "$GITHUB_WORKSPACE/platform.yml" 2>/dev/null || true)
+          REGISTRY=${REGISTRY%%/*}
+        fi
+        [[ $REGISTRY =~ ^[a-z0-9.-]+(:[0-9]+)?$ ]] ||
+          { echo "::error title=registry-login::no registry host: give the registry input, or a plain 'registry: <host>/<namespace>' line in platform.yml (ADR-0030)"; exit 1; }
+        echo "registry=$REGISTRY" >> "$GITHUB_OUTPUT"
     - name: OIDC login (stub)
       if: inputs.mode == 'oidc'
       shell: bash
       env:
-        REGISTRY: ${{ inputs.registry }}
+        REGISTRY: ${{ steps.host.outputs.registry }}
       run: |
         # TODO(ADR-0021): enterprise path, not built in the demo. The calling job grants `id-token: write`;
         # this step requests the job's OIDC token (ACTIONS_ID_TOKEN_REQUEST_URL / _TOKEN, audience set by
@@ -49,6 +67,6 @@ runs:
       if: inputs.mode == 'token'
       uses: docker/login-action@v4
       with:
-        registry: ${{ inputs.registry }}
+        registry: ${{ steps.host.outputs.registry }}
         username: ${{ inputs.username }}
         password: ${{ inputs.password }}

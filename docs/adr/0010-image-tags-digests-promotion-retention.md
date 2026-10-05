@@ -121,5 +121,4 @@ anything in use.
 - The build job pushes the full `main` set, `main` included, before any test has run. If a test then fails, `main`
   keeps pointing at the failed build, although rule 3 allows moving it only to a tested digest. The build should
   push with `-PpushConvenienceTags=false` and leave `main` to the publish step (known gap).
-- The registry namespace appears literally in `_gradle-build.yml`, `nightly.yml` and `setup-build-env` instead of
-  being read from `platform.yml` (known gap).
+- Every tool takes the registry from `platform.yml` ([ADR-0030](0030-platform-yml-declares-every-project-value.md)).

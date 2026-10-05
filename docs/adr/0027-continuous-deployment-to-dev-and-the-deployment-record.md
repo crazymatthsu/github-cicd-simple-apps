@@ -5,7 +5,7 @@
 | Status | Accepted |
 | Date | 2026-10-04 |
 | Applies to | the dev envs of `platform.yml` (`dev_envs`); `_deploy-dev.yml`; each dev flow's `workflows-config.yml` |
-| Enforced by | `_deploy-dev.yml` (refuses any env that is not `*-dev`; its `contents` permission is `read` only); config-lint check 11 (inventory against the tree) |
+| Enforced by | `_deploy-dev.yml` (refuses any env that is not a dev env of `platform.yml`, [ADR-0030](0030-platform-yml-declares-every-project-value.md); its `contents` permission is `read` only); config-lint check 11 (inventory against the tree) |
 | Related | [ADR-0004](0004-environments-and-runtimes.md), [ADR-0010](0010-image-tags-digests-promotion-retention.md), [ADR-0020](0020-branching-protection-and-merge-rules.md), [ADR-0023](0023-main-pipeline-build-once-test-publish.md), [ADR-0028](0028-host-pool-deployment.md) |
 
 **In short:** Every `main` commit that passes its tests is deployed to the dev envs, so dev always runs what `main`

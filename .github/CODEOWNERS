@@ -2,7 +2,8 @@
 #
 # Demo: @crazymatthsu stands in for every team. The comment above each rule names the team that owns
 # the path in the enterprise (organisation placeholder: @example). The LAST matching pattern wins, so
-# the general rules come first and the qa / prod config rules last.
+# the general rules come first and the per-flow config rules last. The promoted envs (qa, uat, prod, parallel)
+# are configured, approved and deployed in the configuration repository, never here (ADR-0004).
 
 # Everything else — the connector apps and the framework they are built on: connectors team (@example/connectors-team)
 *                       @crazymatthsu
@@ -35,7 +36,7 @@
 # Test infrastructure — platform team with the connectors team (@example/platform-team @example/connectors-team)
 /test-infra/            @crazymatthsu
 
-# Config tree (ADR-0011): dev and shared layers — connectors team (@example/connectors-team)
+# Config tree (ADR-0011): local and the dev envs of platform.yml — connectors team (@example/connectors-team)
 /config/                @crazymatthsu
 
 # Each flow owns its directory in every env, including its deploy inventory and host pool
@@ -43,10 +44,3 @@
 /config/*/cash/         @crazymatthsu
 /config/*/deriv/        @crazymatthsu
 /config/*/swap/         @crazymatthsu
-
-# qa: bump PRs are the deploy intent — connectors ops (@example/connectors-ops)
-/config/*-qa/           @crazymatthsu
-
-# prod: two approvals, change ticket in the PR — connectors ops + change approvers
-# (@example/connectors-ops @example/change-approvers)
-/config/*-prod/         @crazymatthsu

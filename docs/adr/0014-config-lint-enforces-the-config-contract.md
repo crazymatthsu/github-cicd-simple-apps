@@ -100,8 +100,5 @@ flowchart LR
   change together.
 - Config-lint learns the app list from Gradle subprojects. The configuration repository has none, so it cannot run
   config-lint unchanged (open decision).
-- Known gaps:
-  - checks 7 and 8 are not implemented;
-  - check 1 knows only the stages `dev`, `qa`, `prod` and the regions `us`, `jp`;
-  - check 10 treats only `qa` and `prod` as promoted;
-  - this repository's tree still accepts promoted envs.
+- Checks 1, 10 and 11 take the vocabulary, the runtimes and the dev envs from `platform.yml` ([ADR-0030](0030-platform-yml-declares-every-project-value.md)).
+- Known gap: checks 7 and 8 are not implemented.

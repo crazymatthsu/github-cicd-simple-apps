@@ -36,9 +36,11 @@ inputs:
     required: false
     default: 'false'
   image-namespace:
-    description: Registry namespace of the base images (the Gradle buildlogic.docker-image default).
+    description: >-
+      Registry namespace of the base images, <registry>/base/<name>. Empty: the registry of platform.yml
+      (ADR-0030), as buildlogic.docker-image uses it.
     required: false
-    default: ghcr.io/crazymatthsu
+    default: ''
   ca-bundle:
     description: >-
       Optional path of a PEM bundle for tools outside the JVM (curl, jf, node). Empty in the demo:
@@ -110,6 +112,13 @@ runs:
         NAMESPACE: ${{ inputs.image-namespace }}
       run: |
         set -euo pipefail
+        if [[ -z $NAMESPACE ]]; then
+          # The registry of platform.yml: a plain top-level line, read without yq (the ci-build image may lack it).
+          NAMESPACE=$(awk '/^registry:/ { sub(/^registry:[ \t]*/, ""); sub(/#.*$/, ""); sub(/[ \t]+$/, ""); print; exit }' \
+            "$GITHUB_WORKSPACE/platform.yml" 2>/dev/null || true)
+          [[ $NAMESPACE =~ ^[a-z0-9.-]+(:[0-9]+)?(/[a-z0-9._-]+)*$ ]] ||
+            { echo "::error::image-namespace is empty and platform.yml has no plain 'registry: <host>/<namespace>' line (ADR-0030)"; exit 1; }
+        fi
         local_builds=()
         for name in ${ENSURE//,/ }; do
           case "$name" in

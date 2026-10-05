@@ -20,13 +20,13 @@ on:
   workflow_call:
     inputs:
       env:
-        description: Config env whose instances are deployed (local or a *-dev env).
+        description: Config env whose instances are deployed (local or a dev env of platform.yml).
         type: string
-        default: us-dev
+        required: true
       app:
         description: AppName; every instance directory of config/<env>/*/<app>/ becomes one release.
         type: string
-        default: source-database
+        required: true
       images:
         description: JSON object Gradle project → digest-pinned image (the _gradle-build `images` output).
         type: string
@@ -108,8 +108,12 @@ jobs:
           done
           count=$(jq 'length' <<<"$targets")
           if [[ $count -eq 0 ]]; then
-            echo "::error::no instance directory under config/$DEPLOY_ENV/*/$DEPLOY_APP/"
-            exit 2
+            # A dev env that configures no instance of the app has nothing to deploy (platform.yml lists the dev envs;
+            # the reference app need not run in every one): the test is skipped, not failed.
+            echo "::notice::no instance directory under config/$DEPLOY_ENV/*/$DEPLOY_APP/: no kind deployment test for $DEPLOY_ENV"
+            echo "- **kind deploy skipped**: \`config/$DEPLOY_ENV\` has no instance of \`$DEPLOY_APP\`" >> "$GITHUB_STEP_SUMMARY"
+            echo "skip=true" >> "$GITHUB_OUTPUT"
+            exit 0
           fi
           # Smoke pairs: the first release of each namespace against every other release there.
           pairs=$(jq -c '[group_by(.namespace)[] | select(length > 1) | .[0] as $first | .[1:][]
@@ -128,18 +132,22 @@ jobs:
           } >> "$GITHUB_STEP_SUMMARY"
 
       - uses: ./.github/actions/registry-login
+        if: steps.check.outputs.skip != 'true'
 
       - name: Kubernetes tools (test-infra/kind/versions.env)
+        if: steps.check.outputs.skip != 'true'
         uses: ./.github/actions/setup-kube-tools
         with:
           tools: kind,kubectl,helm
 
       - name: kind cluster up
+        if: steps.check.outputs.skip != 'true'
         uses: ./.github/actions/kind-cluster
         with:
           command: up
 
       - name: Load the image built in this run
+        if: steps.check.outputs.skip != 'true'
         id: load
         uses: ./.github/actions/kind-cluster
         with:
@@ -148,6 +156,7 @@ jobs:
           tag: ${{ steps.check.outputs.tag }}
 
       - name: One Helm release per instance (lint, upgrade --install, rollout, helm test)
+        if: steps.check.outputs.skip != 'true'
         id: deploy
         uses: ./.github/actions/helm-deploy-instance
         with:
@@ -157,6 +166,7 @@ jobs:
           loaded-images: ${{ steps.load.outputs.loaded }}
 
       - name: Smoke diff (the instances differ in identity and effective configuration)
+        if: steps.check.outputs.skip != 'true'
         env:
           PAIRS: ${{ steps.check.outputs.pairs }}
         run: |
@@ -195,14 +205,14 @@ jobs:
           exit "$fail"
 
       - name: Diagnostics before teardown
-        if: failure()
+        if: failure() && steps.check.outputs.skip != 'true'
         uses: ./.github/actions/kind-cluster
         with:
           command: diagnostics
           diagnostics-dir: build/kind-logs
 
       - name: Upload diagnostics
-        if: failure()
+        if: failure() && steps.check.outputs.skip != 'true'
         uses: actions/upload-artifact@v7
         with:
           name: kind-diagnostics-${{ github.run_id }}-${{ github.run_attempt }}-${{ inputs.env }}-${{ inputs.app }}
@@ -211,13 +221,13 @@ jobs:
           retention-days: ${{ inputs.retention-days }}
 
       - name: Teardown (success, failure and cancel)
-        if: always()
+        if: always() && steps.check.outputs.skip != 'true'
         uses: ./.github/actions/kind-cluster
         with:
           command: down
 
       - name: Leak check
-        if: always()
+        if: always() && steps.check.outputs.skip != 'true'
         uses: ./.github/actions/kind-cluster
         with:
           command: leak-check

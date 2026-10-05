@@ -5,7 +5,7 @@
 | Status | Accepted |
 | Date | 2026-10-04 |
 | Applies to | every env of every project; this repository's `config/` |
-| Enforced by | config-lint checks 1 (env grammar) and 10 (tag policy); the env allow-lists of `run-compose.sh` and `pool-deploy.sh`; the `*-dev` guard of `_deploy-dev.yml` |
+| Enforced by | config-lint checks 1 (env grammar) and 10 (tag policy); the env allow-lists of `run-compose.sh` and `pool-deploy.sh`; the dev-env guard of `_deploy-dev.yml` ([ADR-0030](0030-platform-yml-declares-every-project-value.md)) |
 | Related | [ADR-0003](0003-identity-tuple-names-every-instance.md), [ADR-0011](0011-configuration-tree-and-spring-layers.md), [ADR-0017](0017-run-compose-operations-cli-and-runtime-posture.md), [ADR-0019](0019-kubernetes-and-helm-are-provisional.md), [ADR-0027](0027-continuous-deployment-to-dev-and-the-deployment-record.md), [ADR-0029](0029-release-and-promotion.md) |
 
 **In short:** This repository configures and deploys only `local` and its dev envs. The promoted envs (qa, uat,
@@ -97,13 +97,8 @@ flowchart LR
 
 Work this decision requires (each item is a known gap in the index):
 
-- `ConnectorIdentity` does not know the stages `uat` and `parallel`, so the app image refuses to start in those
-  envs, wherever it is deployed. Config-lint does not know them either, and treats only `qa` and `prod` as
-  promoted. That matters once the configuration repository reuses it.
 - The release workflow opens its version-bump pull request against `config/us-qa` in this repository. It must open
   it in the configuration repository ([ADR-0029](0029-release-and-promotion.md)).
-- This repository's config-lint still accepts promoted-env directories, and CODEOWNERS still carries rules for
-  them.
 - The `us-dev` instance `cash/source-database/positions-db-to-deephaven` is a `kind: helm` target, so it runs
   nowhere after the deploy job.
 

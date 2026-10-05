@@ -345,7 +345,7 @@ abstract class PrintImageRefTask : DefaultTask() {
 
 /** `dockerImage { }` extension of the `buildlogic.docker-image` plugin. */
 abstract class DockerImageExtension {
-    /** `ghcr.io/crazymatthsu` in the demo (`-Pimage.registry`, env `IMAGE_REGISTRY`). */
+    /** The registry of platform.yml unless `-Pimage.registry` or env `IMAGE_REGISTRY` says otherwise (ADR-0030). */
     abstract val registry: Property<String>
 
     /** The `<project>` of `<registry>/<project>/<AppName>`: the parent project of a nested app, else the root project. */

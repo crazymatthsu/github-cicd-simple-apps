@@ -110,6 +110,5 @@ flowchart LR
 - Two instances on one box are told apart by name, but they need distinct `*_HOST_PORT` values
   ([ADR-0012](0012-compose-template-and-generated-env.md)).
 - The length limits keep every derived Kubernetes name valid.
-- Today the vocabulary is hard-coded in four places that disagree (known gaps in the index):
-  - config-lint accepts only the regions `us|jp`;
-  - nothing accepts the stages `uat` and `parallel`, so an app would refuse to start there.
+- The vocabulary is declared once, in `platform.yml`; config-lint, the scripts and `ConnectorIdentity` read it
+  ([ADR-0030](0030-platform-yml-declares-every-project-value.md)).

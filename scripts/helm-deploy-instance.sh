@@ -6,7 +6,6 @@
 set -euo pipefail
 
 readonly EXIT_FAILED=1 EXIT_USAGE=2 EXIT_REFUSED=3 EXIT_CONFIG=4 EXIT_TOOL=5
-readonly FLOWS="cash deriv swap"
 readonly MODES="lint template deploy"
 # Files of a layer's directory that are not shipped as appFiles (ADR-0011): the Spring layer itself (appConfig), the
 # deploy-tool files (_helm-values.*, _docker-compose.*: never mounted, ADR-0011), the flow's inventory and README.md.
@@ -62,10 +61,10 @@ Options:
 Failures: a release with a deployed revision is upgraded with --rollback-on-failure, and a failure after the
 upgrade (rollout status, helm test) rolls it back as well, so the previous revision keeps running. A first
 install has nothing to restore: it runs without --rollback-on-failure and a failed one stays in place for the
-diagnostics (helm uninstall removes it). Only local and *-dev envs are deployed; lint and template accept every
-env (config-lint renders qa / prod).
+diagnostics (helm uninstall removes it). Only local and the dev_envs of platform.yml are deployed; lint and
+template accept every env of its vocabulary, its regions, stages and flows (ADR-0030).
 
-Exit codes: 0 ok · 1 helm / kubectl failure · 2 usage · 3 refused (deploy to an env other than local / *-dev) ·
+Exit codes: 0 ok · 1 helm / kubectl failure · 2 usage · 3 refused (deploy to an env other than local or a dev env) ·
             4 config tree (chart, a Helm values or Spring layer file missing) · 5 tool missing or not Helm 4
 Environment: CONFIG_ROOT (default <repo>/config), HELM_BIN (default helm), KUBECTL_BIN (default kubectl),
              SPRING_DATASOURCE_USERNAME / SPRING_DATASOURCE_PASSWORD (Secret values when the flags are absent)
@@ -136,11 +135,49 @@ if [ "${#POSITIONAL[@]}" -ne 4 ]; then
     die "$EXIT_USAGE" "expected <env> <flow> <AppName> <AppInstance>, got ${#POSITIONAL[@]} argument(s)"
 fi
 ENV_NAME="${POSITIONAL[0]}" FLOW="${POSITIONAL[1]}" APP="${POSITIONAL[2]}" INSTANCE="${POSITIONAL[3]}"
-case "$ENV_NAME" in
-    local | [a-z][a-z]-dev | [a-z][a-z]-qa | [a-z][a-z]-prod) ;;
-    *) die "$EXIT_USAGE" "env '$ENV_NAME' must be local or <region>-<stage> (e.g. us-dev)" ;;
-esac
-contains_word "$FLOW" "$FLOWS" || die "$EXIT_USAGE" "flow '$FLOW' must be one of: $FLOWS"
+REPO_ROOT="$(git -C "$SCRIPT_DIR" rev-parse --show-toplevel 2>/dev/null || (cd "$SCRIPT_DIR/.." && pwd -P))"
+PLATFORM_FILE="$REPO_ROOT/platform.yml"
+# The words of a one-line list of platform.yml (`<key>: [a, b]` at the top level, ADR-0030), read without a YAML
+# parser. Exit 1: no such key; 2: not a one-line list.
+platform_list() { # <key>
+    awk -v k="$1" '
+    index($0, k ":") == 1 {
+        v = substr($0, length(k) + 2)
+        sub(/#.*$/, "", v)
+        gsub(/^[ \t]+|[ \t]+$/, "", v)
+        if (substr(v, 1, 1) != "[" || substr(v, length(v), 1) != "]") { bad = 1; exit }
+        v = substr(v, 2, length(v) - 2)
+        if (index(v, "[") || index(v, "]")) { bad = 1; exit }
+        gsub(/[ \t]/, "", v)
+        gsub(/,/, " ", v)
+        print v
+        found = 1
+        exit
+    }
+    END { if (bad) exit 2; if (!found) exit 1 }' "$PLATFORM_FILE"
+}
+read_platform_list() { # <key> <variable>
+    local words
+    if ! words="$(platform_list "$1")" || [ -z "$words" ]; then
+        die "$EXIT_CONFIG" "platform.yml: $1 must be a one-line list at the top level, e.g. '$1: [a, b]' (ADR-0030)"
+    fi
+    printf -v "$2" '%s' "$words"
+}
+[ -f "$PLATFORM_FILE" ] ||
+    die "$EXIT_CONFIG" "platform.yml not found in $REPO_ROOT: it declares the regions, stages, flows and dev envs (ADR-0030)"
+REGIONS="" STAGES="" FLOWS="" DEV_ENVS=""
+read_platform_list regions REGIONS
+read_platform_list stages STAGES
+read_platform_list flows FLOWS
+read_platform_list dev_envs DEV_ENVS
+# local, or <region>-<stage> with a region and a stage of platform.yml (ADR-0003).
+if [ "$ENV_NAME" != local ]; then
+    region="${ENV_NAME%%-*}" stage="${ENV_NAME#*-}"
+    if [ "$region" = "$ENV_NAME" ] || ! contains_word "$region" "$REGIONS" || ! contains_word "$stage" "$STAGES"; then
+        die "$EXIT_USAGE" "env '$ENV_NAME' must be local or <region>-<stage> with a region of: $REGIONS and a stage of: $STAGES (platform.yml)"
+    fi
+fi
+contains_word "$FLOW" "$FLOWS" || die "$EXIT_USAGE" "flow '$FLOW' must be one of: $FLOWS (platform.yml)"
 if ! is_token "$APP" || [ "${#APP}" -gt 20 ]; then
     die "$EXIT_USAGE" "AppName '$APP' must be lower-case kebab-case, at most 20 characters"
 fi
@@ -174,17 +211,16 @@ if [ "$MODE" = deploy ]; then
 else
     SECRET_USER="" SECRET_PASSWORD="" KUBECONFIG_ARG=""
 fi
-# Env allow-list (ADR-0019): qa and prod are never deployed from here; rendering them is fine.
-if [ "$MODE" = deploy ]; then
-    case "$ENV_NAME" in
-        local | *-dev) ;;
-        *) die "$EXIT_REFUSED" "env '$ENV_NAME' refused: qa and prod are deployed by their controller from reviewed config (ADR-0004), never by this script" ;;
-    esac
+# Env allow-list (ADR-0004, ADR-0019): only local and the dev envs of platform.yml are deployed from here; rendering
+# any env is fine.
+if [ "$MODE" = deploy ] && [ "$ENV_NAME" != local ] && ! contains_word "$ENV_NAME" "$DEV_ENVS"; then
+    [ "${ENV_NAME#*-}" != dev ] ||
+        die "$EXIT_REFUSED" "env '$ENV_NAME' refused: it is not a dev env of this repository (platform.yml dev_envs: $DEV_ENVS) (ADR-0004)"
+    die "$EXIT_REFUSED" "env '$ENV_NAME' refused: this repository deploys local and its dev envs ($DEV_ENVS) only; the promoted envs are deployed from the configuration repository (ADR-0004)"
 fi
 
 # --- paths (4) --------------------------------------------------------------------------------------------
 
-REPO_ROOT="$(git -C "$SCRIPT_DIR" rev-parse --show-toplevel 2>/dev/null || (cd "$SCRIPT_DIR/.." && pwd -P))"
 CONFIG_ROOT_ABS="$(abs_path "${CONFIG_ROOT:-$REPO_ROOT/config}")"
 # The app's chart (ADR-0019): apps/<AppName>/helm/<AppName> (ADR-0006), else any <dir>/<AppName>/helm/<AppName>.
 if [ -z "$CHART_ARG" ]; then

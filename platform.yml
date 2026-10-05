@@ -1,12 +1,24 @@
-# platform.yml — the manifest of this repository for the shared pipeline (ADR-0002): only what the tree
-# cannot derive. Everything else is derived, never declared twice: apps from the subprojects applying buildlogic.docker-image (ADR-0006), libraries
-# from framework/* (ADR-0006), envs / flows / instances from the config/ directories, deploy policy and boxes from each flow's
+# platform.yml — the manifest of this repository (ADR-0002, ADR-0030): every project value the shared tooling needs and
+# the tree cannot derive. The shared tooling reads these values from here and hard-codes none of them; everything else is
+# derived, never declared twice: apps from the subprojects applying buildlogic.docker-image (ADR-0006), libraries from
+# framework/*, envs / flows / instances from the config/ directories, deploy targets and boxes from each flow's
 # workflows-config.yml, versions from git tags.
-platform: v1                        # the major version of the contract this repository follows (ADR-0002)
-kind: app                           # builds, publishes and deploys its dev envs
-registry: ghcr.io/crazymatthsu      # images are <registry>/<project>/<AppName>
+#
+# Readers: Gradle through the buildlogic.platform settings plugin, the workflows through .github/actions/platform-manifest,
+# scripts/pool-deploy.sh with yq, and scripts/run-compose.sh without a YAML parser — so dev_envs, regions, stages and
+# flows stay one-line lists.
+platform: v1                        # the major version of the contract this repository follows (ADR-0001)
+kind: app                           # builds, publishes and deploys its local and dev envs (ADR-0004)
+registry: ghcr.io/crazymatthsu      # images are <registry>/<project>/<AppName>; base images <registry>/base/<name>
 projects:
-  - name: github-cicd-simple-apps   # the one release line: tags vX.Y.Z, the image path, the `project` drop-down
-    apps_dir: apps
-    kinds: [compose, helm]
-dev_envs: [us-dev]                  # the envs this repository deploys itself; qa / uat / prod live in platform-config
+  - name: github-cicd-simple-apps   # = the repository name = rootProject.name: tags vX.Y.Z and the image path (ADR-0002)
+    group: com.example.connectors   # the Gradle (Maven) group of every module
+    apps_dir: apps                  # apps live in <apps_dir>/<AppName>/ (ADR-0006)
+    kinds: [compose, helm]          # the runtimes a deploy target may name (workflows-config.yml `kind`)
+    reference_app: source-database  # the app of the system test, the kind deployment test and the nightly teardown drill
+dev_envs: [us-dev]                  # the envs this repository configures and deploys; the promoted envs live in the
+                                    # configuration repository (ADR-0004)
+# The identity vocabulary (ADR-0003): an env is `local` or <region>-<stage>; every stage but dev is promoted (ADR-0004).
+regions: [us, jp]
+stages: [dev, qa, uat, prod, parallel]
+flows: [cash, deriv, swap]

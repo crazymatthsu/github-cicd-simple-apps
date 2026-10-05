@@ -125,4 +125,4 @@ flowchart TD
   deployed to dev.
 - The configuration repository needs the same rules and a way to run them. This is an open decision: config-lint
   learns its apps from Gradle subprojects, which a configuration-only repository does not have.
-- This repository's config-lint still accepts promoted-env directories (known gap).
+- This repository's config-lint rejects every env but `local` and the dev envs of `platform.yml` ([ADR-0030](0030-platform-yml-declares-every-project-value.md)).

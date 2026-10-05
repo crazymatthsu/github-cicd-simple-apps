@@ -2,7 +2,7 @@
 
 | | |
 |---|---|
-| Status | Accepted |
+| Status | Accepted. Rule 2 superseded in part by [ADR-0030](0030-platform-yml-declares-every-project-value.md) |
 | Date | 2026-10-04 |
 | Applies to | the charts, the `_helm-values.*` files, `scripts/helm-deploy-instance.sh`, the kind tier, `kind: helm` targets |
 | Enforced by | config-lint checks 3, 4 and 12; `_kind-deploy.yml` in `pr.yml` and `main.yml` |
