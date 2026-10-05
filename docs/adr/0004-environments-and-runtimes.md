@@ -45,9 +45,9 @@ env, so that what was tested in dev is what runs in prod.
    - The higher envs are deployed from the configuration repository. How it does so, on the same host layout, is an
      open decision.
 4. **The same artifacts in every env.** Every env runs the image that `main` built and tested, promoted by digest
-   ([ADR-0010](0010-image-tags-digests-promotion-retention.md)), with the same template, scripts and bundle format.
-   Promoted envs differ only in four things: who owns the configuration, which tags are allowed, who approves,
-   and which pipeline deploys.
+   ([ADR-0010](0010-image-tags-digests-promotion-retention.md)), and follows the same configuration rules and host
+   layout. Promoted envs differ only in four things: who owns the configuration, which tags are allowed, who
+   approves, and which pipeline deploys.
 5. **Kubernetes targets are tests, not a runtime.** A `kind: helm` target on `cluster: kind-ci` in a dev inventory
    is deployed into a throwaway kind cluster that the job deletes at its end. It is a deployment test of the
    provisional charts ([ADR-0019](0019-kubernetes-and-helm-are-provisional.md)). An instance that must keep
