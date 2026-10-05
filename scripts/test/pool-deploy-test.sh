@@ -105,10 +105,11 @@ EOF
 cat >"$DOCKER_BIN/docker" <<'EOF'
 #!/usr/bin/env bash
 # Stub docker for run-compose.sh: a compose CLI and a daemon that accept everything. With STUB_HEALTHY set,
-# `compose ... ps -q` names a container, so health goes on to ask the actuator (the stub curl).
+# `ps -q --filter label=...` (run-compose.sh finds the app's container by its compose labels) names a container, so
+# health goes on to ask the actuator (the stub curl).
 printf 'docker %s\n' "$*" >>"$STUB_LOG"
 if [ "${1:-}" = compose ] && [ "${2:-}" = version ]; then echo "Docker Compose version v2.99.0-stub"; fi
-if [ -n "${STUB_HEALTHY:-}" ] && [ "${1:-}" = compose ] && [[ " $* " == *" ps -q "* ]]; then echo 0123456789ab; fi
+if [ -n "${STUB_HEALTHY:-}" ] && [ "${1:-}" = ps ] && [[ " $* " == *" -q "* ]]; then echo 0123456789ab; fi
 exit 0
 EOF
 cat >"$DOCKER_BIN/curl" <<'EOF'
@@ -189,7 +190,9 @@ bundle() { # <config root> <out>: a verified bundle of us-dev/cash
     CONFIG_ROOT="$1" "$POOL_DEPLOY" us-dev cash bundle --out "$2" --tag t1 >/dev/null 2>"$WORK/bundle.err" ||
         { fail "bundle failed: $(tail -n 3 "$WORK/bundle.err")"; return 1; }
 }
-box_env() { printf '%s/%s%s/%s/config/us-dev/cash/source-database/trades-db-to-amps/compose.env' "$1" "$2" "$ROOT" "$3"; } # <boxes> <host> <version>
+# The instance layer (what record-tag writes) and the combined env run-compose.sh generates (R-0008) in a version.
+box_env() { printf '%s/%s%s/%s/config/us-dev/cash/source-database/trades-db-to-amps/_docker-compose.instance.env' "$1" "$2" "$ROOT" "$3"; } # <boxes> <host> <version>
+box_combined() { printf '%s/%s%s/%s/.run/us-dev/cash/source-database/trades-db-to-amps/compose.env' "$1" "$2" "$ROOT" "$3"; } # <boxes> <host> <version>
 
 # --- cases (DL-39 contract §4; DL-41 decisions 2, 3, 5; DL-46) ----------------------------------------------
 
@@ -198,20 +201,21 @@ case_bundle() { # the layout and manifest for us-dev/cash; every instance valida
     run "$POOL_DEPLOY" us-dev cash bundle --out "$b" --tag t1
     expect_rc 0
     m="$b/.platform-bundle"
-    for f in .platform-bundle scripts/run-compose.sh scripts/smoke.sh apps/source-database/docker/docker-compose.yml \
-        config/us-dev/cash/_common/application.yml config/us-dev/cash/workflows-config.yml \
-        config/us-dev/cash/source-database/app-common/application.yml config/us-dev/cash/source-database/trades-db-to-amps/compose.env \
-        config/us-dev/cash/source-database/positions-db-to-deephaven/application.yml; do
+    for f in .platform-bundle scripts/run-compose.sh scripts/smoke.sh docker/docker-compose.yml \
+        apps/source-database/docker/docker-compose.override.yml config/us-dev/cash/application.flow.yml \
+        config/us-dev/cash/_docker-compose.flow.env config/us-dev/cash/workflows-config.yml \
+        config/us-dev/cash/source-database/application.app.yml config/us-dev/cash/source-database/_docker-compose.app.env \
+        config/us-dev/cash/source-database/trades-db-to-amps/_docker-compose.instance.env \
+        config/us-dev/cash/source-database/positions-db-to-deephaven/application.instance.yml; do
         [ -f "$b/$f" ] || fail "the bundle lacks $f"
     done
-    # No per-app wrapper (D12 §6.2): source-database ships no scripts/smoke.sh of its own, so apps/source-database/
-    # holds the compose template only; no platform layer (DL-45).
+    # One compose template for every app (R-0008) and no per-app wrapper (D12 §6.2): apps/source-database/ holds only
+    # its compose override; no platform layer (DL-45); no combined env (.run/ is written on the box).
     for f in config/us-dev/workflows-config.yml config/us-dev/_common config/_common config/local apps/source-amps apps/source-kafka \
-        apps/source-database/src apps/source-database/build apps/source-database/scripts scripts/ci scripts/test .git; do
+        apps/source-database/src apps/source-database/build apps/source-database/scripts \
+        apps/source-database/docker/docker-compose.yml .run scripts/ci scripts/test .git; do
         [ ! -e "$b/$f" ] || fail "the bundle holds $f"
     done
-    # The cluster layer config/us-dev/cash/_common/ is a layer, not an app (DL-44): no warning about it.
-    expect_not_in "is not a deployable app" "$ERR"
     [ -x "$b/scripts/run-compose.sh" ] && [ -x "$b/scripts/smoke.sh" ] || fail "the bundle's scripts are not executable"
     [ "$OUT" = "$(cat "$m")" ] || fail "bundle does not print its manifest"
     # Shell-sourceable, so a box needs no yq; the manifest names the project and the versions root (DL-46).
@@ -224,10 +228,10 @@ case_bundle() { # the layout and manifest for us-dev/cash; every instance valida
     ) || fail "the marker does not source to $PROJECT us-dev/cash/t1, the pool and $ROOT: $(tr '\n' ' ' <"$m")"
     grep -Eq '^BUNDLE_CREATED=[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}Z$' "$m" || fail "BUNDLE_CREATED is not UTC"
     grep -Eq '^BUNDLE_GIT_SHA=([0-9a-f]{40}(-dirty)?|unknown)$' "$m" || fail "BUNDLE_GIT_SHA is malformed"
-    n="$(cd "$b" && find . -type f ! -path ./.platform-bundle | wc -l | tr -d ' ')"
+    n="$(cd "$b" && find . -type f ! -path ./.platform-bundle ! -path './.run/*' | wc -l | tr -d ' ')"
     grep -qx "BUNDLE_FILES=$n" "$m" || fail "BUNDLE_FILES is not $n"
-    # The documented recipe: sha256 of the sorted "<sha256>  <path>" lines of every other file.
-    sha="$(cd "$b" && find . -type f ! -path ./.platform-bundle -print0 | LC_ALL=C sort -z | xargs -0 "${SHA256[@]}" |
+    # The documented recipe: sha256 of the sorted "<sha256>  <path>" lines of every other file but .run/.
+    sha="$(cd "$b" && find . -type f ! -path ./.platform-bundle ! -path './.run/*' -print0 | LC_ALL=C sort -z | xargs -0 "${SHA256[@]}" |
         sed 's|  \./|  |' | "${SHA256[@]}" | cut -d ' ' -f 1)"
     grep -qx "BUNDLE_SHA256=$sha" "$m" || fail "BUNDLE_SHA256 is not the recipe's $sha"
     # Any instance of the flow can run on any box: both validate from the bundle, outside any checkout.
@@ -460,7 +464,7 @@ case_dry_run() { # dry-run prints the sync into the version directory, record-ta
     run env CONFIG_ROOT="$cfg" "$POOL_DEPLOY" us-dev cash deploy --tag t1 --version "$V1" --dry-run
     expect_rc 0
     [ -z "$OUT" ] || fail "a dry run reports '$OUT' on stdout"
-    expect_in "rsync -az --delete -e 'ssh -o BatchMode=yes" "$ERR"
+    expect_in "rsync -az --delete --exclude=/.run/ -e 'ssh -o BatchMode=yes" "$ERR"
     expect_in "/ deploy@$H1:$ROOT/$V1/" "$ERR"
     expect_in "deploy@$H1 -- 'IMAGE_TAG=t1 $NEW us-dev cash source-database trades-db-to-amps record-tag'" "$ERR"
     expect_in "deploy@$H2 -- 'IMAGE_TAG=t1 $NEW us-dev cash source-database trades-db-to-amps record-tag'" "$ERR"
@@ -509,12 +513,12 @@ case_health_fails() { # a failed health check sends every started instance back 
     expect_json "$(cat "$report")" '.placements[1].result' "rolled back: $TRADES failed (no current version to go back to: stopped)"
 }
 
-case_record_tag() { # run-compose.sh record-tag: IMAGE_TAG into a host bundle's compose.env only, in place, idempotent
+case_record_tag() { # run-compose.sh record-tag: IMAGE_TAG into a host bundle's instance layer only, in place, idempotent
     local cfg b="$WORK/record-tag/bundle" rc env before first mode inside
     cfg="$(fixture record-tag)"
     bundle "$cfg" "$b" || return 0
     rc="$b/scripts/run-compose.sh"
-    env="$b/config/us-dev/cash/source-database/trades-db-to-amps/compose.env"
+    env="$b/config/us-dev/cash/source-database/trades-db-to-amps/_docker-compose.instance.env"
     # The box's copy gets a commented-out IMAGE_TAG and a second IMAGE_TAG line (compose reads the last one,
     # run-compose.sh the first), and mode 640.
     { echo "# IMAGE_TAG=commented-out"; cat "$env"; echo "IMAGE_TAG=duplicate"; } >"$WORK/record-tag.env"
@@ -527,11 +531,11 @@ case_record_tag() { # run-compose.sh record-tag: IMAGE_TAG into a host bundle's 
     expect_rc 0
     [ "$(grep -n '^IMAGE_TAG=' "$env")" = "${first%%:*}:IMAGE_TAG=t2" ] ||
         fail "expected one IMAGE_TAG line, t2, where the first was (line ${first%%:*}): $(grep -n IMAGE_TAG "$env" | tr '\n' ' ')"
-    [ "$(grep -v '^IMAGE_TAG=' "$env")" = "$(grep -v '^IMAGE_TAG=' "$before")" ] || fail "another line of compose.env changed"
+    [ "$(grep -v '^IMAGE_TAG=' "$env")" = "$(grep -v '^IMAGE_TAG=' "$before")" ] || fail "another line of the instance layer changed"
     mode="$(stat -c %a "$env" 2>/dev/null || stat -f %Lp "$env")"
-    [ "$mode" = 640 ] || fail "compose.env lost its mode: $mode"
-    [ -z "$(find "$(dirname "$env")" -name '.compose.env.*')" ] || fail "a temporary file was left behind"
-    expect_in "IMAGE_TAG=t2 recorded in config/us-dev/cash/source-database/trades-db-to-amps/compose.env (was ${first#*:IMAGE_TAG=}); this version directory keeps it" "$ERR"
+    [ "$mode" = 640 ] || fail "the instance layer lost its mode: $mode"
+    [ -z "$(find "$(dirname "$env")" -name '._docker-compose.instance.env.*')" ] || fail "a temporary file was left behind"
+    expect_in "IMAGE_TAG=t2 recorded in config/us-dev/cash/source-database/trades-db-to-amps/_docker-compose.instance.env (was ${first#*:IMAGE_TAG=}); this version directory keeps it" "$ERR"
     expect_in 'cmd=record-tag opts="" result=0 override=IMAGE_TAG' "$ERR"
     # Idempotent; --dry-run only says what it would write.
     cp "$env" "$before"
@@ -540,7 +544,7 @@ case_record_tag() { # run-compose.sh record-tag: IMAGE_TAG into a host bundle's 
     expect_in "already records IMAGE_TAG=t2" "$ERR"
     run in_dir / env -u GITHUB_RUN_ID IMAGE_TAG=t3 "$rc" us-dev cash source-database trades-db-to-amps record-tag --dry-run
     expect_rc 0
-    expect_in "write         IMAGE_TAG=t3 into config/us-dev/cash/source-database/trades-db-to-amps/compose.env (now t2)" "$OUT"
+    expect_in "write         IMAGE_TAG=t3 into config/us-dev/cash/source-database/trades-db-to-amps/_docker-compose.instance.env (now t2)" "$OUT"
     # Refused: no tag; a value that is not a tag (a second line would add a variable); an IMAGE_REPO override.
     run in_dir / env -u GITHUB_RUN_ID "$rc" us-dev cash source-database trades-db-to-amps record-tag
     expect_rc 2
@@ -552,22 +556,22 @@ case_record_tag() { # run-compose.sh record-tag: IMAGE_TAG into a host bundle's 
     run in_dir / env -u GITHUB_RUN_ID IMAGE_TAG=t3 IMAGE_REPO=ghcr.io/other/repo "$rc" us-dev cash source-database trades-db-to-amps record-tag
     expect_rc 2
     expect_in "records IMAGE_TAG only" "$ERR"
-    cmp -s "$env" "$before" || fail "a dry run or a refused record-tag changed compose.env: $(diff "$before" "$env" | tr '\n' ' ')"
-    # Never outside the bundle: a CONFIG_ROOT elsewhere, or a checkout (there compose.env changes through git).
-    cp "$cfg/us-dev/cash/source-database/trades-db-to-amps/compose.env" "$WORK/record-tag.cfg"
+    cmp -s "$env" "$before" || fail "a dry run or a refused record-tag changed the instance layer: $(diff "$before" "$env" | tr '\n' ' ')"
+    # Never outside the bundle: a CONFIG_ROOT elsewhere, or a checkout (there the instance layer changes through git).
+    cp "$cfg/us-dev/cash/source-database/trades-db-to-amps/_docker-compose.instance.env" "$WORK/record-tag.cfg"
     run in_dir / env -u GITHUB_RUN_ID IMAGE_TAG=t3 CONFIG_ROOT="$cfg" "$rc" us-dev cash source-database trades-db-to-amps record-tag
     expect_rc 3
     run in_dir / env -u GITHUB_RUN_ID IMAGE_TAG=t3 CONFIG_ROOT="$b/../../record-tag/config" "$rc" us-dev cash source-database \
         trades-db-to-amps record-tag
     expect_rc 3
-    cmp -s "$cfg/us-dev/cash/source-database/trades-db-to-amps/compose.env" "$WORK/record-tag.cfg" || fail "record-tag wrote outside the bundle"
-    inside="$REPO/config/us-dev/cash/source-database/trades-db-to-amps/compose.env"
+    cmp -s "$cfg/us-dev/cash/source-database/trades-db-to-amps/_docker-compose.instance.env" "$WORK/record-tag.cfg" || fail "record-tag wrote outside the bundle"
+    inside="$REPO/config/us-dev/cash/source-database/trades-db-to-amps/_docker-compose.instance.env"
     cp "$inside" "$WORK/record-tag.repo"
     run env -u GITHUB_RUN_ID IMAGE_TAG=t3 "$REPO/scripts/run-compose.sh" \
         us-dev cash source-database trades-db-to-amps record-tag
     expect_rc 3
-    expect_in "in a checkout compose.env changes through git" "$ERR"
-    cmp -s "$inside" "$WORK/record-tag.repo" || fail "record-tag wrote the checkout's compose.env"
+    expect_in "in a checkout it changes through git" "$ERR"
+    cmp -s "$inside" "$WORK/record-tag.repo" || fail "record-tag wrote the checkout's instance layer"
     # Without an IMAGE_TAG line the tag is appended.
     grep -v '^IMAGE_TAG=' "$before" >"$env"
     run in_dir / env -u GITHUB_RUN_ID IMAGE_TAG=t4 "$rc" us-dev cash source-database trades-db-to-amps record-tag
@@ -601,7 +605,7 @@ case_record_first() { # the tag is recorded in the new version on every box befo
         "$POOL_DEPLOY" us-dev cash deploy --tag t1 --version "$V1" --transport ssh --report "$report"
     expect_rc 0
     [ "$OUT" = "deployed $TRADES@$H1=t1" ] || fail "a failed record-tag on $H2 cost the deployed line: '$OUT'"
-    expect_in "compose.env of version $V1 on $H2 does not name t1" "$ERR"
+    expect_in "_docker-compose.instance.env of version $V1 on $H2 does not name t1" "$ERR"
     expect_json "$(cat "$report")" '.placements[0].result' "deployed; IMAGE_TAG not recorded on $H2"
     # The instance's own box fails to record: nothing starts there (the directory would run the declared tag).
     : >"$log"
@@ -617,7 +621,7 @@ case_record_first() { # the tag is recorded in the new version on every box befo
     run env CONFIG_ROOT="$cfg" "$POOL_DEPLOY" us-dev cash deploy --tag t1 --version "$V1" --bundle "$b" --transport local --local-root "$boxes"
     expect_rc 0
     [ "$OUT" = "deployed $TRADES@$H1=t1" ] || fail "stdout is '$OUT', expected the validated instance"
-    [ "$(grep -c "write         IMAGE_TAG=t1 into config/us-dev/cash/source-database/trades-db-to-amps/compose.env" <<<"$ERR")" -eq 2 ] ||
+    [ "$(grep -c "write         IMAGE_TAG=t1 into config/us-dev/cash/source-database/trades-db-to-amps/_docker-compose.instance.env" <<<"$ERR")" -eq 2 ] ||
         fail "expected record-tag --dry-run on both boxes: $(grep 'write  ' <<<"$ERR" | tr '\n' ' ')"
     [ "$(grep -c "activate      current -> $V1 (now none)" <<<"$ERR")" -eq 2 ] ||
         fail "expected activate --dry-run on both boxes: $(grep 'activate  ' <<<"$ERR" | tr '\n' ' ')"
@@ -765,7 +769,7 @@ case_ssh_deploy() { # the ssh transport end to end: rsync into the version direc
         "$POOL_DEPLOY" us-dev cash deploy --tag t1 --version "$V1" --transport ssh --report "$report"
     expect_rc 0
     [ "$OUT" = "deployed $TRADES@$H1=t1" ] || fail "stdout is '$OUT', expected the one deployed line"
-    expect_in "-az --delete -e $STUB/ssh -o BatchMode=yes -o ConnectTimeout=10 -o StrictHostKeyChecking=yes -o UserKnownHostsFile=$cfg/us-dev/known_hosts" "$(cat "$log")"
+    expect_in "-az --delete --exclude=/.run/ -e $STUB/ssh -o BatchMode=yes -o ConnectTimeout=10 -o StrictHostKeyChecking=yes -o UserKnownHostsFile=$cfg/us-dev/known_hosts" "$(cat "$log")"
     expect_in "/ deploy@$H2:$ROOT/$V1/" "$(cat "$log")"
     expect_not_in "/opt/platform" "$(cat "$log")"
     [ "$(grep -c -- '--dry-run --itemize-changes --checksum' "$log")" -eq 2 ] || fail "not every box was verified"
@@ -846,7 +850,7 @@ case_local_execute() { # POOL_LOCAL_EXECUTE=true: the real run-compose.sh comman
         SPRING_DATASOURCE_PASSWORD=p "$POOL_DEPLOY" us-dev cash deploy --tag t1 --version "$V1" --transport local --local-root "$boxes"
     expect_rc 1
     expect_not_in "deployed" "$OUT"
-    expect_in "--env-file $(box_env "$boxes" "$H1" "$V1")" "$(cat "$log")"
+    expect_in "--env-file $(box_combined "$boxes" "$H1" "$V1")" "$(cat "$log")"
     expect_in " pull" "$(cat "$log")"
     expect_in " up -d --wait" "$(cat "$log")"
     expect_not_in "ssh " "$(cat "$log")"
@@ -870,7 +874,7 @@ case_local_execute() { # POOL_LOCAL_EXECUTE=true: the real run-compose.sh comman
         [ -d "$boxes/$box/apps/deploy/shared/$PROJECT/logs" ] || fail "$box: shared/$PROJECT/logs missing"
     done
     expect_in "deployed t1 as version $V1" "$ERR"
-    # A second version: current moves, the first version keeps its own compose.env (t1).
+    # A second version: current moves, the first version keeps its own instance layer (t1).
     run env PATH="$DOCKER_BIN:$PATH" CONFIG_ROOT="$cfg" STUB_LOG="$log" STUB_HEALTHY=1 POOL_LOCAL_EXECUTE=true \
         SPRING_DATASOURCE_USERNAME=u SPRING_DATASOURCE_PASSWORD=p \
         "$POOL_DEPLOY" us-dev cash deploy --tag t2 --version "$V2" --transport local --local-root "$boxes"
@@ -894,7 +898,7 @@ case_local_execute() { # POOL_LOCAL_EXECUTE=true: the real run-compose.sh comman
         [ "$(readlink "$boxes/$box$ROOT/current")" = "$V1" ] || fail "$box: rollback left current at $(readlink "$boxes/$box$ROOT/current")"
     done
     # Discovery asked the live version (V2) first; the restart itself ran from V1.
-    [[ $(grep -- ' up -d' "$log") == *"$(box_env "$boxes" "$H1" "$V1")"* ]] || fail "the restart did not run from $V1: $(grep -- ' up -d' "$log")"
+    [[ $(grep -- ' up -d' "$log") == *"$(box_combined "$boxes" "$H1" "$V1")"* ]] || fail "the restart did not run from $V1: $(grep -- ' up -d' "$log")"
     [[ $(grep -- ' up -d' "$log") != *"/$V2/"* ]] || fail "the restart ran from $V2: $(grep -- ' up -d' "$log")"
     # keep 2: after V3 nothing goes (V1 is the version V3 replaced); after V4, V1 and V2 go.
     for v in "$V3" "$V4"; do

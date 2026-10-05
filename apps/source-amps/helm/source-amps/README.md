@@ -24,13 +24,13 @@ helm test source-database-trades-db-to-amps -n cash --logs   # the smoke test al
 | Flag | Source | Layer (D5 §6.1) |
 |---|---|---|
 | chart `values.yaml` | this directory | values layer 1 |
-| `-f config/<env>/<flow>/<AppName>/app-common/values.yaml` | sizing, `env.TZ` | values layer 2 |
-| `-f config/<env>/<flow>/<AppName>/<AppInstance>/values.yaml` | `image.tag`, `identity`, `env.APP_*`, `JAVA_OPTS`, `LOG_LEVEL_ROOT` | values layer 3 |
+| `-f config/<env>/<flow>/<AppName>/_helm-values.app.yaml` | sizing, `env.TZ` | values layer 2 |
+| `-f config/<env>/<flow>/<AppName>/<AppInstance>/_helm-values.instance.yaml` | `image.tag`, `identity`, `env.APP_*`, `JAVA_OPTS`, `LOG_LEVEL_ROOT` | values layer 3 |
 | `--set-string image.tag=<tag>` | the deployed tag (`--tag`) | wins over layer 3 |
-| `--set-file appConfig.flow=config/<env>/<flow>/_common/application.yml` | only when the file exists (the cluster layer, DL-44) | `/config/flow/application.yml` |
-| `--set-file appConfig.common=.../app-common/application.yml` | required | `/config/common/application.yml` |
-| `--set-file appConfig.instance=.../<AppInstance>/application.yml` | required | `/config/instance/application.yml` |
-| `--set-file appFiles.<layer>.<file>=<path>` | every other file of those three directories (not `values.yaml`, `compose.env`, `README.md`), `.` in the name escaped as `\.` | `/config/<layer>/<file>` |
+| `--set-file appConfig.flow=config/<env>/<flow>/application.flow.yml` | only when the file exists (the cluster layer, DL-44) | `/config/flow/application.yml` |
+| `--set-file appConfig.common=.../<AppName>/application.app.yml` | required | `/config/common/application.yml` |
+| `--set-file appConfig.instance=.../<AppInstance>/application.instance.yml` | required | `/config/instance/application.yml` |
+| `--set-file appFiles.<layer>.<file>=<path>` | any other file of those three directories (not `application.*.yml`, the `_`-prefixed deploy-tool files, `workflows-config.yml`, `README.md`; config-lint allows none today), `.` in the name escaped as `\.` | `/config/<layer>/<file>` |
 
 `--mode deploy` adds: the namespace with the `restricted` Pod Security labels, the `Secret`
 `<release>-secrets` (`spring.datasource.username`, `spring.datasource.password`), `helm lint`,
@@ -75,7 +75,7 @@ The pods of the connector add `app.kubernetes.io/component: connector` (the sele
 | `service.port` | `8080` | Service port `http` |
 | `probes.startup` | liveness path, every 5 s, 24 failures | 2-minute start budget (D6 §6.9) |
 | `probes.readiness`, `probes.liveness` | `/actuator/health/readiness`, `/actuator/health/liveness`, every 10 s, 3 failures, 3 s timeout | D6 §6.9 |
-| `resources` | requests `250m` / `1Gi`, limits `1Gi` | memory request = limit; app-common sets it per env + flow |
+| `resources` | requests `250m` / `1Gi`, limits `1Gi` | memory request = limit; `_helm-values.app.yaml` sets it per env + flow |
 | `strategy` | `{ type: Recreate }` | `RollingUpdate` only for idempotent pipelines (D6 §6.10) |
 | `terminationGracePeriodSeconds` | `30` | graceful shutdown (D6 §6.10) |
 | `podSecurityContext`, `securityContext` | non-root 10001, `fsGroup` 10001, `RuntimeDefault` seccomp; read-only root, no privilege escalation, all capabilities dropped | Pod Security Standard `restricted` |

@@ -8,9 +8,15 @@ set -euo pipefail
 readonly EXIT_FAILED=1 EXIT_USAGE=2 EXIT_REFUSED=3 EXIT_CONFIG=4 EXIT_TOOL=5
 readonly FLOWS="cash deriv swap"
 readonly MODES="lint template deploy"
-# Files of a layer directory that are not shipped as appFiles: the application.yml layer itself (appConfig),
-# the Helm values and the compose variables (D5 §6.4).
-readonly NOT_SHIPPED="application.yml values.yaml values.yml compose.env README.md"
+# Files of a layer's directory that are not shipped as appFiles (D5 §6.4): the Spring layer itself (appConfig), the
+# deploy-tool files (_helm-values.*, _docker-compose.*: never mounted, R-0008), the flow's inventory and README.md.
+# config-lint allows no other file in a layer's directory today, so appFiles stays empty (Helm is deferred, R-0008).
+not_shipped() {
+    case "$1" in
+        application.*.yml | _* | workflows-config.yml | README.md) return 0 ;;
+        *) return 1 ;;
+    esac
+}
 readonly FIELD_MANAGER=helm-deploy-instance
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd -P)"
 readonly SCRIPT_DIR
@@ -22,14 +28,15 @@ Usage: helm-deploy-instance.sh <env> <flow> <AppName> <AppInstance> --tag <tag> 
            [--mode lint|template|deploy] [--render-out <file>] [--dry-run]
 
 Deploys config/<env>/<flow>/<AppName>/<AppInstance>/ as the Helm release <AppName>-<AppInstance> of the
-chart apps/<AppName>/helm/<AppName>/ in the namespace <flow> (D11 §6.2, DL-33, DL-38).
+chart apps/<AppName>/helm/<AppName>/ in the namespace <flow> (D11 §6.2, DL-33, DL-38). The layers are files
+(R-0008; <c> = config/<env>/<flow>, <app> = <c>/<AppName>, <inst> = <app>/<AppInstance>).
 
 Flag list (identical in every mode):
-  -f <app-common>/values.yaml -f <instance>/values.yaml --set-string image.tag=<tag>
-  --set-file appConfig.common=<app-common>/application.yml --set-file appConfig.instance=<instance>/application.yml
-  --set-file appConfig.flow=config/<env>/<flow>/_common/application.yml      (when the file exists; the cluster layer, DL-44)
-  --set-file appFiles.<layer>.<file>=<path>   for every other file of those three layer directories
-                                              (logback.xml, *.properties; "." escaped as "\.")
+  -f <app>/_helm-values.app.yaml -f <inst>/_helm-values.instance.yaml --set-string image.tag=<tag>
+  --set-file appConfig.common=<app>/application.app.yml --set-file appConfig.instance=<inst>/application.instance.yml
+  --set-file appConfig.flow=<c>/application.flow.yml      (when the file exists; the cluster layer, DL-44)
+  --set-file appFiles.<layer>.<file>=<path>   for any other file of those three directories but the deploy-tool
+                                              files, the inventory and the subdirectories ("." escaped as "\.")
 
 Modes:
   lint      helm lint <chart> <flags>
@@ -59,7 +66,7 @@ diagnostics (helm uninstall removes it). Only local and *-dev envs are deployed;
 env (config-lint renders qa / prod).
 
 Exit codes: 0 ok · 1 helm / kubectl failure · 2 usage · 3 refused (deploy to an env other than local / *-dev) ·
-            4 config tree (chart, values.yaml or application.yml missing) · 5 tool missing or not Helm 4
+            4 config tree (chart, a Helm values or Spring layer file missing) · 5 tool missing or not Helm 4
 Environment: CONFIG_ROOT (default <repo>/config), HELM_BIN (default helm), KUBECTL_BIN (default kubectl),
              SPRING_DATASOURCE_USERNAME / SPRING_DATASOURCE_PASSWORD (Secret values when the flags are absent)
 EOF
@@ -137,8 +144,8 @@ contains_word "$FLOW" "$FLOWS" || die "$EXIT_USAGE" "flow '$FLOW' must be one of
 if ! is_token "$APP" || [ "${#APP}" -gt 20 ]; then
     die "$EXIT_USAGE" "AppName '$APP' must be lower-case kebab-case, at most 20 characters"
 fi
-if ! is_token "$INSTANCE" || [ "${#INSTANCE}" -gt 32 ] || [ "$INSTANCE" = app-common ]; then
-    die "$EXIT_USAGE" "AppInstance '$INSTANCE' must be lower-case kebab-case, at most 32 characters (not app-common)"
+if ! is_token "$INSTANCE" || [ "${#INSTANCE}" -gt 32 ]; then
+    die "$EXIT_USAGE" "AppInstance '$INSTANCE' must be lower-case kebab-case, at most 32 characters"
 fi
 case "$INSTANCE" in *[!0-9]*) ;; *) die "$EXIT_USAGE" "AppInstance '$INSTANCE' is a business name, never a bare number" ;; esac
 RELEASE="$APP-$INSTANCE"
@@ -194,9 +201,9 @@ cd "$REPO_ROOT"
 rel() { case "$1" in "$REPO_ROOT"/*) printf '%s' "${1#"$REPO_ROOT"/}" ;; *) printf '%s' "$1" ;; esac; }
 CHART="$(rel "$CHART_ABS")"
 CONFIG_ROOT_REL="$(rel "$CONFIG_ROOT_ABS")"
-FLOW_COMMON_DIR="$CONFIG_ROOT_REL/$ENV_NAME/$FLOW/_common"
-COMMON="$CONFIG_ROOT_REL/$ENV_NAME/$FLOW/$APP/app-common"
-INST="$CONFIG_ROOT_REL/$ENV_NAME/$FLOW/$APP/$INSTANCE"
+FLOW_DIR="$CONFIG_ROOT_REL/$ENV_NAME/$FLOW"
+COMMON="$FLOW_DIR/$APP"
+INST="$COMMON/$INSTANCE"
 
 # --values and --set-file split their arguments on ",": every path below derives from these two and from
 # validated names, so only they are checked.
@@ -205,34 +212,35 @@ case "$CONFIG_ROOT_REL$CHART" in *,*) die "$EXIT_CONFIG" "a comma in CONFIG_ROOT
 for dir in "$COMMON" "$INST"; do
     [ -d "$dir" ] || die "$EXIT_CONFIG" "config tree: directory missing: $dir"
 done
-for file in "$COMMON/values.yaml" "$INST/values.yaml" "$COMMON/application.yml" "$INST/application.yml"; do
+for file in "$COMMON/_helm-values.app.yaml" "$INST/_helm-values.instance.yaml" "$COMMON/application.app.yml" "$INST/application.instance.yml"; do
     [ -f "$file" ] || die "$EXIT_CONFIG" "config tree: required file missing: $file"
 done
 
 # --- the flag list (D11 §8.3) -----------------------------------------------------------------------------
 
-FLAGS=(-f "$COMMON/values.yaml" -f "$INST/values.yaml" --set-string "image.tag=$TAG"
-    --set-file "appConfig.common=$COMMON/application.yml" --set-file "appConfig.instance=$INST/application.yml")
+FLAGS=(-f "$COMMON/_helm-values.app.yaml" -f "$INST/_helm-values.instance.yaml" --set-string "image.tag=$TAG"
+    --set-file "appConfig.common=$COMMON/application.app.yml" --set-file "appConfig.instance=$INST/application.instance.yml")
 LAYERS_PRESENT="common instance"
-if [ -f "$FLOW_COMMON_DIR/application.yml" ]; then
-    FLAGS+=(--set-file "appConfig.flow=$FLOW_COMMON_DIR/application.yml")
+if [ -f "$FLOW_DIR/application.flow.yml" ]; then
+    FLAGS+=(--set-file "appConfig.flow=$FLOW_DIR/application.flow.yml")
     LAYERS_PRESENT="flow $LAYERS_PRESENT"
 fi
-# Every other file of a layer directory ships to /config/<layer>/<file> (D5 §6.4). --set-file splits its key
-# on ".": the file name is escaped ("\."), and restricted to what a ConfigMap key allows.
+# Every other file of a layer's directory ships to /config/<layer>/<file> (D5 §6.4); subdirectories (the apps of a
+# flow, the instances of an app) are not files. --set-file splits its key on ".": the file name is escaped ("\."),
+# and restricted to what a ConfigMap key allows.
 add_layer_files() {
     local layer="$1" dir="$2" path name
     [ -d "$dir" ] || return 0
     for path in "$dir"/*; do
         [ -f "$path" ] || continue
         name="$(basename "$path")"
-        contains_word "$name" "$NOT_SHIPPED" && continue
+        not_shipped "$name" && continue
         printf '%s' "$name" | grep -Eq '^[A-Za-z0-9][A-Za-z0-9._-]*$' ||
             die "$EXIT_CONFIG" "config tree: $path: file names must match [A-Za-z0-9][A-Za-z0-9._-]* to become ConfigMap keys"
         FLAGS+=(--set-file "appFiles.$layer.${name//./\\.}=$path")
     done
 }
-add_layer_files flow "$FLOW_COMMON_DIR"
+add_layer_files flow "$FLOW_DIR"
 add_layer_files common "$COMMON"
 add_layer_files instance "$INST"
 
@@ -270,7 +278,7 @@ show_plan() {
     printf 'helm-deploy-instance.sh --dry-run: %s %s %s %s --tag %s (mode %s; nothing is executed)\n' \
         "$ENV_NAME" "$FLOW" "$APP" "$INSTANCE" "$TAG" "$MODE"
     printf '  %-10s %s\n' "release" "$RELEASE" "namespace" "$NS" "chart" "$CHART" \
-        "values" "$COMMON/values.yaml $INST/values.yaml" "layers" "$LAYERS_PRESENT"
+        "values" "$COMMON/_helm-values.app.yaml $INST/_helm-values.instance.yaml" "layers" "$LAYERS_PRESENT"
 }
 # Runs (or, with --dry-run, prints) one command; tool output goes to stderr in deploy mode.
 run() {

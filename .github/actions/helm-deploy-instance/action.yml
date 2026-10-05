@@ -249,7 +249,7 @@ runs:
             1) result="failed: helm / kubectl" ;;
             2) result="failed: usage" ;;
             3) result="refused: env $HDI_ENV is not deployable" ;;
-            4) result="failed: chart, values or application.yml missing" ;;
+            4) result="failed: chart, Helm values or Spring layer file missing" ;;
             5) result="failed: tool missing or not Helm 4" ;;
             *) result="failed: exit $status" ;;
           esac

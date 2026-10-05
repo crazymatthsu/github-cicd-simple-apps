@@ -11,7 +11,7 @@ import org.springframework.core.env.PropertyResolver;
  * The identity tuple {@code <env>/<flow>/<AppName>/<AppInstance>} of one running pipeline (D5 §6.2, DL-37).
  *
  * <p>The deployer sets it through the environment variables {@code APP_ENV}, {@code APP_FLOW},
- * {@code APP_NAME} and {@code APP_INSTANCE} (compose.env / Helm values); it must equal the config-tree path
+ * {@code APP_NAME} and {@code APP_INSTANCE} (the compose env layers / Helm values); it must equal the config-tree path
  * the instance was started from. Without them (a laptop, a unit test) the identity is
  * {@code local/none/<spring.application.name>/none}, which {@link #isComplete()} reports as incomplete.
  */
@@ -48,14 +48,14 @@ public record ConnectorIdentity(String env, String flow, String app, String inst
 
     /**
      * Reads the identity from the environment. {@code APP_NAME}, when set, must equal
-     * {@code spring.application.name}: an image started with another app's compose.env fails fast.
+     * {@code spring.application.name}: an image started with another app's env layers fails fast.
      */
     public static ConnectorIdentity from(PropertyResolver environment) {
         String applicationName = blankToNull(environment.getProperty("spring.application.name"));
         String appName = blankToNull(environment.getProperty(NAME_VARIABLE));
         if (appName != null && applicationName != null && !appName.equals(applicationName)) {
             throw new IllegalStateException(NAME_VARIABLE + "=" + appName + " but this is the " + applicationName
-                    + " image: the compose.env or Helm values of another app were used");
+                    + " image: the compose env layers or Helm values of another app were used");
         }
         String app = appName != null ? appName : (applicationName != null ? applicationName : "unknown");
         return new ConnectorIdentity(

@@ -13,6 +13,7 @@ import org.gradle.api.tasks.InputDirectory
 import org.gradle.api.tasks.InputFile
 import org.gradle.api.tasks.InputFiles
 import org.gradle.api.tasks.Internal
+import org.gradle.api.tasks.Optional
 import org.gradle.api.tasks.OutputDirectory
 import org.gradle.api.tasks.OutputFile
 import org.gradle.api.tasks.PathSensitive
@@ -31,16 +32,23 @@ abstract class ConfigLintTask : DefaultTask() {
     @get:PathSensitive(PathSensitivity.RELATIVE)
     abstract val configDir: DirectoryProperty
 
-    /** Deployable AppName -> absolute path of its `docker/docker-compose.yml`. */
-    @get:Internal
-    abstract val apps: MapProperty<String, String>
-
+    /** Deployable AppNames: the subprojects that apply `buildlogic.docker-image` (R-0008). */
     @get:Input
-    val appNames: Set<String> get() = apps.get().keys
+    abstract val apps: SetProperty<String>
+
+    /** The one compose template, `docker/docker-compose.yml` (R-0008). */
+    @get:InputFile
+    @get:Optional
+    @get:PathSensitive(PathSensitivity.RELATIVE)
+    abstract val template: RegularFileProperty
+
+    /** Deployable AppName -> absolute path of its `docker/docker-compose.override.yml`, for the apps that have one. */
+    @get:Internal
+    abstract val appOverrides: MapProperty<String, String>
 
     @get:InputFiles
     @get:PathSensitive(PathSensitivity.RELATIVE)
-    abstract val composeTemplates: ConfigurableFileCollection
+    abstract val appOverrideFiles: ConfigurableFileCollection
 
     @get:Input
     abstract val completeEnvs: SetProperty<String>
@@ -140,7 +148,8 @@ abstract class ConfigLintTask : DefaultTask() {
         val renderer = compose?.let { cmd ->
             ComposeRenderer { request ->
                 exec(
-                    cmd + listOf("-p", request.project, "--env-file", request.envFile.path, "-f", request.template.path, "config", "--quiet"),
+                    cmd + listOf("-p", request.project, "--env-file", request.envFile.path) +
+                        request.composeFiles.flatMap { listOf("-f", it.path) } + listOf("config", "--quiet"),
                     baseEnv + request.environment,
                 )
             }
@@ -163,7 +172,9 @@ abstract class ConfigLintTask : DefaultTask() {
         val rendered = renderDir.get().asFile.apply { deleteRecursively(); mkdirs() }
         val linter = ConfigLinter(
             configRoot = configRoot,
-            apps = apps.get().mapValues { File(it.value) },
+            apps = apps.get(),
+            template = template.orNull?.asFile,
+            appOverrides = appOverrides.get().mapValues { File(it.value) },
             completeEnvs = completeEnvs.get(),
             renderer = renderer ?: ComposeRenderer { null },
             requireRender = requireRender.get(),

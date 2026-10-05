@@ -1,8 +1,9 @@
 // `buildlogic.config-lint` (D5 §6.5): root task `configLint` over the config/ tree. Checks 1–6 and 9–12
 // run here; 7 (merged configuration vs spring-configuration-metadata.json) and 8 (parity across envs) are
-// reported as TODO. A deployable app is a subproject with docker/docker-compose.yml (the compose template
-// run-compose.sh uses); its name is the AppName directory expected in the tree, and its Helm chart is
-// <subproject>/helm/<AppName>/Chart.yaml (D11 §6.1).
+// reported as TODO. A deployable app is a subproject that applies `buildlogic.docker-image` (R-0008: every app is
+// run from the one compose template docker/docker-compose.yml, plus its optional
+// <subproject>/docker/docker-compose.override.yml); its name is the AppName directory expected in the tree, and its
+// Helm chart is <subproject>/helm/<AppName>/Chart.yaml (D11 §6.1).
 //
 //   ./gradlew configLint                      # render check 6 with docker compose / podman compose if present,
 //                                             # check 12 with helm (and kubeconform) if present
@@ -16,23 +17,27 @@
 // (-strict, Kubernetes 1.37.0) validates them when it is on the PATH.
 import buildlogic.ConfigLintTask
 
-val deployableApps: Map<String, File> = subprojects
-    .map { it.name to it.projectDir.resolve("docker/docker-compose.yml") }
-    .filter { (_, template) -> template.isFile }
-    .toMap()
-
-val appCharts: Map<String, File> = subprojects
-    .filter { it.name in deployableApps }
-    .map { it.name to it.projectDir.resolve("helm/${it.name}") }
-    .filter { (_, chart) -> chart.resolve("Chart.yaml").isFile }
-    .toMap()
+// Evaluated lazily, once every subproject is configured: whether a subproject applies the plugin is known only then.
+val deployableApps: Provider<List<Project>> = provider {
+    subprojects.filter { it.pluginManager.hasPlugin("buildlogic.docker-image") }.sortedBy { it.name }
+}
+val overrideFiles: Provider<Map<String, File>> = deployableApps.map { projects ->
+    projects.associate { it.name to it.projectDir.resolve("docker/docker-compose.override.yml") }
+        .filterValues { it.isFile }
+}
+val appCharts: Provider<Map<String, File>> = deployableApps.map { projects ->
+    projects.associate { it.name to it.projectDir.resolve("helm/${it.name}") }
+        .filterValues { it.resolve("Chart.yaml").isFile }
+}
 
 tasks.register<ConfigLintTask>("configLint") {
     group = "verification"
     description = "Lints the config/ tree (D5 §6.5 checks 1–6, 9–12; 7–8 TODO)."
     configDir = layout.projectDirectory.dir("config")
-    apps = deployableApps.mapValues { it.value.absolutePath }
-    composeTemplates.from(deployableApps.values)
+    apps = deployableApps.map { projects -> projects.map { it.name }.toSet() }
+    template = layout.projectDirectory.file("docker/docker-compose.yml")
+    appOverrides = overrideFiles.map { files -> files.mapValues { it.value.absolutePath } }
+    appOverrideFiles.from(overrideFiles.map { it.values })
     completeEnvs = providers.gradleProperty("configLint.completeEnvs")
         .map { it.split(',').map(String::trim).filter(String::isNotEmpty).toSet() }
         .orElse(setOf("local"))
@@ -41,8 +46,8 @@ tasks.register<ConfigLintTask>("configLint") {
         .orElse(providers.environmentVariable("CI").map { it == "true" })
         .orElse(false)
     reportFile = layout.buildDirectory.file("reports/config-lint/config-lint.txt")
-    charts = appCharts.mapValues { it.value.absolutePath }
-    chartFiles.from(appCharts.values)
+    charts = appCharts.map { files -> files.mapValues { it.value.absolutePath } }
+    chartFiles.from(appCharts.map { it.values })
     helmCli = providers.gradleProperty("configLint.helm").orElse("auto")
     helmScript = layout.projectDirectory.file("scripts/helm-deploy-instance.sh")
     renderDir = layout.buildDirectory.dir("reports/config-lint/rendered")

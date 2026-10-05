@@ -16,9 +16,12 @@ data class Finding(val check: Int, val severity: Severity, val path: String, val
     override fun toString(): String = "${severity.name.padEnd(5)} check ${check.toString().padStart(2)}  $path: $message"
 }
 
-/** One `docker compose config` run (check 6). */
+/**
+ * One `docker compose config` run (check 6): the compose files in merge order (the shared template first, R-0008) and
+ * the instance's combined env, as run-compose.sh passes them.
+ */
 data class ComposeRenderRequest(
-    val template: File,
+    val composeFiles: List<File>,
     val envFile: File,
     val project: String,
     val environment: Map<String, String>,
@@ -62,10 +65,25 @@ object ConfigRules {
     const val MAX_APP_NAME = 20
     const val MAX_APP_INSTANCE = 32
     const val MAX_RELEASE_NAME = 53
+    /** The layer directories before R-0008, reported with the file names that replace them. */
     const val APP_COMMON = "app-common"
     const val COMMON = "_common"
 
-    /** D5 §6.3: the only variables `compose.env` may carry (plus `*_HOST_PORT`). */
+    /** R-0008: the layers are files, named `<kind>.<layer>.<ext>` and allowed only in the directory of their level. */
+    enum class Layer(val id: String) { FLOW("flow"), APP("app"), INSTANCE("instance") }
+    fun application(layer: Layer) = "application.${layer.id}.yml"
+    fun composeEnv(layer: Layer) = "_docker-compose.${layer.id}.env"
+    fun composeOverride(layer: Layer) = "_docker-compose.${layer.id}.yml"
+    fun helmValues(layer: Layer) = "_helm-values.${layer.id}.yaml"
+    fun layerFiles(layer: Layer): Set<String> = when (layer) {
+        Layer.FLOW -> setOf(application(layer), composeEnv(layer), composeOverride(layer))
+        else -> setOf(application(layer), composeEnv(layer), composeOverride(layer), helmValues(layer))
+    }
+    /** A layer file of any level: a misplaced one is reported with the directory it belongs in. */
+    val LAYER_FILE = Regex("""^(application|_docker-compose|_helm-values)\.(flow|app|instance)\.(yml|yaml|env)$""")
+    const val TARGETS = "workflows-config.yml"
+
+    /** D5 §6.3: the only variables an env layer may carry (plus `*_HOST_PORT`). */
     val COMPOSE_ENV_ALLOWED = setOf(
         "IMAGE_REPO", "IMAGE_TAG", "APP_ENV", "APP_FLOW", "APP_NAME", "APP_INSTANCE",
         "JAVA_OPTS", "TZ", "LOG_LEVEL_ROOT", "LOGS_DIR", "DATA_DIR", "MEM_LIMIT",
@@ -73,15 +91,16 @@ object ConfigRules {
     val HOST_PORT = Regex("^[A-Z][A-Z0-9_]*_HOST_PORT$")
     val FORBIDDEN_PREFIXES = listOf("SPRING_", "LOGGING_", "MANAGEMENT_", "CONNECTOR_")
 
-    /** Variables `run-compose.sh` sets itself; an instance may never define them (D5 §6.3, D6 §6.2). */
-    val SCRIPT_VARIABLES = setOf("CONFIG_DIR", "COMMON_DIR", "FLOW_COMMON_DIR", "PROJECT")
+    /** Variables `run-compose.sh` sets itself; no env layer may define them (D5 §6.3, D6 §6.2, R-0008). */
+    val SCRIPT_VARIABLES = setOf("COMPOSE_ENV_FILE", "FLOW_APP_YML", "APP_APP_YML", "INSTANCE_APP_YML", "PROJECT")
     val IDENTITY = listOf("APP_ENV", "APP_FLOW", "APP_NAME", "APP_INSTANCE")
+    /** Only the instance layer sets these (and `*_HOST_PORT`): the image tag, the identity, the published ports. */
+    val INSTANCE_ONLY = IDENTITY.toSet() + "IMAGE_TAG"
 
-    /** D5 §6.3: the app-facing subset — the only names a values.yaml `env:` map may carry (check 4). */
+    /** D5 §6.3: the app-facing subset — the only names a Helm values `env:` map may carry (check 4). */
     val VALUES_ENV_ALLOWED = IDENTITY.toSet() + setOf("JAVA_OPTS", "TZ", "LOG_LEVEL_ROOT")
-    /** Knobs both consumers set: compose.env and the values `env:` should agree (check 4 warns otherwise). */
+    /** Knobs both consumers set: the combined compose env and the values `env:` should agree (check 4 warns otherwise). */
     val SHARED_KNOBS = listOf("JAVA_OPTS", "TZ", "LOG_LEVEL_ROOT")
-    const val VALUES = "values.yaml"
     /** The script's exit code for "no usable Helm 4" (helm-deploy-instance.sh). */
     const val EXIT_TOOL = 5
 
@@ -138,8 +157,12 @@ object ConfigRules {
 
 class ConfigLinter(
     private val configRoot: File,
-    /** Deployable AppName -> its compose template (`<subproject>/docker/docker-compose.yml`). */
-    private val apps: Map<String, File>,
+    /** Deployable AppNames: the subprojects that apply `buildlogic.docker-image` (R-0008). */
+    private val apps: Set<String>,
+    /** The one compose template, `docker/docker-compose.yml` (R-0008); null: check 6 has nothing to render. */
+    private val template: File? = null,
+    /** AppName -> its `<subproject>/docker/docker-compose.override.yml`, for the apps that have one. */
+    private val appOverrides: Map<String, File> = emptyMap(),
     /**
      * Envs in which every deployable app must have configuration (check 2, "vice versa") and a Helm chart
      * (check 12: ERROR there, WARN elsewhere).
@@ -181,10 +204,13 @@ class ConfigLinter(
                 child.isFile && child.name == "README.md" -> Unit
                 child.isDirectory && child.name == ConfigRules.COMMON -> error(1, child, "config/_common/ removed: nothing is shared " +
                     "across envs (DL-45); a default that is the same everywhere belongs in the jar (layer 1), a cluster's shared " +
-                    "settings in config/<env>/<flow>/_common/")
+                    "settings in config/<env>/<flow>/application.flow.yml")
                 child.isDirectory -> lintEnv(child)
                 else -> error(1, child, "unexpected file at the top of config/ (only <env>/ and README.md)")
             }
+        }
+        for ((app, override) in appOverrides.toSortedMap()) {
+            if (app in apps && override.isFile) lintComposeOverride(override)
         }
         configRoot.walkTopDown().filter { it.isFile }.sortedBy { it.path }.forEach { scanSecrets(it) }
         if (unvalidated > 0) {
@@ -198,7 +224,8 @@ class ConfigLinter(
         return findings.toList()
     }
 
-    // --- layers ---------------------------------------------------------------------------------------
+    // --- layers (R-0008: files named application.<layer>.yml, _docker-compose.<layer>.env / .yml, ---------
+    // --- _helm-values.<layer>.yaml in the directory of their level) ---------------------------------------
 
     private fun lintEnv(envDir: File) {
         val env = envDir.name
@@ -210,40 +237,85 @@ class ConfigLinter(
         val pools = mutableListOf<FlowPool>()
         for (child in envDir.listFiles().orEmpty().sortedBy { it.name }) {
             when {
-                child.isFile && (child.name == "workflows-config.yml" || child.name == "targets.yml") -> error(11, child, "moved to config/$env/<flow>/workflows-config.yml: one " +
+                child.isFile && (child.name == ConfigRules.TARGETS || child.name == "targets.yml") -> error(11, child, "moved to config/$env/<flow>/workflows-config.yml: one " +
                     "deploy inventory per flow (env, flow, pool, defaults, targets; D5 §6.6, DL-39)")
                 child.isFile && child.name == "README.md" -> Unit
                 child.isFile && child.name == "known_hosts" -> lintKnownHosts(child)
-                child.isDirectory && child.name == ConfigRules.COMMON -> error(1, child, "config/$env/_common/ moved to " +
-                    "config/$env/<flow>/_common/: nothing is shared at the env level, the cluster <env>/<flow> is the first shared layer (DL-44)")
+                child.isDirectory && child.name == ConfigRules.COMMON -> error(1, child, "config/$env/_common/ removed: nothing is " +
+                    "shared at the env level, the cluster <env>/<flow> is the first shared layer: config/$env/<flow>/application.flow.yml " +
+                    "and _docker-compose.flow.env / .yml (DL-44, R-0008)")
                 child.isDirectory && child.name in ConfigRules.FLOWS -> lintFlow(child, env, appsSeen)?.let { pools += it }
                 child.isDirectory -> error(1, child, "flow '${child.name}' must be one of ${ConfigRules.FLOWS.sorted()}")
                 else -> error(1, child, "unexpected file in config/$env/ (expected known_hosts, <flow>/)")
             }
         }
         if (env in completeEnvs) {
-            for (app in apps.keys.sorted()) {
+            for (app in apps.sorted()) {
                 if (app !in appsSeen) error(2, envDir, "deployable app '$app' has no configuration in env '$env' (every app must)")
             }
         }
         checkSharedBoxes(pools)
     }
 
+    /**
+     * The files of one level's directory: its own layer files (YAML parses, overrides use no relative path), the
+     * [extra] names it also holds; anything else is an error, a layer file of another level with where it belongs.
+     */
+    private fun lintLayerFiles(dir: File, layer: ConfigRules.Layer, extra: Set<String> = emptySet()) {
+        val own = ConfigRules.layerFiles(layer)
+        for (file in dir.listFiles().orEmpty().filter { it.isFile }.sortedBy { it.name }) {
+            val name = file.name
+            val other = ConfigRules.LAYER_FILE.matchEntire(name)?.groupValues?.get(2)
+            when {
+                name in extra -> Unit
+                name == ConfigRules.composeEnv(layer) -> Unit // parsed by the caller (checks 4, 5, 10)
+                name == ConfigRules.composeOverride(layer) -> lintComposeOverride(file)
+                name in own -> lintYaml(file)
+                other != null && other != layer.id -> error(1, file, "a $other-layer file in the ${layer.id} level's directory: " +
+                    "it belongs in ${levelDirectory(other)} (R-0008)")
+                name == "compose.env" || name == "values.yaml" || name == "application.yml" -> error(1, file,
+                    "the layout before R-0008: rename it to ${renamed(name, layer)}")
+                name == ".env" || name.endsWith(".env") -> error(3, file, "forbidden: the only env file of this level is " +
+                    "${ConfigRules.composeEnv(layer)} (R-0008)")
+                else -> error(1, file, "unexpected file in the ${layer.id} level's directory (allowed: " +
+                    "${(own + extra).sorted().joinToString()})")
+            }
+        }
+    }
+
+    private fun levelDirectory(layer: String) = when (layer) {
+        "flow" -> "config/<env>/<flow>/"
+        "app" -> "config/<env>/<flow>/<AppName>/"
+        else -> "config/<env>/<flow>/<AppName>/<AppInstance>/"
+    }
+
+    private fun renamed(name: String, layer: ConfigRules.Layer) = when (name) {
+        "compose.env" -> ConfigRules.composeEnv(layer)
+        "values.yaml" -> ConfigRules.helmValues(layer)
+        else -> ConfigRules.application(layer)
+    }
+
+    /** An env layer of [dir] when it exists, parsed and checked (check 5); empty when absent or malformed. */
+    private fun envLayer(dir: File, layer: ConfigRules.Layer): Map<String, String> {
+        val file = File(dir, ConfigRules.composeEnv(layer))
+        if (!file.isFile) return emptyMap()
+        val vars = parseEnvFile(file) ?: return emptyMap()
+        checkEnvLayer(file, vars, layer)
+        return vars
+    }
+
     /** Returns the flow's pool (check 11) when its workflows-config.yml declares one. */
     private fun lintFlow(flowDir: File, env: String, appsSeen: MutableSet<String>): FlowPool? {
         val instances = mutableListOf<String>()
-        for (appDir in flowDir.listFiles().orEmpty().sortedBy { it.name }) {
-            if (!appDir.isDirectory) {
-                when (appDir.name) {
-                    "workflows-config.yml" -> Unit
-                    "targets.yml" -> error(11, appDir, "renamed: the flow's deploy inventory is workflows-config.yml (D5 §6.6, DL-39)")
-                    else -> error(1, appDir, "unexpected file in a flow directory (expected workflows-config.yml and <AppName>/)")
-                }
-                continue
-            }
+        lintLayerFiles(flowDir, ConfigRules.Layer.FLOW, extra = setOf(ConfigRules.TARGETS, "targets.yml"))
+        File(flowDir, "targets.yml").takeIf { it.isFile }?.let {
+            error(11, it, "renamed: the flow's deploy inventory is workflows-config.yml (D5 §6.6, DL-39)")
+        }
+        val flowEnv = envLayer(flowDir, ConfigRules.Layer.FLOW)
+        for (appDir in flowDir.listFiles().orEmpty().filter { it.isDirectory }.sortedBy { it.name }) {
             if (appDir.name == ConfigRules.COMMON) {
-                // The cluster layer (DL-44): application.yml and other files shared by every app of <env>/<flow>.
-                lintLayerFiles(appDir, allowComposeEnv = false)
+                error(1, appDir, "the cluster layer is files now: config/$env/${flowDir.name}/application.flow.yml and " +
+                    "_docker-compose.flow.env / .yml (DL-44, R-0008)")
                 continue
             }
             val app = appDir.name
@@ -253,31 +325,26 @@ class ConfigLinter(
                 val message = "no Helm chart for '$app': expected <subproject>/helm/$app/Chart.yaml (D11 §6.1)"
                 if (env in completeEnvs) error(12, appDir, message) else warn(12, appDir, message)
             }
-            val common = File(appDir, ConfigRules.APP_COMMON)
+            lintLayerFiles(appDir, ConfigRules.Layer.APP)
+            val appYml = File(appDir, ConfigRules.application(ConfigRules.Layer.APP))
+            val values = File(appDir, ConfigRules.helmValues(ConfigRules.Layer.APP))
+            if (!appYml.isFile) error(3, appYml, "required file missing")
             var commonEnv: Map<String, String> = emptyMap()
-            var commonComplete = false
-            if (!common.isDirectory) {
-                error(3, common, "required: every <env>/<flow>/<AppName>/ has app-common/application.yml and values.yaml")
-            } else {
-                val appYml = File(common, "application.yml")
-                val values = File(common, ConfigRules.VALUES)
-                if (!appYml.isFile) error(3, appYml, "required file missing")
-                if (!values.isFile) error(3, values, "required file missing (Helm values layer 2, D11 §6.2)")
-                else loadValues(values)?.let { commonEnv = checkCommonValues(values, it) }
-                commonComplete = appYml.isFile && values.isFile
-                lintLayerFiles(common, allowComposeEnv = false)
-            }
-            for (instDir in appDir.listFiles().orEmpty().sortedBy { it.name }) {
-                if (instDir.name == ConfigRules.APP_COMMON) continue
-                if (!instDir.isDirectory) {
-                    error(1, instDir, "unexpected file in an app directory (expected app-common/ and <AppInstance>/)")
+            if (!values.isFile) error(3, values, "required file missing (Helm values layer 2, D11 §6.2)")
+            else loadValues(values)?.let { commonEnv = checkCommonValues(values, it) }
+            val commonComplete = appYml.isFile && values.isFile
+            val appEnv = envLayer(appDir, ConfigRules.Layer.APP)
+            for (instDir in appDir.listFiles().orEmpty().filter { it.isDirectory }.sortedBy { it.name }) {
+                if (instDir.name == ConfigRules.APP_COMMON) {
+                    error(1, instDir, "the app layer is files now: ${rel(appDir)}/application.app.yml, _helm-values.app.yaml " +
+                        "and _docker-compose.app.env / .yml (R-0008)")
                     continue
                 }
                 instances += "$app/${instDir.name}"
-                lintInstance(instDir, env, flowDir.name, app, commonEnv, commonComplete)
+                lintInstance(instDir, env, flowDir.name, app, commonEnv, commonComplete, flowEnv + appEnv)
             }
         }
-        val targetsFile = File(flowDir, "workflows-config.yml")
+        val targetsFile = File(flowDir, ConfigRules.TARGETS)
         return when {
             env.endsWith("-dev") && !targetsFile.isFile -> {
                 error(3, targetsFile, "required in every flow of a *-dev env (the flow's deploy-dev inventory, D5 §6.6)")
@@ -298,12 +365,13 @@ class ConfigLinter(
             error(1, appDir, "AppName must match ${ConfigRules.TOKEN.pattern} and be at most ${ConfigRules.MAX_APP_NAME} characters")
         }
         if (app !in apps) {
-            error(2, appDir, "'$app' is not a deployable Gradle subproject (known: ${apps.keys.sorted().joinToString()})")
+            error(2, appDir, "'$app' is not a deployable Gradle subproject (known: ${apps.sorted().joinToString()})")
         }
     }
 
     private fun lintInstance(
         dir: File, env: String, flow: String, app: String, commonEnv: Map<String, String>, commonComplete: Boolean,
+        sharedEnv: Map<String, String>,
     ) {
         val instance = dir.name
         val nameProblem = when {
@@ -316,18 +384,26 @@ class ConfigLinter(
             else -> null
         }
         nameProblem?.let { error(1, dir, it) }
-        val composeEnv = File(dir, "compose.env")
-        val appYml = File(dir, "application.yml")
-        val valuesFile = File(dir, ConfigRules.VALUES)
+        for (sub in dir.listFiles().orEmpty().filter { it.isDirectory }.sortedBy { it.name }) {
+            error(1, sub, "layer directories are flat: nested directory not allowed")
+        }
+        lintLayerFiles(dir, ConfigRules.Layer.INSTANCE)
+        val instanceEnv = File(dir, ConfigRules.composeEnv(ConfigRules.Layer.INSTANCE))
+        val appYml = File(dir, ConfigRules.application(ConfigRules.Layer.INSTANCE))
+        val valuesFile = File(dir, ConfigRules.helmValues(ConfigRules.Layer.INSTANCE))
         if (!appYml.isFile) error(3, appYml, "required file missing")
+        // The combined env of the instance: flow < app < instance, the later layer winning per key (R-0008).
         var vars: Map<String, String>? = null
-        if (!composeEnv.isFile) {
-            error(3, composeEnv, "required file missing")
+        if (!instanceEnv.isFile) {
+            error(3, instanceEnv, "required file missing (the image tag, the identity and the actuator port)")
         } else {
-            vars = parseEnvFile(composeEnv)
-            if (vars != null) {
-                checkComposeEnv(composeEnv, vars, env, flow, app, instance)
-                render(dir, composeEnv, vars, env, flow, app, instance)
+            val own = parseEnvFile(instanceEnv)
+            if (own != null) {
+                checkEnvLayer(instanceEnv, own, ConfigRules.Layer.INSTANCE)
+                checkInstanceEnv(instanceEnv, own, env, flow, app, instance)
+                vars = sharedEnv + own
+                if (vars["IMAGE_REPO"].isNullOrBlank()) error(5, instanceEnv, "IMAGE_REPO missing in every env layer of the instance")
+                render(dir, instanceEnv, vars, env, flow, app, instance)
             }
         }
         var values: Map<*, *>? = null
@@ -337,36 +413,17 @@ class ConfigLinter(
             values = loadValues(valuesFile)
             values?.let { checkInstanceValues(valuesFile, it, commonEnv, vars, env, flow, app, instance) }
         }
-        lintLayerFiles(dir, allowComposeEnv = true)
         if (nameProblem == null && commonComplete && appYml.isFile && valuesFile.isFile) {
             helmRender(dir, env, flow, app, instance, renderTag(values, vars))
         }
     }
 
-    /** Every file of a layer directory: YAML parses, no forbidden env files, secret scan. */
-    private fun lintLayerFiles(dir: File, allowComposeEnv: Boolean) {
-        for (file in dir.listFiles().orEmpty().sortedBy { it.name }) {
-            if (file.isDirectory) {
-                error(1, file, "layer directories are flat: nested directory not allowed")
-                continue
-            }
-            val name = file.name
-            when {
-                name == "compose.env" && !allowComposeEnv ->
-                    error(3, file, "compose.env belongs to an <AppInstance>/ directory only")
-                name != "compose.env" && (name == ".env" || name.endsWith(".env")) ->
-                    error(3, file, "forbidden: the only env file allowed is <AppInstance>/compose.env")
-                name.endsWith(".yml") || name.endsWith(".yaml") -> lintYaml(file)
-            }
-        }
-    }
-
-    private fun lintYaml(file: File) {
+    private fun lintYaml(file: File): List<Any?>? {
         val documents = try {
             yaml.loadAll(file.readText()).toList()
         } catch (e: Exception) {
             error(3, file, "YAML does not parse: ${e.message?.lineSequence()?.firstOrNull()}")
-            return
+            return null
         }
         for (doc in documents) {
             for (key in flatten(doc)) {
@@ -376,6 +433,28 @@ class ConfigLinter(
                 }
             }
         }
+        return documents
+    }
+
+    /**
+     * A compose override (check 6, R-0008): YAML that parses and no relative path — compose resolves a relative path of
+     * any `-f` file against the first file's directory (`docker/`), not the override's own.
+     */
+    private fun lintComposeOverride(file: File) {
+        val documents = lintYaml(file) ?: return
+        for (value in documents.flatMap { scalars(it) }.distinct()) {
+            if (value.startsWith("./") || value.startsWith("../")) {
+                error(6, file, "'$value' is a relative path, which compose resolves against docker/, not this file's " +
+                    "directory: use a variable-based absolute path")
+            }
+        }
+    }
+
+    private fun scalars(node: Any?): List<String> = when (node) {
+        is Map<*, *> -> node.values.flatMap { scalars(it) }
+        is List<*> -> node.flatMap { scalars(it) }
+        is String -> listOf(node)
+        else -> emptyList()
     }
 
     private fun flatten(node: Any?, prefix: String = ""): List<String> = when (node) {
@@ -387,7 +466,7 @@ class ConfigLinter(
         else -> if (prefix.isEmpty()) emptyList() else listOf(prefix)
     }
 
-    // --- compose.env ------------------------------------------------------------------------------------
+    // --- env layers (_docker-compose.<layer>.env) -------------------------------------------------------
 
     /** `KEY=VALUE` lines, `#` comments; null (after reporting) when the file is malformed. */
     internal fun parseEnvFile(file: File): Map<String, String>? {
@@ -409,38 +488,39 @@ class ConfigLinter(
         return if (ok) vars else null
     }
 
-    private fun checkComposeEnv(file: File, vars: Map<String, String>, env: String, flow: String, app: String, instance: String) {
-        // Check 5: allow-list.
-        for (key in vars.keys) {
+    /** Check 5: the allow-list of an env layer; the instance-only variables and the ports in the instance layer only. */
+    private fun checkEnvLayer(file: File, vars: Map<String, String>, layer: ConfigRules.Layer) {
+        for ((key, value) in vars) {
+            val port = ConfigRules.HOST_PORT.matches(key)
             when {
                 ConfigRules.FORBIDDEN_PREFIXES.any { key.startsWith(it) } ->
-                    error(5, file, "$key is forbidden in compose.env (SPRING_/LOGGING_/MANAGEMENT_/CONNECTOR_ belong " +
+                    error(5, file, "$key is forbidden in an env layer (SPRING_/LOGGING_/MANAGEMENT_/CONNECTOR_ belong " +
                         "in YAML; secrets are passed through from the shell, D5 §6.3)")
                 key in ConfigRules.SCRIPT_VARIABLES ->
-                    error(5, file, "$key is set by run-compose.sh and must not appear in compose.env")
-                key !in ConfigRules.COMPOSE_ENV_ALLOWED && !ConfigRules.HOST_PORT.matches(key) ->
-                    error(5, file, "$key is not an allowed compose.env variable (D5 §6.3)")
+                    error(5, file, "$key is set by run-compose.sh and must not appear in an env layer")
+                key !in ConfigRules.COMPOSE_ENV_ALLOWED && !port ->
+                    error(5, file, "$key is not an allowed compose variable (D5 §6.3)")
+                layer != ConfigRules.Layer.INSTANCE && (port || key in ConfigRules.INSTANCE_ONLY) ->
+                    error(5, file, "$key belongs in the instance layer only (_docker-compose.instance.env, R-0008)")
+                port && value.toIntOrNull()?.let { it in 1024..65535 } != true ->
+                    error(5, file, "$key=$value must be a port in 1024..65535 (rootless Podman, D6 §6.6)")
             }
         }
-        // Check 4: identity restated equals the path.
+    }
+
+    /** Checks 4 and 10 on the instance layer: the identity restates the path, IMAGE_TAG obeys the tag policy. */
+    private fun checkInstanceEnv(file: File, vars: Map<String, String>, env: String, flow: String, app: String, instance: String) {
         val expected = mapOf("APP_ENV" to env, "APP_FLOW" to flow, "APP_NAME" to app, "APP_INSTANCE" to instance)
         for ((key, value) in expected) {
             val actual = vars[key]
             if (actual == null) error(4, file, "$key missing (must restate the directory path: $value)")
             else if (actual != value) error(4, file, "$key=$actual does not match the directory path ($value)")
         }
-        // Check 10: tag policy.
         val tag = vars["IMAGE_TAG"]
         if (tag == null) error(10, file, "IMAGE_TAG missing") else checkTag(file, "IMAGE_TAG", tag, env)
-        if (vars["IMAGE_REPO"].isNullOrBlank()) error(5, file, "IMAGE_REPO missing")
-        for ((key, value) in vars) {
-            if (ConfigRules.HOST_PORT.matches(key) && value.toIntOrNull()?.let { it in 1024..65535 } != true) {
-                error(5, file, "$key=$value must be a port in 1024..65535 (rootless Podman, D6 §6.6)")
-            }
-        }
     }
 
-    /** Check 10: the tag policy, identical for `IMAGE_TAG` (compose.env) and `image.tag` (values.yaml). */
+    /** Check 10: the tag policy, identical for `IMAGE_TAG` (the instance env layer) and `image.tag` (its Helm values). */
     private fun checkTag(file: File, what: String, tag: String, env: String) {
         val bareTag = tag.substringBefore('@')
         if (!ConfigRules.DOCKER_TAG.matches(bareTag)) error(10, file, "$what '$tag' is not a valid image tag")
@@ -451,7 +531,7 @@ class ConfigLinter(
         }
     }
 
-    // --- values.yaml (checks 3, 4, 10) ------------------------------------------------------------------
+    // --- _helm-values.<layer>.yaml (checks 3, 4, 10; Helm is deferred, R-0008: the rules are unchanged) ------
 
     /** A values file as a map; null when it does not parse (check 3 reports that through [lintYaml]). */
     private fun loadValues(file: File): Map<*, *>? {
@@ -495,14 +575,14 @@ class ConfigLinter(
         return result
     }
 
-    /** app-common/values.yaml: shared values only — the tag and the identity belong to the instance. */
+    /** _helm-values.app.yaml: shared values only — the tag and the identity belong to the instance. */
     private fun checkCommonValues(file: File, values: Map<*, *>): Map<String, String> {
         if ((values["image"] as? Map<*, *>)?.containsKey("tag") == true) {
-            error(10, file, "image.tag belongs in <AppInstance>/values.yaml (written back per instance with IMAGE_TAG, D5 §6.8)")
+            error(10, file, "image.tag belongs in <AppInstance>/_helm-values.instance.yaml (written back per instance with IMAGE_TAG, D5 §6.8)")
         }
-        if (values.containsKey("identity")) error(4, file, "identity belongs in <AppInstance>/values.yaml (the instance's path)")
+        if (values.containsKey("identity")) error(4, file, "identity belongs in <AppInstance>/_helm-values.instance.yaml (the instance's path)")
         val env = valuesEnv(file, values)
-        if ("APP_INSTANCE" in env) error(4, file, "env.APP_INSTANCE belongs in <AppInstance>/values.yaml")
+        if ("APP_INSTANCE" in env) error(4, file, "env.APP_INSTANCE belongs in <AppInstance>/_helm-values.instance.yaml")
         return env
     }
 
@@ -533,9 +613,9 @@ class ConfigLinter(
                 val composeValue = vars[key] ?: continue
                 val helmValue = effective[key]
                 if (helmValue == null) {
-                    warn(4, file, "$key is set in compose.env ($composeValue) but not in the values env (app-common or instance)")
+                    warn(4, file, "$key is set in the compose env layers ($composeValue) but not in the values env (app or instance)")
                 } else if (helmValue != composeValue) {
-                    warn(4, file, "env.$key=$helmValue differs from $key=$composeValue in compose.env")
+                    warn(4, file, "env.$key=$helmValue differs from $key=$composeValue in the compose env layers")
                 }
             }
         }
@@ -544,13 +624,13 @@ class ConfigLinter(
         val tag = (image as? Map<*, *>)?.get("tag")
         when {
             image != null && image !is Map<*, *> -> error(10, file, "image must be a map (image.tag, image.digest)")
-            tag == null -> error(10, file, "image.tag missing: the instance's image tag, equal to IMAGE_TAG in compose.env (D11 §6.2)")
+            tag == null -> error(10, file, "image.tag missing: the instance's image tag, equal to IMAGE_TAG in _docker-compose.instance.env (D11 §6.2)")
             tag !is String -> error(10, file, "image.tag must be a string: quote it (\"$tag\")")
             else -> {
                 checkTag(file, "image.tag", tag, env)
                 val composeTag = vars?.get("IMAGE_TAG")
                 if (composeTag != null && composeTag != tag) {
-                    error(4, file, "image.tag '$tag' differs from IMAGE_TAG '$composeTag' in compose.env: both record " +
+                    error(4, file, "image.tag '$tag' differs from IMAGE_TAG '$composeTag' in _docker-compose.instance.env: both record " +
                         "the deployed tag and are written back together (D5 §6.8)")
                 }
             }
@@ -565,29 +645,48 @@ class ConfigLinter(
 
     private val templateVariable = Regex("""\$\{([A-Za-z_][A-Za-z0-9_]*)(:?[-?+][^}]*)?}""")
 
-    private fun render(dir: File, composeEnv: File, vars: Map<String, String>, env: String, flow: String, app: String, instance: String) {
-        val template = apps[app] ?: return // check 2 already reported it
+    /**
+     * Check 6 (R-0008): `compose config` over the instance's compose files in run-compose.sh's merge order — the shared
+     * template, the app's override, the flow / app / instance overrides — with its combined env written to a file, as
+     * run-compose.sh passes them.
+     */
+    private fun render(dir: File, instanceEnv: File, vars: Map<String, String>, env: String, flow: String, app: String, instance: String) {
+        val base = template ?: return
         val r = renderer ?: return
+        if (app !in apps) return // check 2 already reported it
         val appDir = dir.parentFile
         val flowDir = appDir.parentFile
+        val files = listOfNotNull(
+            base,
+            appOverrides[app]?.takeIf { it.isFile },
+            File(flowDir, ConfigRules.composeOverride(ConfigRules.Layer.FLOW)).takeIf { it.isFile },
+            File(appDir, ConfigRules.composeOverride(ConfigRules.Layer.APP)).takeIf { it.isFile },
+            File(dir, ConfigRules.composeOverride(ConfigRules.Layer.INSTANCE)).takeIf { it.isFile },
+        )
+        val combined = File.createTempFile("config-lint-$app-$instance-", ".env").apply { deleteOnExit() }
+        combined.writeText(vars.entries.joinToString("") { "${it.key}=${it.value}\n" })
         val environment = linkedMapOf(
             "APP_ENV" to env, "APP_FLOW" to flow, "APP_NAME" to app, "APP_INSTANCE" to instance,
-            "CONFIG_DIR" to dir.absolutePath,
-            "COMMON_DIR" to File(appDir, ConfigRules.APP_COMMON).absolutePath,
+            "COMPOSE_ENV_FILE" to combined.absolutePath,
+            "APP_APP_YML" to File(appDir, ConfigRules.application(ConfigRules.Layer.APP)).absolutePath,
+            "INSTANCE_APP_YML" to File(dir, ConfigRules.application(ConfigRules.Layer.INSTANCE)).absolutePath,
             "PROJECT" to "$env-$flow-$app-$instance",
         )
-        File(flowDir, ConfigRules.COMMON).takeIf { it.isDirectory }?.let { environment["FLOW_COMMON_DIR"] = it.absolutePath }
+        File(flowDir, ConfigRules.application(ConfigRules.Layer.FLOW)).takeIf { it.isFile }
+            ?.let { environment["FLOW_APP_YML"] = it.absolutePath }
         // Placeholders for every required variable nobody else provides: the secrets passed through the shell.
-        for (match in templateVariable.findAll(template.readText())) {
+        val text = files.joinToString("\n") { f -> f.readLines().filterNot { it.trimStart().startsWith("#") }.joinToString("\n") }
+        for (match in templateVariable.findAll(text)) {
             val (name, modifier) = match.destructured
             val required = modifier.startsWith(":?") || modifier.startsWith("?")
             if (required && name !in environment && name !in vars) environment[name] = "config-lint-placeholder"
         }
-        val result = r.render(ComposeRenderRequest(template, composeEnv, "lint-$env-$flow-$app-$instance", environment))
+        val result = r.render(ComposeRenderRequest(files, combined, "lint-$env-$flow-$app-$instance", environment))
+        combined.delete()
         when {
-            result == null && requireRender -> error(6, composeEnv, "no compose CLI (docker compose / podman compose) to render the template")
-            result == null -> warn(6, composeEnv, "render skipped: no compose CLI (docker compose / podman compose) found")
-            result.exitCode != 0 -> error(6, composeEnv, "`compose config` failed for ${rel(template)}:\n" +
+            result == null && requireRender -> error(6, instanceEnv, "no compose CLI (docker compose / podman compose) to render the compose files")
+            result == null -> warn(6, instanceEnv, "render skipped: no compose CLI (docker compose / podman compose) found")
+            result.exitCode != 0 -> error(6, instanceEnv, "`compose config` failed for ${files.joinToString(" + ") { rel(it) }}:\n" +
                 result.output.lineSequence().filter { it.isNotBlank() }.joinToString("\n") { "      $it" })
         }
     }

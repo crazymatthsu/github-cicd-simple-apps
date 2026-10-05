@@ -18,12 +18,12 @@ only what is specific to this repository.
 | Contract | Here |
 |---|---|
 | `platform.yml` | platform `v1`, kind `app`, registry `ghcr.io/crazymatthsu`, project `github-cicd-simple-apps` (`apps_dir: apps`), `dev_envs: [us-dev]` |
-| `apps/<AppName>/{build.gradle.kts, src/main, src/test, src/integrationTest, docker/Dockerfile, docker/docker-compose.yml, helm/<AppName>/}` | `source-kafka`, `source-amps`, `source-database`; no app carries a `docker/Dockerfile` or `scripts/entrypoint.sh`: every image is built from the shared `docker/spring-boot.Dockerfile` and `docker/entrypoint.sh` ([R-0007](adr/R-0007-shared-dockerfile.md)), an app's own `docker/Dockerfile` would override it |
+| `apps/<AppName>/{build.gradle.kts, src/main, src/test, src/integrationTest, docker/Dockerfile, docker/docker-compose.yml, helm/<AppName>/}` | `source-kafka`, `source-amps`, `source-database`; no app carries a `docker/Dockerfile`, `scripts/entrypoint.sh` or `docker/docker-compose.yml`: every image is built from the shared `docker/spring-boot.Dockerfile` and `docker/entrypoint.sh` ([R-0007](adr/R-0007-shared-dockerfile.md)) and every instance runs from the shared `docker/docker-compose.yml` ([R-0008](adr/R-0008-compose-config-layers.md)); an app adds `docker/docker-compose.override.yml` only for what it needs in every env (`source-database`: its datasource secrets) |
 | `framework/<name>` (DL-43; `libs/` before) | `connectors-framework` |
-| `config/<env>/<flow>/_common/` (the cluster layer, DL-44), `config/<env>/<flow>/<AppName>/<AppInstance>/` and one `workflows-config.yml` per flow | `local/cash`, `us-dev/cash` (inventory schema v1.3; the v2 schema of DL-40 / DL-41 arrives with their implementation) |
+| `config/<env>/<flow>/_common/` (the cluster layer, DL-44), `config/<env>/<flow>/<AppName>/<AppInstance>/` and one `workflows-config.yml` per flow | `local/cash`, `us-dev/cash` (inventory schema v1.3; the v2 schema of DL-40 / DL-41 arrives with their implementation); **deviation** ([R-0008](adr/R-0008-compose-config-layers.md)): the layers are files in the directory of their level — `<flow>/application.flow.yml` replaces `_common/`, `<AppName>/application.app.yml` and `_helm-values.app.yaml` replace `app-common/`, compose variables come in `_docker-compose.<layer>.env` layers merged into one generated env |
 | `test-infra/`, `docs/`, `.github/CODEOWNERS` | present |
 | no per-app `scripts/run-compose.sh` / `scripts/smoke.sh` wrappers | removed: `scripts/run-compose.sh <env> <flow> <AppName> <AppInstance> <command>` finds the app under `apps/`; an app that needs checks of its own adds `apps/<AppName>/scripts/smoke.sh` |
-| one shared compose template with per-app overrides; one library chart | **not yet** — every app still ships its full `docker/docker-compose.yml` and chart (scheduled with DL-41) |
+| one shared compose template with per-app overrides; one library chart | compose **done** ([R-0008](adr/R-0008-compose-config-layers.md)): `docker/docker-compose.yml` plus `apps/<AppName>/docker/docker-compose.override.yml` and the config tree's `_docker-compose.<layer>.yml`; the library chart **not yet** — every app still ships its chart (Helm deferred until the EKS work) |
 | thin, generated trigger workflows and `affected-map.yml` | **not yet** — hand-written copies (`render-workflows.sh` does not exist); keep `.github/affected-map.yml` in step with `apps/` |
 | `uses: <org>/platform-ci/...@v1`, plugins by version | **not yet** — vendored copies (README) |
 
@@ -40,7 +40,7 @@ only what is specific to this repository.
 
 **No workflow writes to `main`** (DL-40, ADR R-0002): no job holds `contents: write`. The dev tree declares its
 intent (`IMAGE_TAG=main`, `image.tag: main`); `deploy-dev` pins the literal version with the `IMAGE_TAG` override,
-`record-tag` writes it into the boxes' `compose.env`, and the run is recorded as a GitHub Deployment of Environment
+`record-tag` writes it into the boxes' `_docker-compose.instance.env`, and the run is recorded as a GitHub Deployment of Environment
 `us-dev` whose payload names, per instance, the tag, the digest-pinned image, the box or cluster and the result, plus
 the config tree's git SHA and the version directory per pooled flow. The boxes hold versioned bundles under
 `/apps/<user>/versions/<project>/` with `current` the live one (DL-41, DL-46, ADR R-0006). Still open from DL-40 /

@@ -23,8 +23,8 @@ readonly PROJECT_RE='^[a-z0-9]([a-z0-9-]*[a-z0-9])?$'
 readonly TAG_RE='^[A-Za-z0-9_][A-Za-z0-9_.-]{0,127}$'
 readonly VERSION_RE='^[0-9]{8}-[0-9]{6}$'
 readonly INSTANCE_RE='^[a-z0-9-]+/[a-z0-9-]+/[a-z0-9-]+$'
-# Set by run-compose.sh itself or read from compose.env: never replaced by a validation placeholder.
-PROVIDED="APP_ENV APP_FLOW APP_NAME APP_INSTANCE CONFIG_DIR COMMON_DIR FLOW_COMMON_DIR PROJECT"
+# Set by run-compose.sh itself or read from the env layers: never replaced by a validation placeholder.
+PROVIDED="APP_ENV APP_FLOW APP_NAME APP_INSTANCE COMPOSE_ENV_FILE FLOW_APP_YML APP_APP_YML INSTANCE_APP_YML PROJECT"
 readonly PROVIDED="$PROVIDED IMAGE_REPO IMAGE_TAG APP_IMAGE"
 readonly PLACEHOLDER=pool-deploy-validate-placeholder
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd -P)"
@@ -61,7 +61,8 @@ Commands:
   deploy   --tag <tag> [--bundle <dir>] [--version <YYYYMMDD-HHMMSS>] [--move] [--report <file>]
            bundle (unless --bundle) → sync into <root>/<version>/ on every box → plan → per placement:
              IMAGE_TAG=<tag> run-compose.sh ... record-tag on every box that holds the new version (its
-             compose.env names the tag: the version directory is the record, DL-41), then on the instance's box,
+             _docker-compose.instance.env names the tag: the version directory is the record, DL-41), then on the
+             instance's box,
              from the new directory, run-compose.sh ... pull → start → health
            → once every instance passed: run-compose.sh activate on every box (<root>/current → <version>,
            atomically; the versions beyond the newest `keep` are removed) and one line per instance on stdout:
@@ -109,13 +110,15 @@ Exit codes: 0 ok · 1 transport or command failure (after trying every box and i
   host not in the pool, missing files, no project in platform.yml, a bundle that does not validate or changed
   since it was built) · 5 tool missing (yq v4, jq, rsync, ssh, sha256sum, known_hosts) · 6 placement conflict (an
   instance running on more than one box, or on a box other than its pin without --move)
-Bundle: scripts/run-compose.sh and smoke.sh (the one implementation for every app, D12 §6.2); per app with a
-  directory under config/<env>/<flow>/ its compose template apps/<app>/docker/docker-compose.yml and, when the app
-  ships one, its own scripts/smoke.sh; config/<env>/<flow>/_common/ (the cluster layer, DL-44), config/<env>/<flow>/<app>/,
+Bundle: scripts/run-compose.sh and smoke.sh (the one implementation for every app, D12 §6.2) and the one compose
+  template docker/docker-compose.yml (R-0008); per app with a directory under config/<env>/<flow>/, when the app ships
+  them, its apps/<app>/docker/docker-compose.override.yml and scripts/smoke.sh; the flow's own layer files
+  (application.flow.yml, _docker-compose.flow.env / .yml: the cluster layer, DL-44), config/<env>/<flow>/<app>/,
   config/<env>/<flow>/workflows-config.yml, and config/<env>/known_hosts when present. BUNDLE_SHA256 is the sha256 of
-  the sorted "<sha256>  <path>" lines of every file but .platform-bundle. A sync is verified by rsync's exit code
-  and a second rsync --dry-run --itemize-changes --checksum that must list no change; a local box also recomputes
-  BUNDLE_SHA256. On a box the manifest's POOL_ROOT is <root>; the directory holding the bundle is one version.
+  the sorted "<sha256>  <path>" lines of every file but .platform-bundle and .run/ (the combined envs run-compose.sh
+  generates, never synced). A sync is verified by rsync's exit code and a second rsync --dry-run --itemize-changes
+  --checksum that must list no change; a local box also recomputes BUNDLE_SHA256. On a box the manifest's POOL_ROOT is
+  <root>; the directory holding the bundle is one version.
 EOF
 }
 
@@ -284,11 +287,12 @@ CURRENT_DIR="$POOL_ROOT/current"
 # The directory whose run-compose.sh a box runs: current, or the version a deploy just synced.
 BOX_DIR="$CURRENT_DIR"
 
-# The subproject of an app, relative to the repository: the directory with docker/docker-compose.yml.
+# The subproject of an app, relative to the repository (as run-compose.sh finds it): apps/<app>, else any <dir>/<app>
+# that is a Gradle subproject. Optional: it only adds the app's compose override and smoke test (R-0008).
 app_rel() {
     local candidate
     for candidate in "$REPO_ROOT/apps/$1" "$REPO_ROOT/$1" "$REPO_ROOT"/*/"$1"; do
-        if [ -f "$candidate/docker/docker-compose.yml" ]; then
+        if [ -f "$candidate/build.gradle.kts" ]; then
             printf '%s' "${candidate#"$REPO_ROOT"/}"
             return 0
         fi
@@ -305,8 +309,6 @@ while IFS='|' read -r target pin; do
     [[ $FLOW/$target =~ $INSTANCE_RE ]] || die "$EXIT_CONFIG" "$(rel "$TARGETS_FILE"): '$target' is not <AppName>/<AppInstance>"
     instance="$FLOW/$target"
     [ -d "$ENV_DIR/$instance" ] || die "$EXIT_CONFIG" "$(rel "$TARGETS_FILE"): $target has no directory $(rel "$ENV_DIR/$instance")/"
-    app_rel "${target%%/*}" >/dev/null ||
-        die "$EXIT_CONFIG" "$(rel "$TARGETS_FILE"): $target: no subproject with docker/docker-compose.yml for its app"
     if [ -n "$pin" ] && ! contains_word "$pin" "${POOL_HOSTS[*]}"; then
         die "$EXIT_CONFIG" "$(rel "$TARGETS_FILE"): host '$pin' of $target is not a box of the pool (${POOL_HOSTS[*]})"
     fi
@@ -409,21 +411,27 @@ local_run() { # <host> <instance> <command> <tag> [args...]
     fi
     IFS=/ read -r flow app inst <<<"$instance"
     if [ "$cmd" = validate ]; then
-        while IFS= read -r var; do envs+=("$var"); done < <(validation_env "$dir/$(app_rel "$app")/docker/docker-compose.yml" \
-            "$dir/config/$ENV_NAME/$instance/compose.env")
+        while IFS= read -r var; do envs+=("$var"); done < <(validation_env "$dir" "$instance")
     fi
     (cd "$dir" && env -u GITHUB_RUN_ID -u GITHUB_RUN_ATTEMPT -u CONFIG_ROOT -u IMAGE_TAG -u IMAGE_REPO -u APP_IMAGE \
         "${envs[@]}" "$dir/scripts/run-compose.sh" "$ENV_NAME" "$flow" "$app" "$inst" "$cmd" "$@")
 }
-# Placeholders for the secrets a template requires (${VAR:?...}) that neither compose.env, run-compose.sh nor this
-# shell provides: `validate` checks the template, not the box's secrets (as config-lint does, D5 check 6).
-validation_env() { # <compose file> <compose.env>
-    local var
-    [ -f "$1" ] || return 0
+# Placeholders for the secrets the compose files require (${VAR:?...}) that neither the env layers, run-compose.sh
+# nor this shell provides: `validate` checks the compose files, not the box's secrets (as config-lint does, D5 check 6).
+# <root> is a repository or a bundle; <instance> is <flow>/<app>/<inst>.
+validation_env() { # <root> <instance>
+    local root="$1" flow app inst var rel_dir files=() layers=() f
+    IFS=/ read -r flow app inst <<<"$2"
+    local cfg="$root/config/$ENV_NAME/$flow"
+    files=("$root/docker/docker-compose.yml" "$cfg/_docker-compose.flow.yml" "$cfg/$app/_docker-compose.app.yml"
+        "$cfg/$app/$inst/_docker-compose.instance.yml")
+    if rel_dir="$(app_rel "$app")"; then files+=("$root/$rel_dir/docker/docker-compose.override.yml"); fi
+    layers=("$cfg/_docker-compose.flow.env" "$cfg/$app/_docker-compose.app.env" "$cfg/$app/$inst/_docker-compose.instance.env")
     # shellcheck disable=SC2013 # variable names never contain whitespace
-    for var in $(grep -oE '\$\{[A-Za-z_][A-Za-z0-9_]*:?\?' "$1" | sed -e 's/^\${//' -e 's/:*?$//' | sort -u); do
+    for var in $(for f in "${files[@]}"; do [ ! -f "$f" ] || grep -v '^[[:space:]]*#' "$f"; done |
+        grep -oE '\$\{[A-Za-z_][A-Za-z0-9_]*:?\?' | sed -e 's/^\${//' -e 's/:*?$//' | sort -u); do
         contains_word "$var" "$PROVIDED" && continue
-        [ ! -f "$2" ] || ! grep -Eq "^[[:space:]]*$var=" "$2" || continue
+        for f in "${layers[@]}"; do [ -f "$f" ] && grep -Eq "^[[:space:]]*$var=" "$f" && continue 2; done
         [ -z "${!var:-}" ] || continue
         printf '%s=%s\n' "$var" "$PLACEHOLDER"
     done
@@ -483,9 +491,10 @@ box_activate() { # <host> [activate options...]
 # --- the host bundle (§2 of DL-39's contract; D6 §6.2) ----------------------------------------------------
 
 TREE_FILES=0 TREE_SHA256=""
-# "<sha256>  <path>" of every file below $1 but .platform-bundle, sorted by path (C locale).
+# "<sha256>  <path>" of every file below $1 but .platform-bundle and .run/ (the combined envs run-compose.sh writes
+# on every command, R-0008), sorted by path (C locale).
 tree_listing() {
-    (cd "$1" && find . -type f ! -path ./.platform-bundle -print0 | LC_ALL=C sort -z | xargs -0 -r "${SHA256[@]}") |
+    (cd "$1" && find . -type f ! -path ./.platform-bundle ! -path './.run/*' -print0 | LC_ALL=C sort -z | xargs -0 -r "${SHA256[@]}") |
         sed 's|  \./|  |'
 }
 tree_stats() {
@@ -515,36 +524,39 @@ prepare_out() {
     fi
     mkdir -p "$out"
     OUT_DIR="$(cd "$out" && pwd -P)"
-    case "$OUT_DIR/" in "$CONFIG_ROOT"/* | "$REPO_ROOT"/scripts/* | "$REPO_ROOT"/apps/*)
+    case "$OUT_DIR/" in "$CONFIG_ROOT"/* | "$REPO_ROOT"/scripts/* | "$REPO_ROOT"/apps/* | "$REPO_ROOT"/docker/*)
         die "$EXIT_USAGE" "--out $out lies inside a tree the bundle copies" ;;
     esac
 }
 build_bundle() { # <out> <tag>
-    local tag="$2" dir app rel apps=() app_rels=() git_sha dirty paths i instance flow inst envs failed=0 var
+    local tag="$2" dir app rel apps=() app_rels=() git_sha dirty paths i instance flow inst envs failed=0 var file
     prepare_out "$1"
     [ -d "$ENV_DIR/$FLOW" ] || die "$EXIT_CONFIG" "config tree: $(rel "$ENV_DIR/$FLOW")/ missing"
+    # Every app with a directory under the flow (the flow's own layers are files, R-0008); its subproject is optional.
     for dir in "$ENV_DIR/$FLOW"/*/; do
         [ -d "$dir" ] || continue
         app="$(basename "$dir")"
-        [ "$app" != _common ] || continue # the cluster layer (DL-44), copied with the flow below
-        if rel="$(app_rel "$app")"; then
-            apps+=("$app")
-            app_rels+=("$rel")
-        else
-            warn "$(rel "$dir") is not a deployable app (no apps/<AppName>/docker/docker-compose.yml): left out of the bundle"
-        fi
+        apps+=("$app")
+        app_rels+=("$(app_rel "$app" || true)")
     done
     copy_file scripts/run-compose.sh
     copy_file scripts/smoke.sh
+    copy_file docker/docker-compose.yml
     for ((i = 0; i < ${#apps[@]}; i++)); do
         app="${apps[i]}" rel="${app_rels[i]}"
-        copy_file "$rel/docker/docker-compose.yml"
-        # The app's own smoke test when it ships one (D12 §6.2); otherwise scripts/smoke.sh above serves every app.
-        [ ! -f "$REPO_ROOT/$rel/scripts/smoke.sh" ] || copy_file "$rel/scripts/smoke.sh"
+        if [ -n "$rel" ]; then
+            # What the app needs in every env (R-0008) and its own smoke test (D12 §6.2), when it ships them;
+            # otherwise the shared template and scripts/smoke.sh above serve it.
+            [ ! -f "$REPO_ROOT/$rel/docker/docker-compose.override.yml" ] || copy_file "$rel/docker/docker-compose.override.yml"
+            [ ! -f "$REPO_ROOT/$rel/scripts/smoke.sh" ] || copy_file "$rel/scripts/smoke.sh"
+        fi
         copy_tree "$ENV_DIR/$FLOW/$app" "config/$ENV_NAME/$FLOW/$app"
     done
-    [ ! -d "$ENV_DIR/$FLOW/_common" ] || copy_tree "$ENV_DIR/$FLOW/_common" "config/$ENV_NAME/$FLOW/_common"
     mkdir -p "$OUT_DIR/config/$ENV_NAME/$FLOW"
+    # The flow's own layers (the cluster layer, DL-44), when present.
+    for file in application.flow.yml _docker-compose.flow.env _docker-compose.flow.yml; do
+        [ ! -f "$ENV_DIR/$FLOW/$file" ] || cp -p "$ENV_DIR/$FLOW/$file" "$OUT_DIR/config/$ENV_NAME/$FLOW/$file"
+    done
     cp -p "$TARGETS_FILE" "$OUT_DIR/config/$ENV_NAME/$FLOW/workflows-config.yml"
     # The pinned host keys: run-compose.sh's pool guard on a box asks the other boxes with them.
     [ ! -f "$KNOWN_HOSTS" ] || cp -p "$KNOWN_HOSTS" "$OUT_DIR/config/$ENV_NAME/known_hosts"
@@ -552,8 +564,10 @@ build_bundle() { # <out> <tag>
     # The commit the bundle was built from; -dirty when a bundled file differs from it.
     git_sha="$(git -C "$REPO_ROOT" rev-parse HEAD 2>/dev/null || echo unknown)"
     if [ "$git_sha" != unknown ]; then
-        paths=(scripts/run-compose.sh scripts/smoke.sh "$(rel "$ENV_DIR/$FLOW")" "$(rel "$KNOWN_HOSTS")")
-        for rel in ${app_rels[@]+"${app_rels[@]}"}; do paths+=("$rel/docker/docker-compose.yml" "$rel/scripts"); done
+        paths=(scripts/run-compose.sh scripts/smoke.sh docker/docker-compose.yml "$(rel "$ENV_DIR/$FLOW")" "$(rel "$KNOWN_HOSTS")")
+        for rel in ${app_rels[@]+"${app_rels[@]}"}; do
+            [ -z "$rel" ] || paths+=("$rel/docker/docker-compose.override.yml" "$rel/scripts")
+        done
         dirty="$(git -C "$REPO_ROOT" status --porcelain -- "${paths[@]}" 2>/dev/null || true)"
         [ -z "$dirty" ] || git_sha="$git_sha-dirty"
     fi
@@ -574,16 +588,9 @@ build_bundle() { # <out> <tag>
     # Verify from inside the bundle, as a box runs it: the marker resolves the tree (no CONFIG_ROOT), no CI identity.
     for instance in ${T_INSTANCE[@]+"${T_INSTANCE[@]}"}; do
         IFS=/ read -r flow app inst <<<"$instance"
-        rel="$(app_rel "$app")"
-        if [ ! -f "$OUT_DIR/$rel/docker/docker-compose.yml" ]; then
-            error "bundle: $instance: $rel/docker/docker-compose.yml is not in the bundle (no config/$ENV_NAME/$FLOW/$app/?)"
-            failed=1
-            continue
-        fi
         envs=()
         [ -z "$tag" ] || envs+=("IMAGE_TAG=$tag")
-        while IFS= read -r var; do envs+=("$var"); done < <(validation_env "$OUT_DIR/$rel/docker/docker-compose.yml" \
-            "$OUT_DIR/config/$ENV_NAME/$instance/compose.env")
+        while IFS= read -r var; do envs+=("$var"); done < <(validation_env "$OUT_DIR" "$instance")
         if (cd "$OUT_DIR" && env -u GITHUB_RUN_ID -u GITHUB_RUN_ATTEMPT -u CONFIG_ROOT -u IMAGE_TAG -u IMAGE_REPO -u APP_IMAGE \
             ${envs[@]+"${envs[@]}"} "$OUT_DIR/scripts/run-compose.sh" "$ENV_NAME" "$flow" "$app" "$inst" validate >&2); then
             info "bundle: $instance validates from the bundle${tag:+ with IMAGE_TAG=$tag}"
@@ -592,6 +599,8 @@ build_bundle() { # <out> <tag>
             failed=1
         fi
     done
+    # validate wrote the combined envs into the bundle's .run/: never part of a bundle (a box writes its own).
+    rm -rf "${OUT_DIR:?}/.run"
     [ "$failed" -eq 0 ] || exit "$EXIT_CONFIG"
 }
 BUNDLE_DIR="" BUNDLE_FILES="" BUNDLE_SHA256="" BUNDLE_TAG=""
@@ -623,10 +632,10 @@ load_bundle() { # <dir>: a bundle of this project, env, flow and pool, unchanged
 declare -A BOX_RESULT=() BOX_FILES=() BOX_SHA=() BOX_CHECK=() BOX_VERSION=() BOX_ACTIVATED=()
 AVAILABLE=() SYNC_FAILED=()
 sync_box() { # <host>
-    local host="$1" dest changes rc=0 args=(-a --delete) shell=() target="$POOL_ROOT/$VERSION/"
+    local host="$1" dest changes rc=0 args=(-a --delete --exclude=/.run/) shell=() target="$POOL_ROOT/$VERSION/"
     case "$TRANSPORT" in
         dry-run)
-            info "dry-run: $(quote_words "$RSYNC_BIN" -az --delete -e "$(rsync_shell)" "$BUNDLE_DIR/" "$POOL_USER@$host:$target")"
+            info "dry-run: $(quote_words "$RSYNC_BIN" -az --delete --exclude=/.run/ -e "$(rsync_shell)" "$BUNDLE_DIR/" "$POOL_USER@$host:$target")"
             BOX_RESULT[$host]="dry-run" BOX_FILES[$host]="$BUNDLE_FILES" BOX_SHA[$host]="$BUNDLE_SHA256" BOX_CHECK[$host]="none (dry-run)"
             BOX_VERSION[$host]="$VERSION"
             return 0
@@ -638,7 +647,7 @@ sync_box() { # <host>
         ssh)
             # The box's /apps/<user>/versions/<project>/ exists (provisioned, DL-41); rsync creates <version>/ in it.
             dest="$POOL_USER@$host:$target"
-            args=(-az --delete)
+            args=(-az --delete --exclude=/.run/)
             shell=(-e "$(rsync_shell)")
             ;;
     esac
@@ -824,7 +833,7 @@ pool_header() { printf 'pool %s/%s: %s (user %s, versions %s, keep %s)\n' "$ENV_
 P_RESULT=() P_COMMANDS=()
 FAILED=() STARTED=() ACTIVATE_FAILED=()
 deployed_line() { printf 'deployed %s@%s=%s\n' "$1" "$2" "$TAG"; }
-# The tag into the new version directory's compose.env on each given box (record-tag), before anything starts:
+# The tag into the new version directory's _docker-compose.instance.env on each given box (record-tag), before anything starts:
 # the directory names what it runs (DL-41), and nothing ever syncs over it again. A box that fails to record it is
 # reported in RECORD_MISSED; the instance's own box must have it (deploy_one), every other box only warns.
 RECORD_MISSED=()
@@ -836,7 +845,7 @@ record_tag() { # <index> <tag> <box>...
         on_box "$box" "${T_INSTANCE[i]}" record-tag "$tag" || RECORD_MISSED+=("$box")
     done
     [ "${#RECORD_MISSED[@]}" -eq 0 ] ||
-        warn "${T_INSTANCE[i]}: compose.env of version $VERSION on ${RECORD_MISSED[*]} does not name $tag: a start there would run the declared tag"
+        warn "${T_INSTANCE[i]}: _docker-compose.instance.env of version $VERSION on ${RECORD_MISSED[*]} does not name $tag: a start there would run the declared tag"
 }
 deploy_one() { # <index>
     local i="$1" instance="${T_INSTANCE[$1]}" host="${PLACE_HOST[$1]}" from="${PLACE_FROM[$1]}" cmd step box lines=""

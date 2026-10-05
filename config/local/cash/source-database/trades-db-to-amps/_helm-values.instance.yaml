@@ -1,18 +1,18 @@
-# Helm values layer 3 (D11 §6.2) of us-dev/cash/source-database/trades-db-to-amps.
-# image.tag equals IMAGE_TAG in the sibling compose.env (config-lint check 4; in *-dev both declare `main`, DL-40);
+# Helm values layer 3 (D11 §6.2) of local/cash/source-database/trades-db-to-amps.
+# image.tag equals IMAGE_TAG in the sibling _docker-compose.instance.env (config-lint check 4; in *-dev both declare `main`, DL-40);
 # identity and the APP_* variables restate the directory path (config-lint check 4); app-facing variables
 # only, never secrets (D5 §6.3).
 image:
-  tag: "main"
+  tag: "local"
 identity:
-  env: us-dev
+  env: local
   flow: cash
   app: source-database
   instance: trades-db-to-amps
 env:
-  APP_ENV: us-dev
+  APP_ENV: local
   APP_FLOW: cash
   APP_NAME: source-database
   APP_INSTANCE: trades-db-to-amps
-  JAVA_OPTS: "-XX:MaxRAMPercentage=75"
+  JAVA_OPTS: "-XX:MaxRAMPercentage=60"
   LOG_LEVEL_ROOT: INFO

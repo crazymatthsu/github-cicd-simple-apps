@@ -11,10 +11,10 @@ around them is the point.
 | Path | What |
 |---|---|
 | `platform.yml` | the manifest: platform major, registry, the one project (`github-cicd-simple-apps`) and its dev envs |
-| `apps/<AppName>/` | one Gradle project per deployable app: `src/{main,test,integrationTest}`, `docker/docker-compose.yml` (compose template), `helm/<AppName>/` |
-| `docker/` | `spring-boot.Dockerfile` and `entrypoint.sh`: ONE image definition shared by every app, staged with its `application.jar` by `buildlogic.docker-image` ([R-0007](docs/adr/R-0007-shared-dockerfile.md)) |
+| `apps/<AppName>/` | one Gradle project per deployable app: `src/{main,test,integrationTest}`, `helm/<AppName>/`, and only when the app needs it in every env `docker/docker-compose.override.yml` |
+| `docker/` | `spring-boot.Dockerfile` and `entrypoint.sh`: ONE image definition shared by every app, staged with its `application.jar` by `buildlogic.docker-image` ([R-0007](docs/adr/R-0007-shared-dockerfile.md)); `docker-compose.yml`: ONE compose template for every app and instance ([R-0008](docs/adr/R-0008-compose-config-layers.md)) |
 | `framework/connectors-framework/` | the framework the apps are built on: identity, `connector.*` properties, masked start-up summary, health, metrics tags, test fixtures (DL-43) |
-| `config/` | configuration tree `config/<env>/<flow>/<AppName>/{app-common,<AppInstance>}`, the cluster layer `<env>/<flow>/_common/`, one `workflows-config.yml` per dev flow ([`config/README.md`](config/README.md)) |
+| `config/` | configuration tree `config/<env>/<flow>/<AppName>/<AppInstance>/`, each layer a file in the directory of its level — `application.<layer>.yml`, `_docker-compose.<layer>.env` / `.yml`, `_helm-values.<layer>.yaml` for the flow, app and instance — and one `workflows-config.yml` per dev flow ([`config/README.md`](config/README.md), [R-0008](docs/adr/R-0008-compose-config-layers.md)) |
 | `test-infra/` | compose stacks, kind tier, seeds and test data of the integration tests ([`test-infra/README.md`](test-infra/README.md)) |
 | `scripts/` | `run-compose.sh`, `smoke.sh`, `pool-deploy.sh`, `helm-deploy-instance.sh`, `scripts/ci/` — platform scripts, vendored (below) |
 | `build-logic/` | the Gradle convention plugins `buildlogic.*` — vendored (below) |

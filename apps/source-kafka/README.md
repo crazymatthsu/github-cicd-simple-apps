@@ -21,8 +21,8 @@ command. Configuration lives in `config/<env>/<flow>/source-kafka/` (local insta
 
 The chart is [`helm/source-kafka/`](helm/source-kafka/README.md): one release `source-kafka-<AppInstance>` per
 instance directory, in the namespace of its flow, with the values layers chart `values.yaml` →
-`config/<env>/<flow>/source-kafka/app-common/values.yaml` → `<AppInstance>/values.yaml` (`image.tag`,
-identity, `env`) and the `application.yml` layers as file values (D11). One script builds the flag list for
+`config/<env>/<flow>/source-kafka/_helm-values.app.yaml` → `<AppInstance>/_helm-values.instance.yaml` (`image.tag`,
+identity, `env`) and the `application.<layer>.yml` layers as file values (D11; the Helm design is deferred, R-0008). One script builds the flag list for
 every caller — config-lint, the kind deploy test and deploy-dev; run it from the repository root:
 
 ```bash

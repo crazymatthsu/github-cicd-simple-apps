@@ -1,16 +1,17 @@
 #!/usr/bin/env bash
 # scripts/smoke.sh: post-deploy smoke test of one running instance (D8 §5.1, §6.1). The one implementation for
-# every app (D12 §6.2, no per-app wrapper): run-compose.sh health calls it with --app-dir <the app directory>;
-# an app with checks of its own ships apps/<AppName>/scripts/smoke.sh instead, which run-compose.sh prefers.
+# every app (D12 §6.2, no per-app wrapper): run-compose.sh health calls it with <env> <flow> <AppName> <AppInstance>
+# and the instance's ACTUATOR_HOST_PORT; an app with checks of its own ships apps/<AppName>/scripts/smoke.sh instead,
+# which run-compose.sh prefers. It needs no app directory: a host bundle carries one only for an app that ships one.
 #
 # Called by `run-compose.sh <env> <flow> <AppName> <AppInstance> health` once the container is ready (D6) and
-# by deploy-dev (D9). The AppName is the subproject directory, so every app runs the same checks until one adds
+# by deploy-dev (D9). The AppName is the subproject's name, so every app runs the same checks until one adds
 # checks of its own (target table exists, expected row count: D8 §5.1). Portable to bash 3.2.
 set -euo pipefail
 
 usage() {
   cat <<'EOF2'
-Usage: scripts/smoke.sh <env> <flow> <AppName> <AppInstance> [<base-url>]      (the app apps/<AppName>)
+Usage: scripts/smoke.sh <env> <flow> <AppName> <AppInstance> [<base-url>]
        scripts/smoke.sh --app-dir <app-dir> [<base-url> | <env> <flow> <AppName> <AppInstance> [<base-url>]]
 
 The four-argument form is how run-compose.sh health calls it.
@@ -22,7 +23,7 @@ Checks one running instance through its actuator:
      and each part equals the arguments, else the APP_* variable of that name when set.
 
 <base-url> defaults to http://localhost:<port>: ACTUATOR_HOST_PORT when set, else the instance's
-compose.env when the identity is given, else 18080.
+_docker-compose.instance.env when the identity is given (the only layer that may set it, R-0008), else 18080.
 
 Environment: SMOKE_TIMEOUT (seconds, default 60), ACTUATOR_HOST_PORT, APP_ENV, APP_FLOW, APP_NAME,
 APP_INSTANCE, CONFIG_ROOT (default <repo>/config). jq is used when present.
@@ -46,7 +47,7 @@ usage_error() {
 }
 have_jq() { command -v jq >/dev/null 2>&1; }
 
-# KEY=VALUE lookup in a compose.env file (same reading as run-compose.sh).
+# KEY=VALUE lookup in an env layer (same reading as run-compose.sh).
 env_file_value() {
   awk -v k="$2" -F= '$0 !~ /^[[:space:]]*#/ && $1 == k { sub(/^[^=]*=/, ""); gsub(/^["'\'']|["'\'']$/, ""); print; exit }' "$1"
 }
@@ -80,22 +81,15 @@ case $# in
   *) usage_error "expected no argument, <base-url>, or <env> <flow> <AppName> <AppInstance> [<base-url>]" ;;
 esac
 
-# The subproject under test: --app-dir from a wrapper, else the <AppName> argument names it.
+# The app under test: the <AppName> argument (or APP_NAME), else the name of --app-dir (an app's own smoke test).
 if [[ -n $app_dir_arg ]]; then
   [[ -d $app_dir_arg ]] || usage_error "--app-dir '$app_dir_arg' is not a directory"
-  APP_DIR=$(cd "$app_dir_arg" && pwd -P)
+  THIS_APP=$(basename "$(cd "$app_dir_arg" && pwd -P)")
 elif [[ -n $want_app ]]; then
-  # The app directory as run-compose.sh finds it: apps/<AppName> (D12 §6.2), else any <dir>/<AppName> holding
-  # a compose template (a monorepo nesting its apps).
-  APP_DIR=""
-  for candidate in "$REPO_ROOT/apps/$want_app" "$REPO_ROOT/$want_app" "$REPO_ROOT"/*/"$want_app"; do
-    if [[ -f $candidate/docker/docker-compose.yml ]]; then APP_DIR=$(cd "$candidate" && pwd -P); break; fi
-  done
-  [[ -n $APP_DIR ]] || usage_error "no app '$want_app' with docker/docker-compose.yml under $REPO_ROOT (expected apps/$want_app); pass --app-dir <app-dir>"
+  THIS_APP=$want_app
 else
-  usage_error "which app? pass --app-dir <app-dir>, or <env> <flow> <AppName> <AppInstance>"
+  usage_error "which app? pass <env> <flow> <AppName> <AppInstance>, or --app-dir <app-dir>"
 fi
-THIS_APP=$(basename "$APP_DIR")
 if [[ -n $want_app && $want_app != "$THIS_APP" ]]; then
   usage_error "this is the smoke test of $THIS_APP, not of '$want_app'"
 fi
@@ -105,7 +99,7 @@ timeout=${SMOKE_TIMEOUT:-60}
 if [[ -z $base_url ]]; then
   port=${ACTUATOR_HOST_PORT:-}
   if [[ -z $port && -n $want_env && -n $want_flow && -n $want_instance ]]; then
-    env_file=${CONFIG_ROOT:-$REPO_ROOT/config}/$want_env/$want_flow/$THIS_APP/$want_instance/compose.env
+    env_file=${CONFIG_ROOT:-$REPO_ROOT/config}/$want_env/$want_flow/$THIS_APP/$want_instance/_docker-compose.instance.env
     if [[ -f $env_file ]]; then port=$(env_file_value "$env_file" ACTUATOR_HOST_PORT); fi
   fi
   port=${port:-18080}

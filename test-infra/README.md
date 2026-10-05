@@ -68,10 +68,12 @@ engine or compose, or the engine is unreachable. `stack.sh --help` lists everyth
 What `up` does:
 
 1. Merges `base.yml`, the declared `<stack>.yml` files and `it-runner.yml`. When `APP_IMAGE` is set,
-   it adds `apps/<AppName>/docker/docker-compose.yml`; with `--local`, it adds
+   it adds the shared `docker/docker-compose.yml`, the app's `apps/<AppName>/docker/docker-compose.override.yml` and
+   the instance's config-tree `_docker-compose.<layer>.yml` overrides (R-0008); with `--local`, it adds
    `local-ports.yml` filtered to the stack's services. It exports `COMPOSE_FILE`,
-   `COMPOSE_PROJECT_NAME` and `COMPOSE_ENV_FILES` (`versions.env`, plus the instance `compose.env`
-   when the app joins).
+   `COMPOSE_PROJECT_NAME` and `COMPOSE_ENV_FILES`: one file, `compose/.state/<project>.compose.env`, which is
+   `versions.env` plus the instance's combined env when the app joins (podman-compose keeps only the last of
+   several env files).
 2. Project name: `COMPOSE_PROJECT_NAME` if set, else `ci-<CI_RUN_ID>-<CI_RUN_ATTEMPT>` in CI
    (`CI_RUN_ID` defaults to `GITHUB_RUN_ID`), else `local-<AppName>`.
 3. Generates `IT_SA_PASSWORD` when unset (reused on a re-run of the same project) and sets
@@ -89,8 +91,10 @@ When the app joins the stack, its template gets what `run-compose.sh` would expo
 project's testdata manifests, `positions-db-to-deephaven` for `source-database`; else the app's only instance
 directory under `config/local/cash/<AppName>/`, as for `source-kafka` and `source-amps`; several candidates
 or none is a usage error). It also gets
-`COMMON_DIR`, `CONFIG_DIR`, `PROJECT` and `SPRING_DATASOURCE_USERNAME/PASSWORD`, plus `IMAGE_REPO`
-and `IMAGE_TAG` derived from `APP_IMAGE`, so a template written as
+the Spring layer files (`FLOW_APP_YML`, `APP_APP_YML`, `INSTANCE_APP_YML`), the combined env `COMPOSE_ENV_FILE`
+that `scripts/run-compose.sh ... compose-env` writes (one merge implementation), `PROJECT` and
+`SPRING_DATASOURCE_USERNAME/PASSWORD`, plus `IMAGE_REPO` and `IMAGE_TAG` derived from `APP_IMAGE` (the combined env's
+last layer), so a template written as
 `${IMAGE_REPO}/${APP_NAME}:${IMAGE_TAG}` still runs the image under test (a digest-only reference
 becomes `by-digest@sha256:...`; the digest wins). `APP_IMAGE` must be
 `<registry>/<path>/<AppName>:<tag>`, `...@sha256:<digest>`, or both.
