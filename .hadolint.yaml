@@ -1,11 +1,11 @@
-# hadolint configuration (D3 §6.4, D7 §6.4). Runs in the pr.yml `lint` job on every tracked Dockerfile:
+# hadolint configuration (ADR-0009, ADR-0021). Runs in the pr.yml `lint` job on every tracked Dockerfile:
 #   hadolint --config .hadolint.yaml $(git ls-files 'Dockerfile' '**/Dockerfile' '*.Dockerfile' '**/*.Dockerfile')
-# i.e. docker/spring-boot.Dockerfile, shared by every app (R-0007), plus any app's docker/Dockerfile override.
+# i.e. docker/spring-boot.Dockerfile, shared by every app (ADR-0009), plus any app's docker/Dockerfile override.
 # Warnings fail the job; info-level findings are reported only.
 failure-threshold: warning
 
 # Registries a FROM may name. Demo: the public upstreams and GHCR; enterprise: only the JFrog remotes
-# (artifactory.<company>.com), so an image that bypasses JFrog fails the lint (D3 §6.6, D10 §5.12).
+# (artifactory.<company>.com), so an image that bypasses JFrog fails the lint (ADR-0009).
 # FROM ${BASE_IMAGE}-style references are resolved at build time and not checked here.
 trustedRegistries:
   - docker.io
@@ -16,6 +16,6 @@ trustedRegistries:
 override:
   info:
     # Pin versions in apt-get install: relaxed. Only the company base images install OS packages, they
-    # are rebuilt weekly to pick up patches (D3 §6.1), and pinned Ubuntu package versions disappear from
+    # are rebuilt weekly to pick up patches (ADR-0009), and pinned Ubuntu package versions disappear from
     # the archive. App Dockerfiles install nothing.
     - DL3008

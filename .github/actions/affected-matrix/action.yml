@@ -1,6 +1,6 @@
 name: affected-matrix
 description: >-
-  Affected-subproject detection (D7 §5.4, §6.2): diffs the change against its base, maps the changed
+  Affected-subproject detection (ADR-0022): diffs the change against its base, maps the changed
   paths onto Gradle projects with .github/affected-map.yml (scripts/ci/affected.py) and returns the
   build list, the integration-test matrix, the full / docs-only flags and the deploy-test flag. Needs a
   checkout with history (fetch-depth: 0).

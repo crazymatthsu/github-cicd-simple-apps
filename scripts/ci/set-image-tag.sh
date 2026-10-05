@@ -1,11 +1,11 @@
 #!/usr/bin/env bash
-# set-image-tag.sh — set the image tag in AppInstance config files (D4 §6.4, D5 §6.8).
+# set-image-tag.sh — set the image tag in AppInstance config files (ADR-0029).
 #
 # Usage: set-image-tag.sh <tag> <file>...
 #   _docker-compose.instance.env  IMAGE_TAG=<tag>  (the line is replaced in place, or appended when missing)
-#   _helm-values.instance.yaml    .image.tag       (only when the file already has an `image` mapping — demo step 2;
+#   _helm-values.instance.yaml    .image.tag       (only when the file already has an `image` mapping — ADR-0019;
 #                                                   needs mikefarah yq v4, as on GitHub-hosted runners)
-#   (the instance layers of R-0008: the only ones that hold the tag)
+#   (the instance layers of ADR-0012: the only ones that hold the tag)
 # Prints each file whose content changed. Touches nothing else in the files.
 # Exit codes: 0 ok (also when nothing changed) · 2 usage · 4 file missing or of an unsupported kind.
 set -euo pipefail
@@ -18,7 +18,7 @@ usage() {
 [[ $# -ge 2 ]] || usage
 tag=$1
 shift
-# Docker tag grammar; floating-tag policy per env is config-lint's job (D5 check 10).
+# Docker tag grammar; floating-tag policy per env is config-lint's job (ADR-0014 check 10).
 [[ $tag =~ ^[A-Za-z0-9_][A-Za-z0-9_.-]{0,127}$ ]] || { echo "set-image-tag.sh: invalid tag '$tag'" >&2; exit 2; }
 
 for file in "$@"; do

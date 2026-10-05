@@ -1,11 +1,11 @@
-# Reusable: Gradle build, unit tests, quality gates and images (D7 §6.2, D10 §5.2, DL-28).
+# Reusable: Gradle build, unit tests, quality gates and images (ADR-0021).
 #
 #   probe    (runner host)  is ghcr.io/crazymatthsu/base/ci-build:latest published? plan the Gradle tasks
 #   build    (ci-build container when published, else the runner host with setup-java — first-run
-#             bootstrap)  ./gradlew build → printVersion → buildImages → pushImages (tags from Gradle, D4)
+#             bootstrap)  ./gradlew build → printVersion → buildImages → pushImages (tags from Gradle, ADR-0010)
 #   collect  (runner host)  resolve the pushed tags to digests → `images` output for the IT matrix
 #
-# Image tags are computed by the buildlogic.git-version / buildlogic.docker-image plugins (D4 §6.2):
+# Image tags are computed by the buildlogic.git-version / buildlogic.docker-image plugins (ADR-0010):
 # pull request / merge queue → pr-<n>-<sha7>; main → <next>-rc.<n>, sha-<sha7>, main; hotfix/* →
 # <next-patch>-rc.<n>, sha-<sha7>. The callers need `packages: write` for pushes.
 name: _gradle-build
@@ -50,7 +50,7 @@ on:
         description: "JSON object Gradle project → pushed image, repository:tag@sha256:digest ({} when nothing was pushed)."
         value: ${{ jobs.collect.outputs.images || '{}' }}
       image-tags:
-        description: JSON object Gradle project → D4 tag set of this build ({} when nothing was pushed).
+        description: JSON object Gradle project → ADR-0010 tag set of this build ({} when nothing was pushed).
         value: ${{ jobs.collect.outputs.image-tags || '{}' }}
       ci-build-image:
         description: The ci-build image the build ran in, pinned by digest ('' when it ran on the host).
@@ -97,7 +97,7 @@ jobs:
           REBUILD: ${{ inputs.rebuild-base }}
         run: |
           set -euo pipefail
-          # ci-build decides where the build job runs (DL-28); jre21 is handed to the build job so it
+          # ci-build decides where the build job runs (ADR-0021); jre21 is handed to the build job so it
           # does not probe again. Missing images are the first-run bootstrap: the build job then runs on
           # the host and builds jre21 locally.
           for name in ci-build jre21; do
@@ -139,7 +139,7 @@ jobs:
           images=$(jq -c --argjson meta "$meta" '[.[] | select($meta[.].image == true)]' <<<"$selected")
           its=$(jq -c --argjson meta "$meta" '[.[] | select($meta[.].it == true)]' <<<"$selected")
           if [[ $(jq -r --argjson all "$all" 'sort == ($all | sort)' <<<"$selected") == true ]]; then
-            build_tasks=build image_build=buildImages image_push=pushImages       # root aggregates (D1 §6.2)
+            build_tasks=build image_build=buildImages image_push=pushImages       # root aggregates (ADR-0007)
           else
             build_tasks=$(jq -r 'map(. + ":build") | join(" ")' <<<"$selected")
             image_build=$(jq -r 'map(. + ":buildImage") | join(" ")' <<<"$images")
@@ -171,14 +171,14 @@ jobs:
     permissions:
       contents: read
       packages: write
-    # In the ci-build image when it is published (DL-28, D10 §5.2); an empty image runs the job on the
-    # runner host instead — the first-run bootstrap, until base-image.yml has published ci-build.
+    # In the ci-build image when it is published (ADR-0021); an empty image runs the job on the
+    # runner host instead — the first-run bootstrap, until ci-build is published (outside this repository).
     # The image's user `runner` (1001) is the GitHub-hosted runner's UID, so the mounted workspace,
     # RUNNER_TEMP and HOME keep their owner. The runner also mounts /var/run/docker.sock (owned by the
     # host's docker group), so the container joins that group: builds and pushes go through the host
     # engine without running the job as root. Socket access is root-equivalent on the runner —
     # acceptable on ephemeral GitHub-hosted runners only, never on a persistent self-hosted one
-    # (D10 §5.11). On a runner whose user is not 1001, use `--user root` instead.
+    # (ADR-0021). On a runner whose user is not 1001, use `--user root` instead.
     container:
       image: ${{ needs.probe.outputs.ci-build-image }}
       credentials:
@@ -203,7 +203,7 @@ jobs:
     steps:
       - uses: actions/checkout@v7
         with:
-          fetch-depth: 0 # tags and history: the version is derived from git (D4 §6.1)
+          fetch-depth: 0 # tags and history: the version is derived from git (ADR-0008)
 
       - name: Pre-release version even if HEAD is already tagged
         if: inputs.ignore-head-tags
@@ -234,9 +234,9 @@ jobs:
             echo "### Build environment"
             echo ""
             if [[ -n $CI_BUILD ]]; then
-              echo "Job container \`$CI_BUILD\` (DL-28)."
+              echo "Job container \`$CI_BUILD\` (ADR-0021)."
             else
-              echo "Runner host with Temurin 21 — \`base/ci-build\` is not published yet (bootstrap); run base-image.yml in the platform repository (github-demo)."
+              echo "Runner host with Temurin 21 — \`base/ci-build\` is not published yet (bootstrap); run the base-image build outside this repository to publish it."
             fi
             echo ""
             java -version 2>&1 | head -n 1 | sed 's/^/- /'
@@ -319,7 +319,7 @@ jobs:
 
       - uses: ./.github/actions/registry-login
 
-      - name: Resolve digests and the D4 tag set
+      - name: Resolve digests and the ADR-0010 tag set
         id: collect
         env:
           REFS: ${{ needs.build.outputs.image-refs }}
@@ -343,7 +343,7 @@ jobs:
             # repository:tag@sha256:... — pinned by digest, still readable, and test-infra/compose/stack.sh
             # derives IMAGE_REPO / IMAGE_TAG for the app's compose template from it.
             pinned="${ref}@${pinned#*@}"
-            # D4 §6.2 tag set of this build (what Gradle pushed; _docker-publish.yml re-asserts it later).
+            # ADR-0010 tag set of this build (what Gradle pushed; _docker-publish.yml re-asserts it later).
             case "$GITHUB_REF" in
               refs/heads/main)
                 [[ $primary == *-rc.* ]] || { echo "::error::$project: expected a pre-release tag on main, got $primary"; exit 1; }

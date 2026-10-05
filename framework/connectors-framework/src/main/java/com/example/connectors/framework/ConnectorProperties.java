@@ -13,8 +13,8 @@ import org.springframework.boot.context.properties.bind.DefaultValue;
 import org.springframework.validation.annotation.Validated;
 
 /**
- * The {@code connector.*} property contract shared by every connector (D5 §6.3). Endpoints, topics and table
- * names live here and in the config tree's YAML layers; secrets never do (D2 §6.4).
+ * The {@code connector.*} property contract shared by every connector (ADR-0011). Endpoints, topics and table
+ * names live here and in the config tree's YAML layers; secrets never do (ADR-0013).
  *
  * <pre>
  * connector.source.{host,port,database,table,poll-interval}

@@ -1,4 +1,4 @@
-// `buildlogic.integration-test` (D1 §6.4, D8 §4.2, §6.1, D10 §5.10, §6.2): the three connector apps.
+// `buildlogic.integration-test` (ADR-0007, ADR-0025): the three connector apps.
 //
 // - `integrationTest`: a JVM Test Suite with its own source set (src/integrationTest/java), never wired into
 //   `check` (check only compiles it so it cannot rot).
@@ -11,7 +11,7 @@
 //   `-Pcompose.managed=false` (CI: the workflow owns the stack and runs the tests in it-runner, whose
 //   environment then applies unchanged) removes all of this from the graph; `-Pcompose.keep=true` keeps the
 //   stack up for debugging.
-// - `devUp` / `devDown`: the dependency stack for local work (D6 §6.12, D8 §5.7), compose project `local-dev`
+// - `devUp` / `devDown`: the dependency stack for local work (ADR-0025), compose project `local-dev`
 //   (or $COMPOSE_PROJECT_NAME) shared by every app, so one network serves `run-compose.sh local ...`.
 import buildlogic.ComposeStackLock
 import buildlogic.IntegrationTestSecrets
@@ -37,13 +37,13 @@ testing {
                 implementation(platform(springBootBom))
                 implementation(junitJupiter)
                 // Every component stack contains Deephaven and the tests assert through its Java client
-                // (Flight session: upload, snapshot, release; D8 §5.2, D10 §5.3).
+                // (Flight session: upload, snapshot, release).
                 implementation(deephavenClient)
                 runtimeOnly(junitLauncher)
             }
             targets.all {
                 testTask.configure {
-                    description = "Runs src/integrationTest against the compose stack (D8); not part of check."
+                    description = "Runs src/integrationTest against the compose stack (ADR-0025); not part of check."
                     shouldRunAfter(tasks.named("test"))
                     // The stack is external state: never up-to-date, never from the build cache.
                     outputs.upToDateWhen { false }
@@ -82,7 +82,7 @@ fun Exec.stackCommand(vararg args: String) {
     doFirst {
         if (!script.isFile) {
             throw GradleException(
-                "$script not found: the dependency stacks live in test-infra/compose/ (D8 §6.3, D10 §6.2). " +
+                "$script not found: the dependency stacks live in test-infra/compose/ (ADR-0025). " +
                     "Run with -Pcompose.managed=false when the stack is started elsewhere.",
             )
         }
@@ -146,7 +146,7 @@ if (managed) {
                 "SPRING_DATASOURCE_PASSWORD" to password,
                 "IT_TABLE_PREFIX" to (System.getenv("IT_TABLE_PREFIX") ?: prefix),
             )
-            // The app under test (D8 §5.1), when the stack includes it: its actuator on the published port.
+            // The app under test (ADR-0025), when the stack includes it: its actuator on the published port.
             val appImage = System.getenv("APP_IMAGE")?.takeIf { it.isNotBlank() } ?: state["APP_IMAGE"]
             if (appImage != null) {
                 env["APP_IMAGE"] = appImage
@@ -158,14 +158,14 @@ if (managed) {
         }
     }
     composeDown.configure { mustRunAfter(tasks.named("integrationTest")) }
-    // Component ITs exercise the app image (D8 §5.1): build it first when this project has one.
+    // Component ITs exercise the app image (ADR-0025): build it first when this project has one.
     plugins.withId("buildlogic.docker-image") {
         composeUp.configure { dependsOn(tasks.named("buildImage")) }
     }
 }
 
 tasks.register<Exec>("devUp") {
-    description = "Starts the dependency stack for local development (D6 §6.12): stack.sh up --project $projectPath --local."
+    description = "Starts the dependency stack for local development (ADR-0025): stack.sh up --project $projectPath --local."
     stackCommand("up", "--project", projectPath, "--local")
     val composeProject = devProjectName.get()
     environment("COMPOSE_PROJECT_NAME", composeProject)

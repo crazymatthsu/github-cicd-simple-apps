@@ -25,18 +25,18 @@ import java.io.ByteArrayOutputStream
 import java.io.File
 import javax.inject.Inject
 
-/** Root task `configLint` (D5 §6.5): runs [ConfigLinter] and fails on any ERROR finding. */
+/** Root task `configLint` (ADR-0014): runs [ConfigLinter] and fails on any ERROR finding. */
 @DisableCachingByDefault(because = "Cheap, and checks 6 and 12 depend on the local compose CLI, Helm and kubeconform")
 abstract class ConfigLintTask : DefaultTask() {
     @get:InputDirectory
     @get:PathSensitive(PathSensitivity.RELATIVE)
     abstract val configDir: DirectoryProperty
 
-    /** Deployable AppNames: the subprojects that apply `buildlogic.docker-image` (R-0008). */
+    /** Deployable AppNames: the subprojects that apply `buildlogic.docker-image` (ADR-0006). */
     @get:Input
     abstract val apps: SetProperty<String>
 
-    /** The one compose template, `docker/docker-compose.yml` (R-0008). */
+    /** The one compose template, `docker/docker-compose.yml` (ADR-0012). */
     @get:InputFile
     @get:Optional
     @get:PathSensitive(PathSensitivity.RELATIVE)
@@ -73,7 +73,7 @@ abstract class ConfigLintTask : DefaultTask() {
     @get:Input
     abstract val helmCli: Property<String>
 
-    /** scripts/helm-deploy-instance.sh, the one implementation of the Helm flag list (D11 §8.3). */
+    /** scripts/helm-deploy-instance.sh, the one implementation of the Helm flag list (ADR-0019). */
     @get:InputFile
     @get:PathSensitive(PathSensitivity.RELATIVE)
     abstract val helmScript: RegularFileProperty

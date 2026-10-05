@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# helm-smoke-diff.sh — prove that two deployed AppInstances differ (brief §7 "demo step 2", D11 §6.4): their
+# helm-smoke-diff.sh — prove that two deployed AppInstances differ (ADR-0019): their
 # identity tuples in /actuator/info, and at least one value of their masked effective configuration in
 # /actuator/connectorconfig (e.g. connector.source.table, connector.sink.type). Both endpoints are read inside
 # the pods, so nothing is port-forwarded. Portable bash (3.2+); run with --help for the usage.

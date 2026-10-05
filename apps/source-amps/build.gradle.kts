@@ -1,5 +1,5 @@
-// source-amps (D1 §6.1): AMPS -> Deephaven. Hello world for now: identity, masked configuration
-// summary and the actuator contract; no AMPS client yet (licensed, D3 §6.10).
+// source-amps (ADR-0007): AMPS -> Deephaven. Hello world for now: identity, masked configuration
+// summary and the actuator contract; no AMPS client yet (licensed).
 plugins {
     id("buildlogic.spring-boot-app")
     id("buildlogic.docker-image")

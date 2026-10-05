@@ -1,12 +1,12 @@
 #!/usr/bin/env bash
-# scripts/smoke.sh: post-deploy smoke test of one running instance (D8 §5.1, §6.1). The one implementation for
-# every app (D12 §6.2, no per-app wrapper): run-compose.sh health calls it with <env> <flow> <AppName> <AppInstance>
+# scripts/smoke.sh: post-deploy smoke test of one running instance (ADR-0015). The one implementation for
+# every app (ADR-0017, no per-app wrapper): run-compose.sh health calls it with <env> <flow> <AppName> <AppInstance>
 # and the instance's ACTUATOR_HOST_PORT; an app with checks of its own ships apps/<AppName>/scripts/smoke.sh instead,
 # which run-compose.sh prefers. It needs no app directory: a host bundle carries one only for an app that ships one.
 #
-# Called by `run-compose.sh <env> <flow> <AppName> <AppInstance> health` once the container is ready (D6) and
-# by deploy-dev (D9). The AppName is the subproject's name, so every app runs the same checks until one adds
-# checks of its own (target table exists, expected row count: D8 §5.1). Portable to bash 3.2.
+# Called by `run-compose.sh <env> <flow> <AppName> <AppInstance> health` once the container is ready (ADR-0017) and
+# by deploy-dev (ADR-0027). The AppName is the subproject's name, so every app runs the same checks until one adds
+# checks of its own (target table exists, expected row count). Portable to bash 3.2.
 set -euo pipefail
 
 usage() {
@@ -23,7 +23,7 @@ Checks one running instance through its actuator:
      and each part equals the arguments, else the APP_* variable of that name when set.
 
 <base-url> defaults to http://localhost:<port>: ACTUATOR_HOST_PORT when set, else the instance's
-_docker-compose.instance.env when the identity is given (the only layer that may set it, R-0008), else 18080.
+_docker-compose.instance.env when the identity is given (the only layer that may set it, ADR-0012), else 18080.
 
 Environment: SMOKE_TIMEOUT (seconds, default 60), ACTUATOR_HOST_PORT, APP_ENV, APP_FLOW, APP_NAME,
 APP_INSTANCE, CONFIG_ROOT (default <repo>/config). jq is used when present.

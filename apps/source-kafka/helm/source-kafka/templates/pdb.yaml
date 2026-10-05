@@ -1,5 +1,5 @@
 {{- if and .Values.podDisruptionBudget.enabled (gt (int .Values.replicaCount) 1) }}
-{{- /* Only with more than one replica: with one, a PDB would block node drains for ever (D6 §6.10). */}}
+{{- /* Only with more than one replica: with one, a PDB would block node drains for ever. */}}
 apiVersion: policy/v1
 kind: PodDisruptionBudget
 metadata:

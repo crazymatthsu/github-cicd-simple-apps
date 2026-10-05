@@ -1,10 +1,10 @@
-# Reusable: one integration-test job for one Gradle project (D10 §5.2, §6.11; model C, DL-24).
+# Reusable: one integration-test job for one Gradle project (ADR-0025).
 #
 # Start the project's compose stack (Deephaven + the dependencies it declares + the app image built
 # in this run, by digest) → run the tests in the `it-runner` service (ci-build image, on the stack
 # network, no published ports) → diagnostics on failure → teardown and leak check on success, failure
-# AND cancel (`always()`, DL-27). `level: system` runs the same stack with the platform's own Deephaven
-# server image instead of the upstream one (DL-26): the one built in this run when the repository builds it
+# AND cancel (`always()`, ADR-0024). `level: system` runs the same stack with the platform's own Deephaven
+# server image instead of the upstream one (ADR-0025): the one built in this run when the repository builds it
 # (`:deephaven-server` in `images`), else the published release pinned as DEEPHAVEN_SERVER_IMAGE in
 # test-infra/compose/versions.env.
 name: _integration-test
@@ -29,7 +29,7 @@ on:
         type: string
         default: ''
       retention-days:
-        description: Retention of the uploaded reports and diagnostics (D10 §6.1 — 7 on PRs, 14 on main).
+        description: Retention of the uploaded reports and diagnostics (ADR-0021 — 7 on PRs, 14 on main).
         type: number
         default: 7
     outputs:
@@ -49,7 +49,7 @@ jobs:
       contents: read
       packages: read
     env:
-      # One stack per job and runner VM; every resource carries the run labels (D10 §6.1, DL-27).
+      # One stack per job and runner VM; every resource carries the run labels (ADR-0024).
       COMPOSE_PROJECT_NAME: ci-${{ github.run_id }}-${{ github.run_attempt }}
       CI_RUN_ID: ${{ github.run_id }}
       CI_RUN_ATTEMPT: ${{ github.run_attempt }}
@@ -79,8 +79,8 @@ jobs:
             exit 2
           fi
           if [[ $IT_LEVEL == system ]]; then
-            # The platform's Deephaven server image (DL-26): built in this run when this repository builds it,
-            # else the published release pinned in versions.env (a project repository, D12 §6.1).
+            # The platform's Deephaven server image (ADR-0025): built in this run when this repository builds it,
+            # else the published release pinned in versions.env (a project repository, ADR-0002).
             server=$(jq -r '.[":deephaven-server"] // empty' <<<"$IMAGES")
             [[ -n $server ]] || server=$(sed -n 's/^DEEPHAVEN_SERVER_IMAGE=//p' test-infra/compose/versions.env | tail -n 1)
             [[ $server =~ @sha256:[0-9a-f]{64}$ ]] ||

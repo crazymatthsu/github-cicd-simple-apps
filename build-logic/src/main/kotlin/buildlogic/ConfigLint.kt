@@ -6,7 +6,7 @@ import org.yaml.snakeyaml.constructor.SafeConstructor
 import java.io.File
 
 /**
- * config-lint (D5 §6.5): checks 1–6 and 9–12 over the config tree; 7 and 8 are reported as TODO.
+ * config-lint (ADR-0014): checks 1–6 and 9–12 over the config tree; 7 and 8 are reported as TODO.
  * Pure over the file system plus the optional [ComposeRenderer], [HelmRunner] and [ManifestValidator], so that
  * it is unit-tested.
  */
@@ -17,7 +17,7 @@ data class Finding(val check: Int, val severity: Severity, val path: String, val
 }
 
 /**
- * One `docker compose config` run (check 6): the compose files in merge order (the shared template first, R-0008) and
+ * One `docker compose config` run (check 6): the compose files in merge order (the shared template first, ADR-0012) and
  * the instance's combined env, as run-compose.sh passes them.
  */
 data class ComposeRenderRequest(
@@ -32,7 +32,7 @@ fun interface ComposeRenderer {
     fun render(request: ComposeRenderRequest): CommandResult?
 }
 
-/** The two check-12 modes of `scripts/helm-deploy-instance.sh` (D11 §8.3). */
+/** The two check-12 modes of `scripts/helm-deploy-instance.sh` (ADR-0019). */
 enum class HelmMode(val flag: String) { LINT("lint"), TEMPLATE("template") }
 
 /** One `scripts/helm-deploy-instance.sh <env> <flow> <app> <instance> --tag <tag> --mode lint|template` run. */
@@ -65,11 +65,11 @@ object ConfigRules {
     const val MAX_APP_NAME = 20
     const val MAX_APP_INSTANCE = 32
     const val MAX_RELEASE_NAME = 53
-    /** The layer directories before R-0008, reported with the file names that replace them. */
+    /** The layer directories before ADR-0011, reported with the file names that replace them. */
     const val APP_COMMON = "app-common"
     const val COMMON = "_common"
 
-    /** R-0008: the layers are files, named `<kind>.<layer>.<ext>` and allowed only in the directory of their level. */
+    /** ADR-0011: the layers are files, named `<kind>.<layer>.<ext>` and allowed only in the directory of their level. */
     enum class Layer(val id: String) { FLOW("flow"), APP("app"), INSTANCE("instance") }
     fun application(layer: Layer) = "application.${layer.id}.yml"
     fun composeEnv(layer: Layer) = "_docker-compose.${layer.id}.env"
@@ -83,7 +83,7 @@ object ConfigRules {
     val LAYER_FILE = Regex("""^(application|_docker-compose|_helm-values)\.(flow|app|instance)\.(yml|yaml|env)$""")
     const val TARGETS = "workflows-config.yml"
 
-    /** D5 §6.3: the only variables an env layer may carry (plus `*_HOST_PORT`). */
+    /** ADR-0012: the only variables an env layer may carry (plus `*_HOST_PORT`). */
     val COMPOSE_ENV_ALLOWED = setOf(
         "IMAGE_REPO", "IMAGE_TAG", "APP_ENV", "APP_FLOW", "APP_NAME", "APP_INSTANCE",
         "JAVA_OPTS", "TZ", "LOG_LEVEL_ROOT", "LOGS_DIR", "DATA_DIR", "MEM_LIMIT",
@@ -91,20 +91,20 @@ object ConfigRules {
     val HOST_PORT = Regex("^[A-Z][A-Z0-9_]*_HOST_PORT$")
     val FORBIDDEN_PREFIXES = listOf("SPRING_", "LOGGING_", "MANAGEMENT_", "CONNECTOR_")
 
-    /** Variables `run-compose.sh` sets itself; no env layer may define them (D5 §6.3, D6 §6.2, R-0008). */
+    /** Variables `run-compose.sh` sets itself; no env layer may define them (ADR-0012). */
     val SCRIPT_VARIABLES = setOf("COMPOSE_ENV_FILE", "FLOW_APP_YML", "APP_APP_YML", "INSTANCE_APP_YML", "PROJECT")
     val IDENTITY = listOf("APP_ENV", "APP_FLOW", "APP_NAME", "APP_INSTANCE")
     /** Only the instance layer sets these (and `*_HOST_PORT`): the image tag, the identity, the published ports. */
     val INSTANCE_ONLY = IDENTITY.toSet() + "IMAGE_TAG"
 
-    /** D5 §6.3: the app-facing subset — the only names a Helm values `env:` map may carry (check 4). */
+    /** ADR-0019: the app-facing subset — the only names a Helm values `env:` map may carry (check 4). */
     val VALUES_ENV_ALLOWED = IDENTITY.toSet() + setOf("JAVA_OPTS", "TZ", "LOG_LEVEL_ROOT")
     /** Knobs both consumers set: the combined compose env and the values `env:` should agree (check 4 warns otherwise). */
     val SHARED_KNOBS = listOf("JAVA_OPTS", "TZ", "LOG_LEVEL_ROOT")
     /** The script's exit code for "no usable Helm 4" (helm-deploy-instance.sh). */
     const val EXIT_TOOL = 5
 
-    /** D2 §6.4: secret properties; none of them may appear in any YAML layer. */
+    /** ADR-0013: secret properties; none of them may appear in any YAML layer. */
     val SECRET_PROPERTIES = listOf(
         "spring.datasource.username", "spring.datasource.password",
         "connector.amps.username", "connector.amps.password",
@@ -119,19 +119,19 @@ object ConfigRules {
     /** The Kubernetes version the rendered manifests are validated against (kubeconform, check 12). */
     const val KUBERNETES_VERSION = "1.37.0"
 
-    /** Check 11: a compose host, also every box of a flow's pool (DL-39) — a lower-case DNS name or an IPv4 address. */
+    /** Check 11: a compose host, also every box of a flow's pool (ADR-0028) — a lower-case DNS name or an IPv4 address. */
     val HOST_NAME = Regex("^[a-z0-9]([a-z0-9.-]*[a-z0-9])?$")
-    /** Check 11: the SSH user of a compose host or pool (DL-35: `deploy`, whose forced command is run-compose.sh). */
+    /** Check 11: the SSH user of a compose host or pool (ADR-0018: `deploy`, whose forced command is run-compose.sh). */
     val LOGIN = Regex("^[a-z_][a-z0-9_-]{0,31}$")
     /**
      * Check 11: a pool's install root — absolute, plain path segments only (it appears in rsync targets and SSH
      * command lines), never `.` or `..`.
      */
     const val POOL_USER = "deploy"
-    /** DL-41 / DL-46: versions kept per box under `/apps/<user>/versions/<project>/`; `pool.keep` (default 5, at least 2). */
+    /** ADR-0018: versions kept per box under `/apps/<user>/versions/<project>/`; `pool.keep` (default 5, at least 2). */
     const val POOL_KEEP_DEFAULT = 5
     const val POOL_KEEP_MIN = 2
-    /** A helm target's namespace once "{flow}" is substituted: a DNS label (DL-38; the flow name by default). */
+    /** A helm target's namespace once "{flow}" is substituted: a DNS label (ADR-0027; the flow name by default). */
     val NAMESPACE = Regex("^[a-z0-9]([-a-z0-9]{0,61}[a-z0-9])?$")
     /** `config/<env>/known_hosts`: `[@marker] <host patterns> <key type> <base64 key> [comment]` (ssh-keyscan format). */
     val SSH_KEY_TYPE = Regex("^(ssh|ecdsa|sk)-[A-Za-z0-9@._-]+$")
@@ -157,9 +157,9 @@ object ConfigRules {
 
 class ConfigLinter(
     private val configRoot: File,
-    /** Deployable AppNames: the subprojects that apply `buildlogic.docker-image` (R-0008). */
+    /** Deployable AppNames: the subprojects that apply `buildlogic.docker-image` (ADR-0006). */
     private val apps: Set<String>,
-    /** The one compose template, `docker/docker-compose.yml` (R-0008); null: check 6 has nothing to render. */
+    /** The one compose template, `docker/docker-compose.yml` (ADR-0012); null: check 6 has nothing to render. */
     private val template: File? = null,
     /** AppName -> its `<subproject>/docker/docker-compose.override.yml`, for the apps that have one. */
     private val appOverrides: Map<String, File> = emptyMap(),
@@ -203,7 +203,7 @@ class ConfigLinter(
             when {
                 child.isFile && child.name == "README.md" -> Unit
                 child.isDirectory && child.name == ConfigRules.COMMON -> error(1, child, "config/_common/ removed: nothing is shared " +
-                    "across envs (DL-45); a default that is the same everywhere belongs in the jar (layer 1), a cluster's shared " +
+                    "across envs (ADR-0011); a default that is the same everywhere belongs in the jar (layer 1), a cluster's shared " +
                     "settings in config/<env>/<flow>/application.flow.yml")
                 child.isDirectory -> lintEnv(child)
                 else -> error(1, child, "unexpected file at the top of config/ (only <env>/ and README.md)")
@@ -218,13 +218,13 @@ class ConfigLinter(
                 "Kubernetes ${ConfigRules.KUBERNETES_VERSION} schemas (CI installs it)")
         }
         findings += Finding(7, Severity.TODO, "config", "merged-configuration validation against " +
-            "spring-configuration-metadata.json is not implemented yet (D5 §6.5 check 7)")
+            "spring-configuration-metadata.json is not implemented yet (ADR-0014 check 7)")
         findings += Finding(8, Severity.TODO, "config", "parity report across us-dev / us-qa / us-prod is not " +
-            "implemented yet (D5 §6.5 check 8)")
+            "implemented yet (ADR-0014 check 8)")
         return findings.toList()
     }
 
-    // --- layers (R-0008: files named application.<layer>.yml, _docker-compose.<layer>.env / .yml, ---------
+    // --- layers (ADR-0011: files named application.<layer>.yml, _docker-compose.<layer>.env / .yml, -------
     // --- _helm-values.<layer>.yaml in the directory of their level) ---------------------------------------
 
     private fun lintEnv(envDir: File) {
@@ -238,12 +238,12 @@ class ConfigLinter(
         for (child in envDir.listFiles().orEmpty().sortedBy { it.name }) {
             when {
                 child.isFile && (child.name == ConfigRules.TARGETS || child.name == "targets.yml") -> error(11, child, "moved to config/$env/<flow>/workflows-config.yml: one " +
-                    "deploy inventory per flow (env, flow, pool, defaults, targets; D5 §6.6, DL-39)")
+                    "deploy inventory per flow (env, flow, pool, defaults, targets; ADR-0027)")
                 child.isFile && child.name == "README.md" -> Unit
                 child.isFile && child.name == "known_hosts" -> lintKnownHosts(child)
                 child.isDirectory && child.name == ConfigRules.COMMON -> error(1, child, "config/$env/_common/ removed: nothing is " +
                     "shared at the env level, the cluster <env>/<flow> is the first shared layer: config/$env/<flow>/application.flow.yml " +
-                    "and _docker-compose.flow.env / .yml (DL-44, R-0008)")
+                    "and _docker-compose.flow.env / .yml (ADR-0011)")
                 child.isDirectory && child.name in ConfigRules.FLOWS -> lintFlow(child, env, appsSeen)?.let { pools += it }
                 child.isDirectory -> error(1, child, "flow '${child.name}' must be one of ${ConfigRules.FLOWS.sorted()}")
                 else -> error(1, child, "unexpected file in config/$env/ (expected known_hosts, <flow>/)")
@@ -272,11 +272,11 @@ class ConfigLinter(
                 name == ConfigRules.composeOverride(layer) -> lintComposeOverride(file)
                 name in own -> lintYaml(file)
                 other != null && other != layer.id -> error(1, file, "a $other-layer file in the ${layer.id} level's directory: " +
-                    "it belongs in ${levelDirectory(other)} (R-0008)")
+                    "it belongs in ${levelDirectory(other)} (ADR-0011)")
                 name == "compose.env" || name == "values.yaml" || name == "application.yml" -> error(1, file,
-                    "the layout before R-0008: rename it to ${renamed(name, layer)}")
+                    "the layout before ADR-0011: rename it to ${renamed(name, layer)}")
                 name == ".env" || name.endsWith(".env") -> error(3, file, "forbidden: the only env file of this level is " +
-                    "${ConfigRules.composeEnv(layer)} (R-0008)")
+                    "${ConfigRules.composeEnv(layer)} (ADR-0012)")
                 else -> error(1, file, "unexpected file in the ${layer.id} level's directory (allowed: " +
                     "${(own + extra).sorted().joinToString()})")
             }
@@ -309,20 +309,20 @@ class ConfigLinter(
         val instances = mutableListOf<String>()
         lintLayerFiles(flowDir, ConfigRules.Layer.FLOW, extra = setOf(ConfigRules.TARGETS, "targets.yml"))
         File(flowDir, "targets.yml").takeIf { it.isFile }?.let {
-            error(11, it, "renamed: the flow's deploy inventory is workflows-config.yml (D5 §6.6, DL-39)")
+            error(11, it, "renamed: the flow's deploy inventory is workflows-config.yml (ADR-0027)")
         }
         val flowEnv = envLayer(flowDir, ConfigRules.Layer.FLOW)
         for (appDir in flowDir.listFiles().orEmpty().filter { it.isDirectory }.sortedBy { it.name }) {
             if (appDir.name == ConfigRules.COMMON) {
                 error(1, appDir, "the cluster layer is files now: config/$env/${flowDir.name}/application.flow.yml and " +
-                    "_docker-compose.flow.env / .yml (DL-44, R-0008)")
+                    "_docker-compose.flow.env / .yml (ADR-0011)")
                 continue
             }
             val app = appDir.name
             appsSeen += app
             checkAppName(appDir)
             if (app in apps && app !in charts) {
-                val message = "no Helm chart for '$app': expected <subproject>/helm/$app/Chart.yaml (D11 §6.1)"
+                val message = "no Helm chart for '$app': expected <subproject>/helm/$app/Chart.yaml (ADR-0019)"
                 if (env in completeEnvs) error(12, appDir, message) else warn(12, appDir, message)
             }
             lintLayerFiles(appDir, ConfigRules.Layer.APP)
@@ -330,14 +330,14 @@ class ConfigLinter(
             val values = File(appDir, ConfigRules.helmValues(ConfigRules.Layer.APP))
             if (!appYml.isFile) error(3, appYml, "required file missing")
             var commonEnv: Map<String, String> = emptyMap()
-            if (!values.isFile) error(3, values, "required file missing (Helm values layer 2, D11 §6.2)")
+            if (!values.isFile) error(3, values, "required file missing (Helm values layer 2, ADR-0019)")
             else loadValues(values)?.let { commonEnv = checkCommonValues(values, it) }
             val commonComplete = appYml.isFile && values.isFile
             val appEnv = envLayer(appDir, ConfigRules.Layer.APP)
             for (instDir in appDir.listFiles().orEmpty().filter { it.isDirectory }.sortedBy { it.name }) {
                 if (instDir.name == ConfigRules.APP_COMMON) {
                     error(1, instDir, "the app layer is files now: ${rel(appDir)}/application.app.yml, _helm-values.app.yaml " +
-                        "and _docker-compose.app.env / .yml (R-0008)")
+                        "and _docker-compose.app.env / .yml (ADR-0011)")
                     continue
                 }
                 instances += "$app/${instDir.name}"
@@ -347,7 +347,7 @@ class ConfigLinter(
         val targetsFile = File(flowDir, ConfigRules.TARGETS)
         return when {
             env.endsWith("-dev") && !targetsFile.isFile -> {
-                error(3, targetsFile, "required in every flow of a *-dev env (the flow's deploy-dev inventory, D5 §6.6)")
+                error(3, targetsFile, "required in every flow of a *-dev env (the flow's deploy-dev inventory, ADR-0027)")
                 null
             }
             env.endsWith("-dev") -> lintTargets(targetsFile, env, flowDir.name, instances)
@@ -376,7 +376,7 @@ class ConfigLinter(
         val instance = dir.name
         val nameProblem = when {
             !ConfigRules.TOKEN.matches(instance) -> "AppInstance must match ${ConfigRules.TOKEN.pattern}"
-            instance.all { it.isDigit() } -> "AppInstance is a business-logic name, never a bare number (DL-37)"
+            instance.all { it.isDigit() } -> "AppInstance is a business-logic name, never a bare number (ADR-0003)"
             instance.length > ConfigRules.MAX_APP_INSTANCE ->
                 "AppInstance is ${instance.length} characters, at most ${ConfigRules.MAX_APP_INSTANCE}"
             "$app-$instance".length > ConfigRules.MAX_RELEASE_NAME ->
@@ -392,7 +392,7 @@ class ConfigLinter(
         val appYml = File(dir, ConfigRules.application(ConfigRules.Layer.INSTANCE))
         val valuesFile = File(dir, ConfigRules.helmValues(ConfigRules.Layer.INSTANCE))
         if (!appYml.isFile) error(3, appYml, "required file missing")
-        // The combined env of the instance: flow < app < instance, the later layer winning per key (R-0008).
+        // The combined env of the instance: flow < app < instance, the later layer winning per key (ADR-0012).
         var vars: Map<String, String>? = null
         if (!instanceEnv.isFile) {
             error(3, instanceEnv, "required file missing (the image tag, the identity and the actuator port)")
@@ -408,7 +408,7 @@ class ConfigLinter(
         }
         var values: Map<*, *>? = null
         if (!valuesFile.isFile) {
-            error(3, valuesFile, "required file missing (Helm values layer 3, D11 §6.2)")
+            error(3, valuesFile, "required file missing (Helm values layer 3, ADR-0019)")
         } else {
             values = loadValues(valuesFile)
             values?.let { checkInstanceValues(valuesFile, it, commonEnv, vars, env, flow, app, instance) }
@@ -428,7 +428,7 @@ class ConfigLinter(
         for (doc in documents) {
             for (key in flatten(doc)) {
                 if (ConfigRules.isSecretProperty(key)) {
-                    error(9, file, "'$key' is a secret property (D2 §6.4): it arrives from the environment or " +
+                    error(9, file, "'$key' is a secret property (ADR-0013): it arrives from the environment or " +
                         "/secrets/, never from the config tree")
                 }
             }
@@ -437,7 +437,7 @@ class ConfigLinter(
     }
 
     /**
-     * A compose override (check 6, R-0008): YAML that parses and no relative path — compose resolves a relative path of
+     * A compose override (check 6, ADR-0012): YAML that parses and no relative path — compose resolves a relative path of
      * any `-f` file against the first file's directory (`docker/`), not the override's own.
      */
     private fun lintComposeOverride(file: File) {
@@ -495,15 +495,15 @@ class ConfigLinter(
             when {
                 ConfigRules.FORBIDDEN_PREFIXES.any { key.startsWith(it) } ->
                     error(5, file, "$key is forbidden in an env layer (SPRING_/LOGGING_/MANAGEMENT_/CONNECTOR_ belong " +
-                        "in YAML; secrets are passed through from the shell, D5 §6.3)")
+                        "in YAML; secrets are passed through from the shell, ADR-0012)")
                 key in ConfigRules.SCRIPT_VARIABLES ->
                     error(5, file, "$key is set by run-compose.sh and must not appear in an env layer")
                 key !in ConfigRules.COMPOSE_ENV_ALLOWED && !port ->
-                    error(5, file, "$key is not an allowed compose variable (D5 §6.3)")
+                    error(5, file, "$key is not an allowed compose variable (ADR-0012)")
                 layer != ConfigRules.Layer.INSTANCE && (port || key in ConfigRules.INSTANCE_ONLY) ->
-                    error(5, file, "$key belongs in the instance layer only (_docker-compose.instance.env, R-0008)")
+                    error(5, file, "$key belongs in the instance layer only (_docker-compose.instance.env, ADR-0012)")
                 port && value.toIntOrNull()?.let { it in 1024..65535 } != true ->
-                    error(5, file, "$key=$value must be a port in 1024..65535 (rootless Podman, D6 §6.6)")
+                    error(5, file, "$key=$value must be a port in 1024..65535 (rootless Podman, ADR-0017)")
             }
         }
     }
@@ -527,11 +527,11 @@ class ConfigLinter(
         val immutableEnv = env.endsWith("-qa") || env.endsWith("-prod")
         if (immutableEnv && !ConfigRules.RELEASE_TAG.matches(tag)) {
             error(10, file, "$what '$tag' in $env must be an immutable release tag X.Y.Z (optionally " +
-                "@sha256:<digest>); floating tags are allowed only in *-dev and local (DL-20)")
+                "@sha256:<digest>); floating tags are allowed only in *-dev and local (ADR-0010)")
         }
     }
 
-    // --- _helm-values.<layer>.yaml (checks 3, 4, 10; Helm is deferred, R-0008: the rules are unchanged) ------
+    // --- _helm-values.<layer>.yaml (checks 3, 4, 10; Helm is deferred, ADR-0019: the rules are unchanged) ----
 
     /** A values file as a map; null when it does not parse (check 3 reports that through [lintYaml]). */
     private fun loadValues(file: File): Map<*, *>? {
@@ -548,11 +548,11 @@ class ConfigLinter(
         }
     }
 
-    /** Check 4: the `env:` map carries only app-facing variables (D5 §6.3); returns its scalar entries. */
+    /** Check 4: the `env:` map carries only app-facing variables (ADR-0019); returns its scalar entries. */
     private fun valuesEnv(file: File, values: Map<*, *>): Map<String, String> {
         val env = values["env"] ?: return emptyMap()
         if (env !is Map<*, *>) {
-            error(4, file, "env: must be a map NAME: value (the container environment, D11 §6.3)")
+            error(4, file, "env: must be a map NAME: value (the container environment, ADR-0019)")
             return emptyMap()
         }
         val result = linkedMapOf<String, String>()
@@ -561,9 +561,9 @@ class ConfigLinter(
             when {
                 ConfigRules.FORBIDDEN_PREFIXES.any { key.startsWith(it) } ->
                     error(4, file, "env.$key is forbidden: SPRING_/LOGGING_/MANAGEMENT_/CONNECTOR_ settings belong in " +
-                        "YAML, secrets in the Secret mounted at /secrets/ (D5 §6.3, D2 §6.4)")
+                        "YAML, secrets in the Secret mounted at /secrets/ (ADR-0011, ADR-0013)")
                 key !in ConfigRules.VALUES_ENV_ALLOWED ->
-                    error(4, file, "env.$key is not an app-facing variable (D5 §6.3; allowed: " +
+                    error(4, file, "env.$key is not an app-facing variable (ADR-0019; allowed: " +
                         "${ConfigRules.VALUES_ENV_ALLOWED.sorted().joinToString()})")
             }
             when (v) {
@@ -578,7 +578,7 @@ class ConfigLinter(
     /** _helm-values.app.yaml: shared values only — the tag and the identity belong to the instance. */
     private fun checkCommonValues(file: File, values: Map<*, *>): Map<String, String> {
         if ((values["image"] as? Map<*, *>)?.containsKey("tag") == true) {
-            error(10, file, "image.tag belongs in <AppInstance>/_helm-values.instance.yaml (written back per instance with IMAGE_TAG, D5 §6.8)")
+            error(10, file, "image.tag belongs in <AppInstance>/_helm-values.instance.yaml (written back per instance with IMAGE_TAG, ADR-0019)")
         }
         if (values.containsKey("identity")) error(4, file, "identity belongs in <AppInstance>/_helm-values.instance.yaml (the instance's path)")
         val env = valuesEnv(file, values)
@@ -619,25 +619,25 @@ class ConfigLinter(
                 }
             }
         }
-        // Checks 10 and 4: image.tag obeys the tag policy and equals IMAGE_TAG (one record, D5 §6.8).
+        // Checks 10 and 4: image.tag obeys the tag policy and equals IMAGE_TAG (one record, ADR-0019).
         val image = values["image"]
         val tag = (image as? Map<*, *>)?.get("tag")
         when {
             image != null && image !is Map<*, *> -> error(10, file, "image must be a map (image.tag, image.digest)")
-            tag == null -> error(10, file, "image.tag missing: the instance's image tag, equal to IMAGE_TAG in _docker-compose.instance.env (D11 §6.2)")
+            tag == null -> error(10, file, "image.tag missing: the instance's image tag, equal to IMAGE_TAG in _docker-compose.instance.env (ADR-0019)")
             tag !is String -> error(10, file, "image.tag must be a string: quote it (\"$tag\")")
             else -> {
                 checkTag(file, "image.tag", tag, env)
                 val composeTag = vars?.get("IMAGE_TAG")
                 if (composeTag != null && composeTag != tag) {
                     error(4, file, "image.tag '$tag' differs from IMAGE_TAG '$composeTag' in _docker-compose.instance.env: both record " +
-                        "the deployed tag and are written back together (D5 §6.8)")
+                        "the deployed tag and are written back together (ADR-0019)")
                 }
             }
         }
         val digest = (image as? Map<*, *>)?.get("digest")?.toString()
         if (!digest.isNullOrEmpty() && !ConfigRules.DIGEST.matches(digest)) {
-            error(10, file, "image.digest '$digest' must be sha256:<64 hex digits> (DL-20)")
+            error(10, file, "image.digest '$digest' must be sha256:<64 hex digits> (ADR-0010)")
         }
     }
 
@@ -646,7 +646,7 @@ class ConfigLinter(
     private val templateVariable = Regex("""\$\{([A-Za-z_][A-Za-z0-9_]*)(:?[-?+][^}]*)?}""")
 
     /**
-     * Check 6 (R-0008): `compose config` over the instance's compose files in run-compose.sh's merge order — the shared
+     * Check 6 (ADR-0012): `compose config` over the instance's compose files in run-compose.sh's merge order — the shared
      * template, the app's override, the flow / app / instance overrides — with its combined env written to a file, as
      * run-compose.sh passes them.
      */
@@ -712,7 +712,7 @@ class ConfigLinter(
     }
 
     /**
-     * Check 12 (D5 §6.5, D11 §6.4): `helm lint` and `helm template` of one instance through
+     * Check 12 (ADR-0014, ADR-0019): `helm lint` and `helm template` of one instance through
      * scripts/helm-deploy-instance.sh — the flag list has one implementation — then kubeconform over the result.
      * `helm lint` does not evaluate the chart's `fail` guards; `helm template` does.
      */
@@ -786,7 +786,7 @@ class ConfigLinter(
         }
     }
 
-    // --- check 11: config/<env>/<flow>/workflows-config.yml (D5 §6.6) and the host pool of DL-39 --------------------
+    // --- check 11: config/<env>/<flow>/workflows-config.yml (ADR-0027) and the host pool of ADR-0028 ----------------
 
     /** The `pool` of one flow: the boxes of `<env>/<flow>`, reached as [user], the bundle under [root]. */
     private data class Pool(val hosts: List<String>, val user: String, val keep: Int)
@@ -811,7 +811,7 @@ class ConfigLinter(
         if (doc["flow"]?.toString() != flow) error(11, file, "flow: must be '$flow', the flow of its path (was '${doc["flow"]}')")
         val pool = if (doc.containsKey("pool")) lintPool(file, doc["pool"]) else null
         val flowPool = pool?.let { FlowPool(file, flow, it) }
-        // `user`: the SSH user of a compose host (DL-35: `deploy`, the default of the deploy-dev job).
+        // `user`: the SSH user of a compose host (ADR-0018: `deploy`, the default of the deploy-dev job).
         val entryKeys = setOf("kind", "host", "user", "cluster", "namespace")
         val defaults = doc["defaults"] ?: emptyMap<String, Any>()
         if (defaults !is Map<*, *>) {
@@ -852,7 +852,7 @@ class ConfigLinter(
                 }
                 "helm" -> {
                     if (effective["cluster"]?.toString().isNullOrBlank()) error(11, file, "$where: kind helm needs cluster")
-                    // namespace: the flow name by default (DL-38); the literal "{flow}" stands for it.
+                    // namespace: the flow name by default (ADR-0027); the literal "{flow}" stands for it.
                     val namespace = (effective["namespace"]?.toString() ?: flow).replace("{flow}", flow)
                     if (!ConfigRules.NAMESPACE.matches(namespace)) {
                         error(11, file, "$where: namespace '$namespace' is not a DNS label (RFC 1123, at most 63 characters)")
@@ -869,7 +869,7 @@ class ConfigLinter(
     }
 
     /**
-     * A compose target runs on its own `host` (or `defaults.host`), or on a box of the flow's `pool` (DL-39): there
+     * A compose target runs on its own `host` (or `defaults.host`), or on a box of the flow's `pool` (ADR-0028): there
      * `host` is the recorded placement — optional, and when present one of the pool's boxes.
      */
     private fun lintComposePlacement(file: File, where: String, host: String?, ownUser: String?, pool: Pool?) {
@@ -886,14 +886,14 @@ class ConfigLinter(
         }
     }
 
-    /** `pool`: {hosts, user?, keep?} (DL-39, DL-41, DL-46); null after reporting when it is not a mapping. */
+    /** `pool`: {hosts, user?, keep?} (ADR-0018, ADR-0028); null after reporting when it is not a mapping. */
     private fun lintPool(file: File, node: Any?): Pool? {
         if (node !is Map<*, *>) {
             error(11, file, "pool: must be a mapping with hosts, user, keep")
             return null
         }
         if (node.containsKey("root")) {
-            error(11, file, "pool.root is gone (DL-46): every box holds the project's versions under /apps/<user>/versions/<project>/ " +
+            error(11, file, "pool.root is gone (ADR-0018): every box holds the project's versions under /apps/<user>/versions/<project>/ " +
                 "(<version>/ per deploy, current the live one) — remove the key")
         }
         (node.keys.map { it.toString() } - setOf("hosts", "user", "keep", "root")).forEach {
@@ -920,12 +920,12 @@ class ConfigLinter(
         val keep = (keepNode as? Int) ?: ConfigRules.POOL_KEEP_DEFAULT
         if (keepNode != null && (keepNode !is Int || keepNode < ConfigRules.POOL_KEEP_MIN)) {
             error(11, file, "pool.keep '$keepNode' must be an integer of at least ${ConfigRules.POOL_KEEP_MIN} " +
-                "(the versions kept per box under /apps/<user>/versions/<project>/, DL-41)")
+                "(the versions kept per box under /apps/<user>/versions/<project>/, ADR-0018)")
         }
         return Pool(hosts, user, keep)
     }
 
-    /** A box serves exactly one `<env>/<flow>` (DL-41): its `current` version is one cluster's; two pools cannot share it. */
+    /** A box serves exactly one `<env>/<flow>` (ADR-0018): its `current` version is one cluster's; two pools cannot share it. */
     private fun checkSharedBoxes(pools: List<FlowPool>) {
         val owner = mutableMapOf<String, String>()
         for ((file, flow, pool) in pools) {
@@ -933,13 +933,13 @@ class ConfigLinter(
                 val other = owner.putIfAbsent(host, flow)
                 if (other != null) {
                     error(11, file, "pool.hosts: $host is also a box of flow '$other': a box serves exactly one <env>/<flow> " +
-                        "(DL-41) — its /apps/<user>/versions/<project>/current is one cluster's")
+                        "(ADR-0018) — its /apps/<user>/versions/<project>/current is one cluster's")
                 }
             }
         }
     }
 
-    /** `config/<env>/known_hosts` (DL-35, DL-39): the pinned host keys of the SSH transport — public keys only. */
+    /** `config/<env>/known_hosts` (ADR-0028): the pinned host keys of the SSH transport — public keys only. */
     private fun lintKnownHosts(file: File) {
         file.readLines().forEachIndexed { index, raw ->
             val line = raw.trim()

@@ -3,7 +3,7 @@ package com.example.connectors.framework;
 import org.slf4j.MDC;
 
 /**
- * The identity as MDC fields {@code env}, {@code flow}, {@code app}, {@code instance} (D6 §6.9). Structured
+ * The identity as MDC fields {@code env}, {@code flow}, {@code app}, {@code instance} (ADR-0016). Structured
  * (JSON) log formats emit MDC entries as fields; {@link #wrap(ConnectorIdentity, Runnable)} carries them into
  * worker threads.
  */

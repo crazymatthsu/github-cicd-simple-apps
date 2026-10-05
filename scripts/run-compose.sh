@@ -1,14 +1,15 @@
 #!/usr/bin/env bash
-# run-compose.sh — the one entry point for a connector's compose stack (D6 §6): local development, CI test
-# stacks and the dev compose hosts of demo step 1. Never qa or prod: production runs on Kubernetes (D9, D11).
+# run-compose.sh — the one entry point for a connector's compose stack (ADR-0017): local development, CI test
+# stacks and the dev compose hosts. Never qa, uat, prod or parallel: those envs are deployed from the configuration
+# repository (ADR-0004).
 #
-# The one implementation for every app (D12 §6.2, no per-app wrapper) and one compose template for every app
-# (docker/docker-compose.yml, R-0008): the config tree names the instance, and the app directory — apps/<AppName>, or
+# The one implementation for every app (ADR-0017, no per-app wrapper) and one compose template for every app
+# (docker/docker-compose.yml, ADR-0012): the config tree names the instance, and the app directory — apps/<AppName>, or
 # any <dir>/<AppName> (--app-dir pins it) — only adds what one app needs everywhere (docker/docker-compose.override.yml,
-# scripts/smoke.sh). Run with --help for the command table and the file layout. On a box of a host pool (DL-39, DL-41) it runs from a version directory of
-# the host bundle, /apps/<user>/versions/<project>/<version>/ (DL-46), that scripts/pool-deploy.sh synced: the nearest
+# scripts/smoke.sh). Run with --help for the command table and the file layout. On a box of a host pool (ADR-0028) it runs from a version directory of
+# the host bundle, /apps/<user>/versions/<project>/<version>/ (ADR-0018), that scripts/pool-deploy.sh synced: the nearest
 # ancestor holding .platform-bundle is the root, `activate` makes that directory the box's `current` one, and
-# start / restart first ask the pool's other boxes (the pool guard, D6 §6.5).
+# start / restart first ask the pool's other boxes (the pool guard, ADR-0017).
 set -euo pipefail
 
 readonly EXIT_FAILED=1 EXIT_USAGE=2 EXIT_REFUSED=3 EXIT_CONFIG=4 EXIT_ENGINE=5 EXIT_TIMEOUT=124
@@ -34,7 +35,7 @@ Usage: run-compose.sh <env> <flow> <AppName> <AppInstance> <command> [args] [opt
   <AppName>      the app, e.g. source-database (apps/<AppName>)
   <AppInstance>  the pipeline, e.g. trades-db-to-amps (config/<env>/<flow>/<AppName>/<AppInstance>/)
 
-Commands (D6 §6.4):
+Commands (ADR-0017):
   start [--no-wait]     up -d --wait (--wait-timeout $START_TIMEOUT, default 180); 124 on timeout
   stop                  stop -t $STOP_TIMEOUT (default 30)
   down [--volumes]      down --remove-orphans; --volumes adds -v (on *-dev hosts also needs --force)
@@ -51,12 +52,12 @@ Commands (D6 §6.4):
   record-tag            host bundle only: write IMAGE_TAG (required in this shell) into the instance's
                         _docker-compose.instance.env
                         of this version directory, so a start there runs that tag (pool-deploy.sh, before pull /
-                        start / health; the directory is the record, DL-41)
+                        start / health; the directory is the record, ADR-0018)
   exec <svc> <cmd...>   exec in a service (arguments after <svc> belong to the command)
   shell                 exec app sh (every app's service is `app`; other containers reach it as <AppName>)
   version               tag, digest and OCI labels of the running image
 
-Host bundle form (a box of a host pool, DL-41 / DL-46):
+Host bundle form (a box of a host pool, ADR-0018):
   run-compose.sh activate [--keep N] [--previous | --to <version>] [--dry-run]
                         make this version directory, /apps/<user>/versions/<project>/<version>/, the box's `current`
                         one (an atomic symlink switch), create shared/<project>/{logs,data} beside versions/, and
@@ -73,7 +74,7 @@ Options (before or after the command):
   -q, --quiet           less informational output
   -h, --help            this text
 
-Files (R-0008; <c> = config/<env>/<flow>, every file optional unless marked):
+Files (ADR-0012; <c> = config/<env>/<flow>, every file optional unless marked):
   compose  -f docker/docker-compose.yml (required) -f apps/<AppName>/docker/docker-compose.override.yml
            -f <c>/_docker-compose.flow.yml -f <c>/<AppName>/_docker-compose.app.yml
            -f <c>/<AppName>/<AppInstance>/_docker-compose.instance.yml
@@ -90,16 +91,16 @@ Exit codes: 0 ok · 1 operation failed or check negative · 2 usage · 3 refused
             4 config tree error · 5 engine not found or not running · 124 timeout
 Environment: CONFIG_ROOT (default <repo>/config), START_TIMEOUT, STOP_TIMEOUT, DEPS_NETWORK (join an
 existing network, e.g. the one of ./gradlew devUp), RUN_COMPOSE_ENGINE, IMAGE_TAG and IMAGE_REPO (override
-the env layers in every env, D9 §6.4; deploy-dev's record-tag writes IMAGE_TAG into the new version directory's
+the env layers in every env, ADR-0012; deploy-dev's record-tag writes IMAGE_TAG into the new version directory's
 _docker-compose.instance.env before pull / start / health run from it; every other value always comes from the
 layers), APP_IMAGE (local only: run this image instead of IMAGE_REPO/APP_NAME:IMAGE_TAG);
 secrets such as SPRING_DATASOURCE_PASSWORD are passed through from this shell, never from an env layer
-(D2 §8.1).
+(ADR-0013).
 
 Root: the nearest ancestor of this script holding a .platform-bundle marker (a host bundle synced by
-scripts/pool-deploy.sh as one version directory /apps/<user>/versions/<project>/<version>/, DL-41 / DL-46), else
+scripts/pool-deploy.sh as one version directory /apps/<user>/versions/<project>/<version>/, ADR-0018), else
 the git checkout, else the script's parent directory.
-Pool guard (DL-39): on a box whose .platform-bundle lists more than one pool host (POOL_HOSTS), start and
+Pool guard (ADR-0028): on a box whose .platform-bundle lists more than one pool host (POOL_HOSTS), start and
 restart of an instance of that bundle's env and flow (never local) first ask every other box of the pool
   $POOL_SSH $POOL_SSH_OPTS <POOL_USER>@<box> -- <POOL_ROOT>/current/scripts/run-compose.sh
       <env> <flow> <AppName> <AppInstance> status --json
@@ -132,7 +133,8 @@ json_str() {
 # Relative to the repository root, for readable output.
 rel() { case "$1" in "$REPO_ROOT"/*) printf '%s' "${1#"$REPO_ROOT"/}" ;; *) printf '%s' "$1" ;; esac; }
 
-# Values of secret-looking names (D6 §4.3: *PASSWORD*, *SECRET*, *TOKEN*, *KEY*; plus the D2 usernames) -> ***.
+# Values of secret-looking names (ADR-0013: *PASSWORD*, *SECRET*, *TOKEN*, *KEY*; plus the usernames paired with
+# secret passwords) -> ***.
 mask_stream() {
     awk '
     {
@@ -156,11 +158,11 @@ mask_stream() {
     }'
 }
 
-# --- the host bundle (DL-39, DL-41, DL-46) ----------------------------------------------------------------
+# --- the host bundle (ADR-0018, ADR-0028) -----------------------------------------------------------------
 
 # The nearest ancestor of $1 (itself included) that holds a .platform-bundle marker: the root of a host bundle
 # that scripts/pool-deploy.sh synced to a box of a pool — one version directory /apps/<user>/versions/<project>/
-# <YYYYMMDD-HHMMSS>/ (DL-41, DL-46).
+# <YYYYMMDD-HHMMSS>/ (ADR-0018).
 find_bundle_root() {
     local dir="$1"
     while :; do
@@ -191,7 +193,7 @@ cmd_activate() {
         die "$EXIT_REFUSED" "activate switches the current version of a host bundle (a box synced by scripts/pool-deploy.sh) only; this is a checkout"
     versions="$(dirname "$BUNDLE_ROOT")" version="$(basename "$BUNDLE_ROOT")"
     [[ $version =~ $VERSION_DIR_PATTERN ]] ||
-        die "$EXIT_CONFIG" "$BUNDLE_ROOT is not a version directory: a host bundle lives in /apps/<user>/versions/<project>/<YYYYMMDD-HHMMSS>/ (DL-46)"
+        die "$EXIT_CONFIG" "$BUNDLE_ROOT is not a version directory: a host bundle lives in /apps/<user>/versions/<project>/<YYYYMMDD-HHMMSS>/ (ADR-0018)"
     [[ $keep =~ ^[0-9]+$ ]] && [ "$keep" -ge 2 ] || die "$EXIT_USAGE" "--keep must be an integer of at least 2 (was '$keep')"
     [ "$ACTIVATE_PREVIOUS" -eq 0 ] || [ -z "$ACTIVATE_TO" ] || die "$EXIT_USAGE" "--previous and --to exclude each other"
     previous="$(readlink "$versions/current" 2>/dev/null || true)"
@@ -241,7 +243,7 @@ cmd_activate() {
         fi
         info "$versions/current -> $target (was ${previous:-none})"
     fi
-    # What survives a version change (DL-41): shared/<project>/{logs,data} beside versions/ (LOGS_DIR, DATA_DIR).
+    # What survives a version change (ADR-0018): shared/<project>/{logs,data} beside versions/ (LOGS_DIR, DATA_DIR).
     mkdir -p "$shared/logs" "$shared/data" 2>/dev/null || warn "could not create $shared/{logs,data}"
     for v in ${removed[@]+"${removed[@]}"}; do
         if rm -rf -- "${versions:?}/$v"; then info "removed version $v (keeping the newest $keep)"; else warn "could not remove $versions/$v"; fi
@@ -318,7 +320,7 @@ audit() {
 }
 trap 'audit "$?"' EXIT
 
-# The host bundle form: `activate` takes no instance (DL-41 / DL-46).
+# The host bundle form: `activate` takes no instance (ADR-0018).
 if [ "${POSITIONAL[0]:-}" = activate ]; then
     COMMAND=activate
     [ "${#POSITIONAL[@]}" -eq 1 ] && [ "${#CMD_ARGS[@]}" -eq 0 ] ||
@@ -353,7 +355,7 @@ if ! is_token "$INSTANCE" || [ "${#INSTANCE}" -gt 32 ]; then
 fi
 case "$INSTANCE" in *[!0-9]*) ;; *) die "$EXIT_USAGE" "AppInstance '$INSTANCE' is a business name, never a bare number" ;; esac
 if [ $((${#APP} + 1 + ${#INSTANCE})) -gt 53 ]; then
-    die "$EXIT_USAGE" "'$APP-$INSTANCE' exceeds the 53-character release-name budget (D5 §6.2)"
+    die "$EXIT_USAGE" "'$APP-$INSTANCE' exceeds the 53-character release-name budget (ADR-0003)"
 fi
 case "$ENGINE_CHOICE" in "" | docker | podman) ;; *) die "$EXIT_USAGE" "--engine must be docker or podman" ;; esac
 [ "$VOLUMES" -eq 0 ] || [ "$COMMAND" = down ] || die "$EXIT_USAGE" "--volumes only applies to down"
@@ -367,16 +369,16 @@ case "$COMMAND" in
     *) [ "${#CMD_ARGS[@]}" -eq 0 ] || die "$EXIT_USAGE" "unexpected argument(s) for $COMMAND: ${CMD_ARGS[*]}" ;;
 esac
 
-# Env allow-list (D6 §6.5): --force never overrides it.
+# Env allow-list (ADR-0017): --force never overrides it.
 case "$ENV_NAME" in
     local | *-dev) ;;
-    *) die "$EXIT_REFUSED" "env '$ENV_NAME' refused: production operations go through Kubernetes — see D9 / D11 (run-compose.sh serves local and *-dev only)" ;;
+    *) die "$EXIT_REFUSED" "env '$ENV_NAME' refused: this repository operates local and *-dev only; the higher envs are deployed from the configuration repository (ADR-0004)" ;;
 esac
 if [ "$COMMAND" = down ] && [ "$VOLUMES" -eq 1 ] && [ "$ENV_NAME" != local ] && [ "$FORCE" -eq 0 ]; then
     die "$EXIT_REFUSED" "down --volumes on a $ENV_NAME host removes data: add --force to confirm"
 fi
 
-# --- path resolution (D6 §6.2, R-0008) and config-tree checks (4) -----------------------------------------
+# --- path resolution (ADR-0012, ADR-0017) and config-tree checks (4) --------------------------------------
 
 BUNDLE_ROOT="$(find_bundle_root "$SCRIPT_DIR" || true)"
 if [ -n "$BUNDLE_ROOT" ]; then
@@ -394,7 +396,7 @@ if [ -n "$APP_DIR_ARG" ]; then
         die "$EXIT_USAGE" "this script belongs to $(basename "$APP_DIR"), not to '$APP'"
 else
     APP_DIR=""
-    # apps/<AppName> (D12 §6.2), else any <dir>/<AppName> (a monorepo nesting its apps).
+    # apps/<AppName> (ADR-0006), else any <dir>/<AppName> (a monorepo nesting its apps).
     for candidate in "$REPO_ROOT/apps/$APP" "$REPO_ROOT/$APP" "$REPO_ROOT"/*/"$APP"; do
         if [ -d "$candidate" ] && is_app_dir "$candidate"; then APP_DIR="$candidate"; break; fi
     done
@@ -407,7 +409,7 @@ FLOW_DIR="$ENV_DIR/$FLOW"
 APP_CONFIG_DIR="$FLOW_DIR/$APP"
 CONFIG_DIR="$APP_CONFIG_DIR/$INSTANCE"
 COMPOSE_TEMPLATE="$REPO_ROOT/docker/docker-compose.yml"
-# The env layers, lowest precedence first (the flow is the cluster, DL-44; nothing is shared at the env level).
+# The env layers, lowest precedence first (the flow is the cluster, ADR-0011; nothing is shared at the env level).
 FLOW_ENV="$FLOW_DIR/_docker-compose.flow.env"
 APP_LAYER_ENV="$APP_CONFIG_DIR/_docker-compose.app.env"
 INSTANCE_ENV="$CONFIG_DIR/_docker-compose.instance.env"
@@ -421,9 +423,9 @@ ENV_FILE="$REPO_ROOT/.run/$ENV_NAME/$FLOW/$APP/$INSTANCE/compose.env"
 for dir in "$ENV_DIR" "$FLOW_DIR" "$APP_CONFIG_DIR" "$CONFIG_DIR"; do
     [ -d "$dir" ] || die "$EXIT_CONFIG" "config tree: directory missing: $(rel "$dir")"
 done
-# A tree in the layout before R-0008 says so instead of "file missing".
+# A tree in the layout before ADR-0011 says so instead of "file missing".
 for old in "$APP_CONFIG_DIR/app-common" "$FLOW_DIR/_common" "$CONFIG_DIR/compose.env"; do
-    [ ! -e "$old" ] || die "$EXIT_CONFIG" "config tree: $(rel "$old") is the layout before R-0008: the layers are files now" \
+    [ ! -e "$old" ] || die "$EXIT_CONFIG" "config tree: $(rel "$old") is the layout before ADR-0011: the layers are files now" \
         "(application.<layer>.yml, _docker-compose.<layer>.env / .yml, _helm-values.<layer>.yaml; config/README.md)"
 done
 for file in "$APP_APP_YML" "$INSTANCE_APP_YML" "$INSTANCE_ENV" "$COMPOSE_TEMPLATE"; do
@@ -442,8 +444,8 @@ compose_text() { cat "${COMPOSE_FILES[@]}" | grep -v '^[[:space:]]*#'; }
 ENV_LAYERS=()
 for file in "$FLOW_ENV" "$APP_LAYER_ENV" "$INSTANCE_ENV"; do [ ! -f "$file" ] || ENV_LAYERS+=("$file"); done
 
-# Every env layer: KEY=VALUE lines only, allowed variables only (D5 §6.3), the instance-only ones in the instance
-# layer only; the instance layer restates the identity of its path (D5 check 4). A key defined twice in one layer is
+# Every env layer: KEY=VALUE lines only, allowed variables only (ADR-0012), the instance-only ones in the instance
+# layer only; the instance layer restates the identity of its path (ADR-0014 check 4). A key defined twice in one layer is
 # config-lint's (check 5): record-tag repairs a duplicate IMAGE_TAG on a box, the first line wins.
 layer_value() { awk -v k="$2" -F= '$0 !~ /^[[:space:]]*#/ && $1 == k { sub(/^[^=]*=/, ""); gsub(/^["'\'']|["'\'']$/, ""); print; exit }' "$1"; }
 problems=""
@@ -458,13 +460,13 @@ check_env_layer() { # <file> <instance: 1|0>
             continue
         fi
         case "$key" in
-            SPRING_* | LOGGING_* | MANAGEMENT_* | CONNECTOR_*) problems="$problems\n  $(rel "$1"): $key is forbidden (YAML or shell pass-through, D5 §6.3)" ;;
+            SPRING_* | LOGGING_* | MANAGEMENT_* | CONNECTOR_*) problems="$problems\n  $(rel "$1"): $key is forbidden (YAML or shell pass-through, ADR-0012)" ;;
             *_HOST_PORT) [ "$2" -eq 1 ] || problems="$problems\n  $(rel "$1"): $key belongs in the instance layer only (_docker-compose.instance.env)" ;;
             *)
                 if contains_word "$key" "$SCRIPT_VARIABLES"; then
                     problems="$problems\n  $(rel "$1"): $key is set by run-compose.sh, never in an env layer"
                 elif ! contains_word "$key" "$COMPOSE_ENV_ALLOWED"; then
-                    problems="$problems\n  $(rel "$1"): $key is not an allowed compose variable (D5 §6.3)"
+                    problems="$problems\n  $(rel "$1"): $key is not an allowed compose variable (ADR-0012)"
                 elif [ "$2" -eq 0 ] && contains_word "$key" "$INSTANCE_ONLY"; then
                     problems="$problems\n  $(rel "$1"): $key belongs in the instance layer only (_docker-compose.instance.env)"
                 fi
@@ -485,7 +487,7 @@ if [ -n "$problems" ]; then
     exit "$EXIT_CONFIG"
 fi
 
-# The combined env (R-0008): the layers merged per key, the later one winning, written as only the winning lines,
+# The combined env (ADR-0012): the layers merged per key, the later one winning, written as only the winning lines,
 # each after a comment naming its source and what it overrode. Regenerated by every command — it can never be
 # stale — into a temporary file renamed over the old one. podman-compose keeps only the last of several --env-file
 # flags, so one generated file is passed instead; it is also what `printenv` shows.
@@ -531,18 +533,18 @@ write_combined_env "${LAYER_ARGS[@]}"
 env_value() { layer_value "$ENV_FILE" "$1"; }
 ENV_KEYS="$(awk -F= '$0 !~ /^[[:space:]]*(#|$)/ { printf " %s", $1 }' "$ENV_FILE")"
 
-# --- environment for the template (D6 §6.2, §6.6) ---------------------------------------------------------
+# --- environment for the template (ADR-0012, ADR-0017) ----------------------------------------------------
 
 PROJECT="$ENV_NAME-$FLOW-$APP-$INSTANCE"
 if [ -n "${GITHUB_RUN_ID:-}" ]; then
     export CI_RUN_ID="${CI_RUN_ID:-$GITHUB_RUN_ID}" CI_RUN_ATTEMPT="${CI_RUN_ATTEMPT:-${GITHUB_RUN_ATTEMPT:-1}}"
-    # CI test stacks (env local) get the run-scoped prefix that D10's teardown and leak check match; a *-dev
+    # CI test stacks (env local) get the run-scoped prefix that ADR-0024's teardown and leak check match; a *-dev
     # host keeps its stable name so that a redeploy replaces the stack instead of starting a second one.
     [ "$ENV_NAME" = local ] && PROJECT="ci-$GITHUB_RUN_ID-${GITHUB_RUN_ATTEMPT:-1}-$PROJECT"
 fi
 # The env layers are the default for every variable they define; only IMAGE_REPO and IMAGE_TAG may be overridden
 # from this shell, in every allowed env (deploy-dev injects IMAGE_TAG for pull / start / health, then record-tag
-# writes it into the box's _docker-compose.instance.env; git keeps the declared tag, DL-40 / D9 §6.4). Overrides are
+# writes it into the box's _docker-compose.instance.env; git keeps the declared tag, ADR-0027). Overrides are
 # announced, recorded in the audit line and written into the combined env as its last layer. APP_IMAGE is local only.
 OVERRIDES=""
 for key in $ENV_KEYS; do
@@ -574,8 +576,8 @@ if [ -n "$OVERRIDES" ]; then
     rm -f "$SHELL_LAYER"
 fi
 # record-tag changes a host bundle's copy of the instance layer only: in a checkout, it changes through git (a pull
-# request — no workflow writes to main, DL-40); a box's version directory is never synced again, so the record stays
-# with the version it belongs to (DL-41).
+# request — no workflow writes to main, ADR-0020); a box's version directory is never synced again, so the record stays
+# with the version it belongs to (ADR-0018).
 if [ "$COMMAND" = record-tag ]; then
     [ -n "$BUNDLE_ROOT" ] || die "$EXIT_REFUSED" "record-tag writes the _docker-compose.instance.env of a host bundle (a box" \
         "synced by scripts/pool-deploy.sh) only; in a checkout it changes through git"
@@ -616,7 +618,7 @@ IMAGE_REF="${IMAGE_REPO:-$(env_value IMAGE_REPO)}/$APP:${IMAGE_TAG:-$(env_value 
 [ -z "${APP_IMAGE:-}" ] || IMAGE_REF="$APP_IMAGE"
 ACTUATOR_PORT="$(env_value ACTUATOR_HOST_PORT)"
 
-# Required template variables (${VAR:?...}) that nobody provides: the secrets of D2 §8.1.
+# Required template variables (${VAR:?...}) that nobody provides: the pass-through secrets (ADR-0013).
 missing_required() {
     local var out=""
     # shellcheck disable=SC2013 # variable names never contain whitespace
@@ -633,14 +635,14 @@ case "$COMMAND" in
 esac
 if [ -n "$MISSING" ]; then
     if [ "$NEEDS_SECRETS" -eq 1 ] && [ "$DRY_RUN" -eq 0 ]; then
-        die "$EXIT_FAILED" "set $MISSING in this shell first (secrets pass through, never from an env layer — D2 §8.1)"
+        die "$EXIT_FAILED" "set $MISSING in this shell first (secrets pass through, never from an env layer — ADR-0013)"
     fi
     # ps, logs, stop, down, pull ... never use the values: placeholders keep the template interpolating.
     for var in $MISSING; do export "$var=unset-for-$COMMAND"; done
     [ "$DRY_RUN" -eq 0 ] || info "not set in this shell: $MISSING (start, restart, validate and app-config --offline need them)"
 fi
 
-# --- pool guard (DL-39, D6 §6.5): one running copy of an instance across the boxes of its pool ------------
+# --- pool guard (ADR-0017, ADR-0028): one running copy of an instance across the boxes of its pool --------
 
 POOL_PEERS=()   # the other boxes of the pool when the guard applies
 POOL_SSH_ARGS=()
@@ -695,7 +697,7 @@ setup_pool_guard() {
     fi
     POOL_USER_NAME="$user" POOL_ROOT_DIR="${root%/}"
 }
-# The peer's copy of this command — the run-compose.sh of its current version under the pool's root (DL-41) — as an
+# The peer's copy of this command — the run-compose.sh of its current version under the pool's root (ADR-0018) — as an
 # argument vector.
 PEER_CMD=()
 peer_command() {
@@ -742,7 +744,7 @@ POOL_USER_NAME="" POOL_ROOT_DIR=""
 setup_pool_guard
 run_pool_guard
 
-# --- engine (D6 §6.6) -------------------------------------------------------------------------------------
+# --- engine (ADR-0017) ------------------------------------------------------------------------------------
 
 ENGINE="" COMPOSE_KIND=""
 COMPOSE=()
@@ -881,8 +883,8 @@ cmd_start() {
     [ "$DRY_RUN" -eq 1 ] || info "$PROJECT is up$([ "$NO_WAIT" -eq 1 ] && echo ' (not waiting for health)' || echo ' and healthy')"
 }
 
-# The smoke test of this app (D8 §5.1): the app's own scripts/smoke.sh when it ships one (app-specific checks,
-# D12 §6.2), else the platform's scripts/smoke.sh beside this script with --app-dir; empty when neither exists.
+# The smoke test of this app (ADR-0017): the app's own scripts/smoke.sh when it ships one (app-specific checks,
+# ADR-0006), else the platform's scripts/smoke.sh beside this script with --app-dir; empty when neither exists.
 SMOKE_CMD=()
 smoke_command() {
     SMOKE_CMD=()
@@ -1066,7 +1068,7 @@ cmd_record_tag() {
         warn "could not replace $(rel "$INSTANCE_ENV")"
         return "$EXIT_FAILED"
     fi
-    info "IMAGE_TAG=$RECORD_TAG recorded in $(rel "$INSTANCE_ENV") (was ${previous:-unset}); this version directory keeps it (DL-41)"
+    info "IMAGE_TAG=$RECORD_TAG recorded in $(rel "$INSTANCE_ENV") (was ${previous:-unset}); this version directory keeps it (ADR-0018)"
 }
 
 cmd_app_config() {
@@ -1083,7 +1085,7 @@ cmd_app_config() {
     printf '\n'
 }
 
-# --- dispatch (D6 §6.4) -----------------------------------------------------------------------------------
+# --- dispatch (ADR-0017) ----------------------------------------------------------------------------------
 
 show_plan
 rc=0

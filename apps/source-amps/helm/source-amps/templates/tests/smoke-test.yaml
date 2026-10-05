@@ -1,8 +1,8 @@
 {{- /*
-helm test (D11 §6.1, D6 §8): a Job running the app image's curl against the release's Service — readiness UP,
+helm test (ADR-0015): a Job running the app image's curl against the release's Service — readiness UP,
 and the identity in /actuator/info equal to the identity values with complete=true. Helm 4 prints the Job's
 logs through the output-log policy (`helm test --logs` covers Pod hooks only). The Argo CD annotations make the
-same Job the PostSync smoke test in Phase 3 (D11 §6.6). Restricted Pod Security Standard like the app.
+same Job the PostSync smoke test, should the EKS design adopt Argo CD (ADR-0019). Restricted Pod Security Standard like the app.
 */}}
 {{- $url := printf "http://%s:%v" (include "connector.fullname" .) .Values.service.port }}
 apiVersion: batch/v1

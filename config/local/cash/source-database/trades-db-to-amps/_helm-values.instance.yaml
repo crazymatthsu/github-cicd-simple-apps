@@ -1,7 +1,7 @@
-# Helm values layer 3 (D11 §6.2) of local/cash/source-database/trades-db-to-amps.
-# image.tag equals IMAGE_TAG in the sibling _docker-compose.instance.env (config-lint check 4; in *-dev both declare `main`, DL-40);
+# Helm values layer 3 (ADR-0019) of local/cash/source-database/trades-db-to-amps.
+# image.tag equals IMAGE_TAG in the sibling _docker-compose.instance.env (config-lint check 4; in *-dev both declare `main`, ADR-0027);
 # identity and the APP_* variables restate the directory path (config-lint check 4); app-facing variables
-# only, never secrets (D5 §6.3).
+# only, never secrets (ADR-0013).
 image:
   tag: "local"
 identity:

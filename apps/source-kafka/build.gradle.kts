@@ -1,4 +1,4 @@
-// source-kafka (D1 §6.1): Kafka -> Deephaven / AMPS. Hello world for now: identity, masked configuration
+// source-kafka (ADR-0007): Kafka -> Deephaven / AMPS. Hello world for now: identity, masked configuration
 // summary and the actuator contract; no Kafka client yet.
 plugins {
     id("buildlogic.spring-boot-app")

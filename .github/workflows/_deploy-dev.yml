@@ -1,11 +1,10 @@
-# Reusable: deploy the images main.yml just published to the dev targets (D9 §6.4–§6.6, DL-32, DL-35, DL-39,
-# DL-40, DL-41, DL-46).
+# Reusable: deploy the images main.yml just published to the dev targets (ADR-0027, ADR-0028).
 #
-# Reads one inventory per flow, config/<env>/<flow>/workflows-config.yml (D5 §6.6): env and flow restate the path,
+# Reads one inventory per flow, config/<env>/<flow>/workflows-config.yml (ADR-0027): env and flow restate the path,
 # targets[].instance is <AppName>/<AppInstance> (the job prefixes the flow: <flow>/<AppName>/<AppInstance>),
 # kind is compose | helm, cluster and namespace belong to helm targets, `pool` lists the flow's bare-metal
-# boxes. Each field comes from the target, else from defaults (kind else compose, namespace else the flow, DL-38).
-#   compose (demo step 1)  a flow with a `pool` (DL-39, DL-41, DL-46): scripts/pool-deploy.sh builds the flow's host
+# boxes. Each field comes from the target, else from defaults (kind else compose, namespace else the flow, ADR-0027).
+#   compose                a flow with a `pool` (ADR-0018, ADR-0028): scripts/pool-deploy.sh builds the flow's host
 #                          bundle, syncs it as a new version directory /apps/<user>/versions/<project>/<version>/
 #                          to every box of the pool, records the tag in it (record-tag on every box), runs
 #                          pull → start → health from it on each instance's box (pinned → discovered → assigned)
@@ -14,17 +13,17 @@
 #                          transport ssh once the Environment us-dev holds DEV_DEPLOY_SSH_KEY, else local (the
 #                          runner plays every box: validate, record-tag --dry-run, start --dry-run per placement,
 #                          activate --dry-run per box, the ssh commands printed). A flow without a pool keeps the
-#                          PLACEHOLDER (brief v1.1): `run-compose.sh ... start --dry-run` per target on the
-#                          runner and the SSH command it would run on its `host` — see TODO(DL-35) below.
-#   helm    (demo step 2)  cluster kind-ci: a kind cluster created in this job (deploy-<run_id>-<attempt>;
-#                          kind stands in until a dev cluster exists, DL-32) gets this run's images by
+#                          PLACEHOLDER (ADR-0027): `run-compose.sh ... start --dry-run` per target on the
+#                          runner and the SSH command it would run on its `host` — see TODO(ADR-0018) below.
+#   helm                   cluster kind-ci: a kind cluster created in this job (deploy-<run_id>-<attempt>;
+#                          kind stands in until a dev cluster exists, ADR-0019) gets this run's images by
 #                          digest, loaded as <repo>:<tag>; every target is deployed with
 #                          scripts/helm-deploy-instance.sh (namespace, Secret, helm lint, upgrade --install
 #                          --rollback-on-failure --wait, rollout status, helm test); the cluster is deleted
-#                          and leak-checked in always() steps (DL-27). Any other cluster fails its targets —
-#                          TODO(Phase 3) below.
-# No workflow writes to `main` (DL-40): the dev tree declares its intent (`IMAGE_TAG=main`, `image.tag: main`)
-# and the run is recorded as a GitHub Deployment of the env's Environment (<env>, D12 §6.7), one per run, whose
+#                          and leak-checked in always() steps (ADR-0024). Any other cluster fails its targets —
+#                          TODO(ADR-0019) below.
+# No workflow writes to `main` (ADR-0020, ADR-0027): the dev tree declares its intent (`IMAGE_TAG=main`, `image.tag: main`)
+# and the run is recorded as a GitHub Deployment of the env's Environment (<env>, ADR-0027), one per run, whose
 # payload names per instance the tag, the digest-pinned image, the box or cluster and the result, plus the
 # config tree's git SHA (the run's commit) and, per pooled flow, the version directory; the job summary is the
 # human-readable copy and the version directories' _docker-compose.instance.env (record-tag) the second one. qa and prod are never
@@ -52,7 +51,7 @@ on:
         description: JSON list of the instances deployed (<flow>/<AppName>/<AppInstance>).
         value: ${{ jobs.deploy.outputs.deployed }}
       placements:
-        description: The boxes of the pooled compose instances, "<flow>/<AppName>/<AppInstance>=<host> ..." (DL-39).
+        description: The boxes of the pooled compose instances, "<flow>/<AppName>/<AppInstance>=<host> ..." (ADR-0028).
         value: ${{ jobs.deploy.outputs.placements }}
 
 permissions:
@@ -63,7 +62,7 @@ jobs:
     name: deploy ${{ inputs.env }}
     runs-on: ubuntu-latest
     timeout-minutes: 20
-    # The env's GitHub Environment (us-dev; D12 §6.7, DL-40): no reviewers, deployment branch `main` (D9 §6.2).
+    # The env's GitHub Environment (us-dev; ADR-0027): no reviewers, deployment branch `main` (ADR-0020).
     # `deployment: false` keeps the Environment's rules and secrets without an automatic deployment object, so
     # the record created at the end (with its payload) is the only one per run.
     environment:
@@ -73,7 +72,7 @@ jobs:
       group: deploy-${{ inputs.env }}
       cancel-in-progress: false
     permissions:
-      contents: read # never write: no workflow commits to main (DL-40)
+      contents: read # never write: no workflow commits to main (ADR-0020)
       deployments: write # the GitHub Deployment record
       packages: read # helm targets: this run's images are pulled into the kind cluster
     env:
@@ -82,7 +81,7 @@ jobs:
       GH_TOKEN: ${{ github.token }}
       RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
       # The kind cluster of the helm targets (cluster kind-ci). Named here, not by `up`, so teardown and
-      # leak check find it even when `up` never finished (DL-27).
+      # leak check find it even when `up` never finished (ADR-0024).
       KIND_CLUSTER_NAME: deploy-${{ github.run_id }}-${{ github.run_attempt }}
     outputs:
       deployed: ${{ steps.deployed.outputs.json }}
@@ -103,11 +102,11 @@ jobs:
         id: targets
         run: |
           set -euo pipefail
-          # One inventory per flow (D5 §6.6): merge config/<env>/<flow>/workflows-config.yml into one list with the
+          # One inventory per flow (ADR-0027): merge config/<env>/<flow>/workflows-config.yml into one list with the
           # flow prepended to every instance, so everything below sees <flow>/<AppName>/<AppInstance>.
           for legacy in config/"$DEPLOY_ENV"/targets.yml config/"$DEPLOY_ENV"/workflows-config.yml config/"$DEPLOY_ENV"/*/targets.yml; do
             [[ -f $legacy ]] || continue
-            echo "::error::$legacy: the deploy inventory is config/$DEPLOY_ENV/<flow>/workflows-config.yml (one per flow, DL-39)"
+            echo "::error::$legacy: the deploy inventory is config/$DEPLOY_ENV/<flow>/workflows-config.yml (one per flow, ADR-0027)"
             exit 1
           done
           files=()
@@ -165,34 +164,34 @@ jobs:
                 "$RUNNER_TEMP/targets.json")"
           } >> "$GITHUB_OUTPUT"
 
-      - name: Deploy compose targets (demo step 1 — host pools, DL-39 / DL-41)
+      - name: Deploy compose targets (host pools, ADR-0028)
         id: compose
         env:
           DEV_DEPLOY_SSH_KEY: ${{ secrets.DEV_DEPLOY_SSH_KEY }}
           POOLED_FLOWS: ${{ steps.targets.outputs.pooled }}
         run: |
           set -euo pipefail
-          # A flow whose workflows-config.yml declares a `pool` (DL-39): scripts/pool-deploy.sh builds the flow's host
+          # A flow whose workflows-config.yml declares a `pool` (ADR-0028): scripts/pool-deploy.sh builds the flow's host
           # bundle from this checkout (validated from inside with IMAGE_TAG=<tag>), syncs it as a NEW version
-          # directory /apps/<user>/versions/<project>/<YYYYMMDD-HHMMSS>/ to every box of the pool (DL-41, DL-46),
+          # directory /apps/<user>/versions/<project>/<YYYYMMDD-HHMMSS>/ to every box of the pool (ADR-0018),
           # records the tag in it on every box (IMAGE_TAG=<tag> run-compose.sh ... record-tag: the directory's
-          # _docker-compose.instance.env names what it runs; the tree's says `main`, DL-40), resolves each instance's box
+          # _docker-compose.instance.env names what it runs; the tree's says `main`, ADR-0027), resolves each instance's box
           # (pinned → discovered → assigned) and runs, there, from the new directory,
           #   run-compose.sh <env> <flow> <app> <inst> pull → start → health
           # then, once every instance passed, `run-compose.sh activate` on every box: current → the new version
           # (an atomic symlink switch; versions beyond `keep` removed). Any failed start or health sends every
           # instance already started back to current — the previous version directory, old image and old config —
-          # and current never moves (D9 §6.9); a rollback later is `pool-deploy.sh <env> <flow> rollback`. The
+          # and current never moves (ADR-0028); a rollback later is `pool-deploy.sh <env> <flow> rollback`. The
           # GitHub Deployment below records the version, and git stays untouched.
           #   ssh    when the Environment `us-dev` holds DEV_DEPLOY_SSH_KEY: the key lives in this step's ssh-agent
           #          only, and the reviewed config/<env>/known_hosts pins the boxes' host keys (pool-deploy.sh
           #          refuses without it; an unknown key is never accepted).
-          #   local  otherwise — no box exists yet (brief v1.1): the runner plays every box, one directory each
+          #   local  otherwise — no box exists yet (ADR-0027): the runner plays every box, one directory each
           #          under $RUNNER_TEMP/boxes (so every box provably gets the same complete tree), validate,
           #          record-tag --dry-run and start --dry-run per placement, activate --dry-run per box, and the
           #          ssh commands printed.
           # A flow without a pool keeps the per-target placeholder further down.
-          # TODO(DL-35), on the boxes: the deploy key's authorized_keys entry has a forced command
+          # TODO(ADR-0018), on the boxes: the deploy key's authorized_keys entry has a forced command
           #   (command="/usr/local/bin/run-compose-ssh",no-pty,no-port-forwarding,no-agent-forwarding) that accepts
           #   only `[IMAGE_TAG=<tag>] /apps/<user>/versions/<project>/<version|current>/scripts/run-compose.sh
           #   <env> <flow> <AppName> <AppInstance> pull|start|stop|health|record-tag|status [--json]`, the same
@@ -201,7 +200,7 @@ jobs:
           #   execs them; the boxes are provisioned with /apps/<user>/versions/<project>/ and
           #   /apps/<user>/shared/<project>/. A box that GitHub-hosted runners cannot reach gets a self-hosted
           #   runner on it (runs-on: [self-hosted, <host>]) running the same commands locally — the one
-          #   self-hosted exception (DL-35, D7 §2).
+          #   self-hosted exception (ADR-0021).
           deployed=() failed=() placements=() pool_failed=()
           read -r -a pooled <<<"$POOLED_FLOWS"
           if [[ ${#pooled[@]} -gt 0 ]]; then
@@ -246,10 +245,10 @@ jobs:
                 pool_failed+=("$flow")
               fi
               {
-                echo "### deploy-dev: pool \`$DEPLOY_ENV/$flow\` (transport \`$POOL_TRANSPORT\`, DL-39 / DL-41)"
+                echo "### deploy-dev: pool \`$DEPLOY_ENV/$flow\` (transport \`$POOL_TRANSPORT\`, ADR-0028)"
                 echo ""
                 if [[ -f $report ]]; then
-                  jq -r '"Version `\(.version // "—")` of `\(.project)` under `\(.pool.root)` on every box; `current` points at it once every instance passed health (DL-41, DL-46)."' "$report"
+                  jq -r '"Version `\(.version // "—")` of `\(.project)` under `\(.pool.root)` on every box; `current` points at it once every instance passed health (ADR-0018, ADR-0028)."' "$report"
                   echo ""
                   echo "| box | bundle | files | sha256 | verified | activated |"
                   echo "|---|---|---|---|---|---|"
@@ -266,7 +265,7 @@ jobs:
             done
           fi
 
-          # A flow without a pool: the per-target placeholder (brief v1.1, TODO(DL-35)) — `run-compose.sh ... start
+          # A flow without a pool: the per-target placeholder (ADR-0027, TODO(ADR-0018)) — `run-compose.sh ... start
           # --dry-run` on the runner and the SSH command it would run on the target's `host`. It validates the config
           # as the host runs it: a candidate copy of the tree with IMAGE_TAG set to the deployed tag (CONFIG_ROOT),
           # which is what the override IMAGE_TAG=<tag> and record-tag produce on a real host.
@@ -280,7 +279,7 @@ jobs:
             rm -rf "$candidate"
             if [[ -d config ]]; then cp -a config "$candidate"; fi
             {
-              echo "### deploy-dev: compose targets without a pool (placeholder — TODO(DL-35))"
+              echo "### deploy-dev: compose targets without a pool (placeholder — TODO(ADR-0018))"
               echo ""
               echo "| instance | host | result | command it would run |"
               echo "|---|---|---|---|"
@@ -289,7 +288,7 @@ jobs:
               # "|", not a tab: read would merge the tabs around an empty host.
               IFS='|' read -r instance host user <<<"$row"
               IFS=/ read -r flow app inst <<<"$instance"
-              wrapper="scripts/run-compose.sh"   # the one implementation for every app (D12 §6.2)
+              wrapper="scripts/run-compose.sh"   # the one implementation for every app (ADR-0017)
               remote_cmd="IMAGE_TAG=$DEPLOY_TAG run-compose.sh $DEPLOY_ENV $flow $app $inst"
               ssh_cmd="ssh ${user}@${host:-<host missing in workflows-config.yml>} '$remote_cmd pull && $remote_cmd start && $remote_cmd health'"
               echo "::group::$instance"
@@ -330,16 +329,16 @@ jobs:
             echo "failed=true" >> "$GITHUB_OUTPUT"
           fi
 
-      - name: Plan the helm targets (demo step 2)
+      - name: Plan the helm targets (ADR-0019)
         id: helm-plan
         if: steps.targets.outputs.helm != '0'
         env:
           IMAGES: ${{ inputs.images }}
         run: |
           set -euo pipefail
-          # TODO(Phase 3): a helm target whose cluster is not kind-ci needs that cluster's kubeconfig from
+          # TODO(ADR-0019): a helm target whose cluster is not kind-ci needs that cluster's kubeconfig from
           #   the Environment `us-dev` secrets — DEV_KUBECONFIG_<CLUSTER> for a persistent dev cluster, or
-          #   GitHub OIDC → IAM role → EKS RBAC once dev runs on EKS (D9 §6.7, DL-32) — written to
+          #   GitHub OIDC → IAM role → EKS RBAC once dev runs on EKS (ADR-0019) — written to
           #   $RUNNER_TEMP with mode 600 and passed to helm-deploy-instance as `kubeconfig`, with no kind
           #   cluster and no image load (that cluster pulls from the registry). Until then such a target
           #   fails here and is recorded as failed.
@@ -348,8 +347,8 @@ jobs:
           while IFS=$'\t' read -r instance cluster namespace; do
             IFS=/ read -r _ app _ <<<"$instance"
             if [[ $cluster != kind-ci ]]; then
-              echo "::error::$instance: cluster '$cluster' — TODO(Phase 3): kubeconfig for $cluster from the Environment us-dev secrets"
-              echo "- \`$instance\`: **failed**, cluster \`$cluster\` has no kubeconfig yet (TODO(Phase 3); the demo deploys \`kind-ci\` only)" >> "$GITHUB_STEP_SUMMARY"
+              echo "::error::$instance: cluster '$cluster' — TODO(ADR-0019): kubeconfig for $cluster from the Environment us-dev secrets"
+              echo "- \`$instance\`: **failed**, cluster \`$cluster\` has no kubeconfig yet (TODO(ADR-0019); the demo deploys \`kind-ci\` only)" >> "$GITHUB_STEP_SUMMARY"
               failed+=("$instance")
               continue
             fi
@@ -402,7 +401,7 @@ jobs:
           images: ${{ steps.helm-plan.outputs.images }}
           tag: ${{ inputs.tag }}
 
-      - name: Deploy helm targets (demo step 2)
+      - name: Deploy helm targets (ADR-0019)
         id: helm
         if: steps.helm-plan.outputs.kind == 'true'
         uses: ./.github/actions/helm-deploy-instance
@@ -454,7 +453,7 @@ jobs:
           echo "list=${instances[*]}" >> "$GITHUB_OUTPUT"
           echo "json=$(printf '%s\n' "${instances[@]}" | jq -R . | jq -cs 'map(select(length > 0))')" >> "$GITHUB_OUTPUT"
 
-      - name: Record the deployment (DL-40)
+      - name: Record the deployment (ADR-0027)
         id: deployment
         # Also after a failed target or teardown step: what did and did not deploy is recorded; never after a cancel.
         if: ${{ !cancelled() }}
@@ -464,7 +463,7 @@ jobs:
           PLACEMENTS: ${{ steps.compose.outputs.placements }}
         run: |
           set -euo pipefail
-          # The record of what dev runs (D5 §6.8, D9 §6.3): one GitHub Deployment of the env's Environment per run,
+          # The record of what dev runs (ADR-0027): one GitHub Deployment of the env's Environment per run,
           # ref = this commit (the config tree deployed), payload = the tag, this run's digest-pinned images and
           # every target with its box or cluster and its result, plus the version directory of every pooled flow.
           # The tree's dev files say `main`; the literal tag lives here and in the version directories'
@@ -501,7 +500,7 @@ jobs:
           gh api --method POST "repos/$GITHUB_REPOSITORY/deployments/$id/statuses" \
             -f state="$state" -f log_url="$RUN_URL" -f description="deploy-dev $DEPLOY_TAG: $ok/$total instance(s) deployed" >/dev/null
           {
-            echo "### deploy-dev: GitHub Deployment $id of Environment \`$DEPLOY_ENV\` — **$state** (DL-40)"
+            echo "### deploy-dev: GitHub Deployment $id of Environment \`$DEPLOY_ENV\` — **$state** (ADR-0027)"
             echo ""
             echo "The record of what \`$DEPLOY_ENV\` runs: tag \`$DEPLOY_TAG\`, config tree \`${GITHUB_SHA::7}\`. Nothing is committed to \`main\`."
             echo ""

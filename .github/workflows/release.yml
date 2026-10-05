@@ -1,14 +1,14 @@
-# Release pipeline (D7 §4.8, §5.1, §5.7; D4 §5, §6.1–§6.4, Figure 3; D9 §6.3).
+# Release pipeline (ADR-0029).
 #
-# Trigger: a release tag `v<x.y.z>` — this repository is one release line, every app in lockstep (DL-03,
-# D12 §6.1). release-please creates the tags with GITHUB_TOKEN, and such pushes
+# Trigger: a release tag `v<x.y.z>` — this repository is one release line, every app in lockstep
+# (ADR-0002). release-please creates the tags with GITHUB_TOKEN, and such pushes
 # start no workflow, so release-please.yml dispatches this workflow on the tag instead
 # (`gh workflow run release.yml --ref <tag>`); a hand-pushed tag (the emergency route) triggers it directly.
 # A dispatch from a branch with the `tag` input runs THAT branch's workflow file for the tag — the way to finish
 # a release whose own workflow file (frozen at the tag) failed, once the fix is on main.
 #
 #   resolve       assert `./gradlew printVersion` == the tag; wait for the main.yml run of the tagged
-#                 commit to have passed; resolve its images by the sha-<sha7> tag (build once, D4)
+#                 commit to have passed; resolve its images by the sha-<sha7> tag (build once, ADR-0010)
 #   promote       retag those digests with the release tags inside GHCR (_docker-publish.yml) — nothing
 #                 is rebuilt; the images keep the -rc version in their labels (build-once trade-off)
 #   sbom          one CycloneDX SBOM per image (anchore/sbom-action)
@@ -103,7 +103,7 @@ jobs:
           set -euo pipefail
           actual=$(./gradlew -q printVersion | tr -d '\r' | sed '/^[[:space:]]*$/d' | tail -n 1)
           if [[ $actual != "$EXPECTED" ]]; then
-            echo "::error::./gradlew -q printVersion printed '$actual', the tag says '$EXPECTED' (D4 §6.1) — is the tag on the right commit, and the work tree clean?"
+            echo "::error::./gradlew -q printVersion printed '$actual', the tag says '$EXPECTED' (ADR-0008) — is the tag on the right commit, and the work tree clean?"
             exit 1
           fi
           echo "- \`./gradlew -q printVersion\` = \`$actual\` ✔" >> "$GITHUB_STEP_SUMMARY"
@@ -116,7 +116,7 @@ jobs:
           WAIT_MINUTES: ${{ inputs.wait-minutes || 60 }}
         run: |
           set -euo pipefail
-          # Promote, never rebuild (D7 §4.8): only a commit whose main.yml run (main or hotfix/*) passed
+          # Promote, never rebuild (ADR-0023): only a commit whose main.yml run (main or hotfix/*) passed
           # the component and system tests may be released.
           deadline=$((SECONDS + WAIT_MINUTES * 60))
           while :; do
@@ -151,11 +151,11 @@ jobs:
         run: |
           set -euo pipefail
           projects=$(yq -o=json -I=0 '.projects | to_entries | map(select(.value.image == true) | .key)' .github/affected-map.yml)
-          # Images are <registry>/<project>/<AppName> (D12 §6.7): registry and release line from the manifest.
+          # Images are <registry>/<project>/<AppName> (ADR-0010): registry and release line from the manifest.
           registry=$(yq '.registry' platform.yml)
           project_name=$(yq '.projects[0].name' platform.yml)
           release_tags=("$VERSION" "sha-${SHA::7}")
-          # Convenience tags (D4 §6.2, dev repository only) move only when this is the newest release
+          # Convenience tags (ADR-0010, dev repository only) move only when this is the newest release
           # of their series, so a hotfix of an older line never drags `latest` backwards.
           IFS=. read -r major minor _ <<<"$VERSION"
           newest() { git tag --list "$1" --sort=-v:refname | grep -E '^v[0-9]+\.[0-9]+\.[0-9]+$' | head -n 1 || true; }
@@ -330,11 +330,11 @@ jobs:
           git add -- config/us-qa
           git -c user.name="github-actions[bot]" -c user.email="41898282+github-actions[bot]@users.noreply.github.com" \
             commit --quiet -m "chore(release): bump source-* to $VERSION in us-qa/*"
-          # TODO(DL-09): push and open the PR with the GitHub App token, so that pr.yml runs on it.
+          # TODO(ADR-0020): push and open the PR with the GitHub App token, so that pr.yml runs on it.
           git push --quiet --force origin "HEAD:refs/heads/$branch"
           body=$(mktemp)
           {
-            echo "Release **$TAG** for \`config/us-qa\` (D4 §6.4, D9 §6.3). Approval by the CODEOWNERS of \`config/*-qa/**\` is the deploy intent."
+            echo "Release **$TAG** for \`config/us-qa\` (ADR-0029). Approval by the CODEOWNERS of \`config/*-qa/**\` is the deploy intent."
             echo ""
             echo "| project | image (tested by main.yml, promoted by digest) |"
             echo "|---|---|"
@@ -346,7 +346,7 @@ jobs:
             echo "- Release: $GITHUB_SERVER_URL/$GITHUB_REPOSITORY/releases/tag/$TAG"
             echo "- Tested by: $MAIN_RUN"
             echo ""
-            echo "> Opened with GITHUB_TOKEN, which starts no workflow: close and reopen this PR to run \`pr-gate\` (a GitHub App token removes this step, DL-09)."
+            echo "> Opened with GITHUB_TOKEN, which starts no workflow: close and reopen this PR to run \`pr-gate\` (a GitHub App token removes this step, ADR-0020)."
           } > "$body"
           if gh pr view "$branch" --repo "$GITHUB_REPOSITORY" --json state --jq .state 2>/dev/null | grep -qx OPEN; then
             gh pr edit "$branch" --repo "$GITHUB_REPOSITORY" --body-file "$body"

@@ -11,7 +11,7 @@ import org.springframework.context.ConfigurableApplicationContext;
 /**
  * {@code main} of every connector app. Besides a normal start it supports {@value #PRINT_CONFIG}: resolve the
  * configuration exactly as a start would, print the masked summary on stdout and exit without serving or
- * connecting — what {@code run-compose.sh ... app-config --offline} runs (D6 §4.3).
+ * connecting — what {@code run-compose.sh ... app-config --offline} runs (ADR-0016).
  */
 public final class ConnectorApplication {
 

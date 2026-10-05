@@ -1,4 +1,4 @@
-# Helm values layer 2 (D11 §6.2) — source-database in us-dev / cash, shared by every instance: sizing and the
+# Helm values layer 2 (ADR-0019) — source-database in us-dev / cash, shared by every instance: sizing and the
 # time zone (the compose env layers say MEM_LIMIT=1g and TZ=America/New_York for compose). Layer 1 is the chart
 # (apps/source-database/helm/source-database/values.yaml), layer 3 <AppInstance>/_helm-values.instance.yaml.
 resources:

@@ -23,10 +23,10 @@ out/
 Thumbs.db
 __pycache__/
 
-# Local env files: never committed (secrets pass through the shell, D2 §8.1)
+# Local env files: never committed (secrets pass through the shell, ADR-0013)
 *.local.env
 
-# The combined compose envs scripts/run-compose.sh generates on every command (R-0008): derived, never committed
+# The combined compose envs scripts/run-compose.sh generates on every command (ADR-0012): derived, never committed
 /.run/
 
 # JVM leftovers

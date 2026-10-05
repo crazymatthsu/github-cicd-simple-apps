@@ -1,8 +1,8 @@
 {{- include "connector.validate" . }}
 {{- /*
-One Deployment per AppInstance, replicas 1 (DL-33). Everything the app reads at runtime is a read-only mount:
-the ConfigMap layers under /config/<layer>/, the Secret as a Spring config tree under /secrets/ (D2 §6.4);
-/tmp and /app/logs are the only writable paths (D6 §6.7). Probes, sizing and shutdown follow D6 §6.9–§6.11.
+One Deployment per AppInstance, replicas 1 (ADR-0019). Everything the app reads at runtime is a read-only mount:
+the ConfigMap layers under /config/<layer>/, the Secret as a Spring config tree under /secrets/ (ADR-0013);
+/tmp and /app/logs are the only writable paths (ADR-0017). Probes and shutdown follow ADR-0015, sizing ADR-0009.
 */}}
 {{- $items := include "connector.configItems" . | fromJsonArray }}
 apiVersion: apps/v1
@@ -14,7 +14,7 @@ metadata:
     {{- include "connector.labels" . | nindent 4 }}
   {{- if .Values.reloader.enabled }}
   annotations:
-    # Rolls the pod when the ESO-owned Secret rotates (not Helm-owned, so no checksum sees it; D5 §4.6).
+    # Rolls the pod when the ESO-owned Secret rotates (not Helm-owned, so no checksum sees it).
     secret.reloader.stakater.com/reload: {{ include "connector.secretName" . | quote }}
   {{- end }}
 spec:
@@ -29,7 +29,7 @@ spec:
       labels:
         {{- include "connector.labels" . | nindent 8 }}
       annotations:
-        # A config change rolls exactly this instance (D11 §6.3, D5 §4.6).
+        # A config change rolls exactly this instance (ADR-0011).
         checksum/config: {{ include (print $.Template.BasePath "/configmap.yaml") . | sha256sum }}
         kubectl.kubernetes.io/default-container: app
     spec:
@@ -120,7 +120,7 @@ spec:
           secret:
             secretName: {{ include "connector.secretName" . }}
             defaultMode: 256    # 0400: readable by the app through fsGroup only
-            optional: false     # a missing Secret blocks the pod visibly (D11 §6.3)
+            optional: false     # a missing Secret blocks the pod visibly (ADR-0013)
         - name: tmp
           emptyDir:
             sizeLimit: {{ .Values.tmp.sizeLimit }}

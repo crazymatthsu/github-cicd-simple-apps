@@ -1,16 +1,16 @@
-# Release PRs from Conventional Commits (DL-04, D4 §5 (2), D9 §6.11).
+# Release PRs from Conventional Commits (ADR-0029).
 #
 # release-please keeps one release PR open for the repository's one release line (release-please-config.json,
-# package `.`: tags v<x.y.z>, every app in lockstep, D12 §6.1). Merging the PR creates the annotated tag and
+# package `.`: tags v<x.y.z>, every app in lockstep, ADR-0002). Merging the PR creates the annotated tag and
 # a GitHub Release with the changelog.
 #
 # The build never reads .release-please-manifest.json: that file is release-please's own bookkeeping.
-# Gradle derives every version from git tags alone (buildlogic.git-version, D4 §6.1), so "no version
+# Gradle derives every version from git tags alone (buildlogic.git-version, ADR-0008), so "no version
 # file" still holds, and release.yml asserts `./gradlew printVersion` == the tag.
 #
 # Tags and PRs created with GITHUB_TOKEN start no workflow runs, so this workflow dispatches
 # release.yml on each new tag (workflow_dispatch is exempt from that rule).
-# TODO(DL-09): with a GitHub App token the tag push itself triggers release.yml; drop the dispatch then.
+# TODO(ADR-0020): with a GitHub App token the tag push itself triggers release.yml; drop the dispatch then.
 name: release-please
 
 on:

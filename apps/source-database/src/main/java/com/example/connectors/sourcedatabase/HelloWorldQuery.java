@@ -18,9 +18,9 @@ import com.example.connectors.framework.ConnectorMdc;
 import com.example.connectors.framework.ConnectorProperties;
 
 /**
- * The hello-world query (brief §4): {@code SELECT 1}, then {@code SELECT COUNT(*) FROM <connector.source.table>}
+ * The hello-world query: {@code SELECT 1}, then {@code SELECT COUNT(*) FROM <connector.source.table>}
  * when a table is configured. It uses the {@code spring.datasource.*} connection, whose username and password
- * are bound only from the environment or {@code /secrets/} (D2 §8.1). It runs once, off the main thread, after
+ * are bound only from the environment or {@code /secrets/} (ADR-0013). It runs once, off the main thread, after
  * start-up and is non-fatal: without a database the app still starts and {@link SourceDatabaseHealthIndicator}
  * reports the failure.
  */

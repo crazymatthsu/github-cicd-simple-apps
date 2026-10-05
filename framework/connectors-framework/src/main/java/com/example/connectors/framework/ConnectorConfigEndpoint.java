@@ -8,7 +8,7 @@ import org.springframework.core.env.ConfigurableEnvironment;
 
 /**
  * {@code GET /actuator/connectorconfig}: the same masked summary as the start-up log, for
- * {@code run-compose.sh ... app-config} against a running stack (D6 §4.3). Unlike {@code /actuator/env} it
+ * {@code run-compose.sh ... app-config} against a running stack (ADR-0016). Unlike {@code /actuator/env} it
  * never shows a value that the summary would mask.
  */
 @Endpoint(id = "connectorconfig")

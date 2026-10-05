@@ -1,4 +1,4 @@
-# Layer 5 — trades from SQL Server towards AMPS; the stub sink stands in for AMPS until it is licensed (D8 §5.2).
+# Layer 4 — trades from SQL Server towards AMPS; the stub sink stands in for AMPS until it is licensed.
 connector:
   source:
     database: trades

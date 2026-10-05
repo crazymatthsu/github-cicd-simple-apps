@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# junit-summary.sh — Markdown summary of Gradle JUnit XML results for the job summary (D7 §6.9).
+# junit-summary.sh — Markdown summary of Gradle JUnit XML results for the job summary (ADR-0021).
 #
 # Usage: junit-summary.sh <title> [<search-root>...]      (default search root: .)
 # Reads **/build/test-results/<task>/TEST-*.xml, appends one table row per project and task to

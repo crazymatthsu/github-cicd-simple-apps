@@ -16,7 +16,7 @@ import org.springframework.boot.test.context.SpringBootTest;
 import static org.assertj.core.api.Assertions.assertThat;
 
 /**
- * The actuator contract every connector app honours (D6 §6.9), as a reusable Spring Boot test: extend it
+ * The actuator contract every connector app honours (ADR-0015), as a reusable Spring Boot test: extend it
  * from the app's test package and the whole application starts on a random port with the identity
  * {@code local/cash/<app>/unit-test}.
  */

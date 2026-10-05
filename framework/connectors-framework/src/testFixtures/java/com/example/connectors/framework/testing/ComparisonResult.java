@@ -6,7 +6,7 @@ import java.util.Map;
 
 /**
  * Outcome of {@link RowSetComparator#compare}: missing rows, unexpected rows, per-column differences and
- * duplicate keys (D8 §6.6). {@link #toJson()} is the {@code <case>-diff.json} report.
+ * duplicate keys (ADR-0026). {@link #toJson()} is the {@code <case>-diff.json} report.
  */
 public record ComparisonResult(
         int expectedRows,

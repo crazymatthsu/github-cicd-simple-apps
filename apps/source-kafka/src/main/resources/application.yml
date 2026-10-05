@@ -1,10 +1,10 @@
-# Layer 1 — jar defaults of source-kafka (D5 §6.1): safe, environment-agnostic defaults and the import list.
-# Everything environment-specific comes from the config tree, one file per layer mounted read-only (R-0008):
-#   /config/flow/application.yml      <- config/<env>/<flow>/application.flow.yml   (optional; the cluster layer, DL-44)
+# Layer 1 — jar defaults of source-kafka (ADR-0011): safe, environment-agnostic defaults and the import list.
+# Everything environment-specific comes from the config tree, one file per layer mounted read-only (ADR-0011):
+#   /config/flow/application.yml      <- config/<env>/<flow>/application.flow.yml   (optional; the cluster layer, ADR-0011)
 #   /config/common/application.yml    <- config/<env>/<flow>/<AppName>/application.app.yml
 #   /config/instance/application.yml  <- config/<env>/<flow>/<AppName>/<AppInstance>/application.instance.yml
 # Later imports override earlier ones; /secrets/ (Kubernetes Secret, one file per property) comes last.
-# Secrets are never set here (D2 §8.1). Identity: APP_ENV, APP_FLOW, APP_NAME, APP_INSTANCE (environment).
+# Secrets are never set here (ADR-0013). Identity: APP_ENV, APP_FLOW, APP_NAME, APP_INSTANCE (environment).
 spring:
   application:
     name: source-kafka
@@ -25,7 +25,7 @@ management:
   endpoints:
     web:
       exposure:
-        # connectorconfig: the masked configuration summary for `run-compose.sh ... app-config` (D6 §4.3).
+        # connectorconfig: the masked configuration summary for `run-compose.sh ... app-config` (ADR-0016).
         include: health,info,prometheus,connectorconfig
   endpoint:
     health:
@@ -34,7 +34,7 @@ management:
         enabled: true
       group:
         readiness:
-          # The framework's `connector` indicator gates readiness (D6 §6.9).
+          # The framework's `connector` indicator gates readiness (ADR-0015).
           include: readinessState,connector
   info:
     java:
@@ -44,7 +44,7 @@ logging:
   level:
     root: ${LOG_LEVEL_ROOT:INFO}
   pattern:
-    # The identity tuple on every plain-text line (D6 §6.9); JSON formats carry it as fields (below).
+    # The identity tuple on every plain-text line (ADR-0016); JSON formats carry it as fields (below).
     level: "%5p [${APP_ENV:local}/${APP_FLOW:none}/${APP_NAME:${spring.application.name}}/${APP_INSTANCE:none}]"
   structured:
     json:

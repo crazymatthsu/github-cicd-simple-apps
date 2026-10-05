@@ -1,16 +1,16 @@
 #!/usr/bin/env bash
-# helm-deploy-instance.sh — lint, render or deploy one AppInstance with its app's Helm chart (D11 §8.3).
-# The one implementation of the Helm flag list: config-lint check 12 (--mode lint / template, D5 §6.5), the
-# kind deploy test and the deploy-dev Helm adapter (--mode deploy, D9 §6.4, D10 §5.9) all call it.
+# helm-deploy-instance.sh — lint, render or deploy one AppInstance with its app's Helm chart (ADR-0019).
+# The one implementation of the Helm flag list: config-lint check 12 (--mode lint / template, ADR-0014), the
+# kind deploy test and the deploy-dev Helm adapter (--mode deploy, ADR-0019, ADR-0027) all call it.
 # Portable bash (3.2+); run with --help for the usage.
 set -euo pipefail
 
 readonly EXIT_FAILED=1 EXIT_USAGE=2 EXIT_REFUSED=3 EXIT_CONFIG=4 EXIT_TOOL=5
 readonly FLOWS="cash deriv swap"
 readonly MODES="lint template deploy"
-# Files of a layer's directory that are not shipped as appFiles (D5 §6.4): the Spring layer itself (appConfig), the
-# deploy-tool files (_helm-values.*, _docker-compose.*: never mounted, R-0008), the flow's inventory and README.md.
-# config-lint allows no other file in a layer's directory today, so appFiles stays empty (Helm is deferred, R-0008).
+# Files of a layer's directory that are not shipped as appFiles (ADR-0011): the Spring layer itself (appConfig), the
+# deploy-tool files (_helm-values.*, _docker-compose.*: never mounted, ADR-0011), the flow's inventory and README.md.
+# config-lint allows no other file in a layer's directory today, so appFiles stays empty (Helm is deferred, ADR-0019).
 not_shipped() {
     case "$1" in
         application.*.yml | _* | workflows-config.yml | README.md) return 0 ;;
@@ -28,13 +28,13 @@ Usage: helm-deploy-instance.sh <env> <flow> <AppName> <AppInstance> --tag <tag> 
            [--mode lint|template|deploy] [--render-out <file>] [--dry-run]
 
 Deploys config/<env>/<flow>/<AppName>/<AppInstance>/ as the Helm release <AppName>-<AppInstance> of the
-chart apps/<AppName>/helm/<AppName>/ in the namespace <flow> (D11 §6.2, DL-33, DL-38). The layers are files
-(R-0008; <c> = config/<env>/<flow>, <app> = <c>/<AppName>, <inst> = <app>/<AppInstance>).
+chart apps/<AppName>/helm/<AppName>/ in the namespace <flow> (ADR-0003). The layers are files
+(ADR-0011; <c> = config/<env>/<flow>, <app> = <c>/<AppName>, <inst> = <app>/<AppInstance>).
 
 Flag list (identical in every mode):
   -f <app>/_helm-values.app.yaml -f <inst>/_helm-values.instance.yaml --set-string image.tag=<tag>
   --set-file appConfig.common=<app>/application.app.yml --set-file appConfig.instance=<inst>/application.instance.yml
-  --set-file appConfig.flow=<c>/application.flow.yml      (when the file exists; the cluster layer, DL-44)
+  --set-file appConfig.flow=<c>/application.flow.yml      (when the file exists; the cluster layer, ADR-0011)
   --set-file appFiles.<layer>.<file>=<path>   for any other file of those three directories but the deploy-tool
                                               files, the inventory and the subdirectories ("." escaped as "\.")
 
@@ -53,7 +53,7 @@ Options:
   --kubeconfig <file>     deploy: for helm and kubectl (default: $KUBECONFIG, then ~/.kube/config)
   --timeout <duration>    deploy: helm and kubectl timeouts, Go duration syntax (default 5m)
   --secret-user <u>       deploy, with --secret-password: create or update Secret <release>-secrets with the
-  --secret-password <p>   keys spring.datasource.username / spring.datasource.password (D2 §6.4); without them
+  --secret-password <p>   keys spring.datasource.username / spring.datasource.password (ADR-0013); without them
                           the Secret must already exist (or come from the chart's ExternalSecret)
   --render-out <file>     template mode: write the manifests to <file>
   --dry-run               print the commands (the Secret's values masked) and run nothing
@@ -149,7 +149,7 @@ if ! is_token "$INSTANCE" || [ "${#INSTANCE}" -gt 32 ]; then
 fi
 case "$INSTANCE" in *[!0-9]*) ;; *) die "$EXIT_USAGE" "AppInstance '$INSTANCE' is a business name, never a bare number" ;; esac
 RELEASE="$APP-$INSTANCE"
-[ "${#RELEASE}" -le 53 ] || die "$EXIT_USAGE" "release '$RELEASE' exceeds Helm's 53-character limit (D5 §6.2)"
+[ "${#RELEASE}" -le 53 ] || die "$EXIT_USAGE" "release '$RELEASE' exceeds Helm's 53-character limit (ADR-0003)"
 contains_word "$MODE" "$MODES" || die "$EXIT_USAGE" "--mode must be one of: $MODES"
 [ -n "$TAG" ] || die "$EXIT_USAGE" "--tag <tag> is required (the image tag to deploy)"
 printf '%s' "$TAG" | grep -Eq '^[A-Za-z0-9_][A-Za-z0-9_.-]{0,127}(@sha256:[0-9a-f]{64})?$' ||
@@ -163,7 +163,7 @@ printf '%s' "$TIMEOUT" | grep -Eq '^([0-9]+(\.[0-9]+)?(ns|us|ms|s|m|h))+$' ||
 if [ -n "$RENDER_OUT" ] && [ "$MODE" != template ]; then die "$EXIT_USAGE" "--render-out only applies to --mode template"; fi
 # --kubeconfig and the Secret's values only matter to deploy; lint and template ignore them (callers may pass them
 # to every mode). The Secret's values: both flags, else both SPRING_DATASOURCE_* variables (the compose
-# pass-through names, D2 §8.1).
+# pass-through names, ADR-0013).
 if [ "$MODE" = deploy ]; then
     if [ "$SECRET_USER_SET" -eq 0 ] && [ "$SECRET_PASSWORD_SET" -eq 0 ]; then
         SECRET_USER="${SPRING_DATASOURCE_USERNAME:-}" SECRET_PASSWORD="${SPRING_DATASOURCE_PASSWORD:-}"
@@ -174,11 +174,11 @@ if [ "$MODE" = deploy ]; then
 else
     SECRET_USER="" SECRET_PASSWORD="" KUBECONFIG_ARG=""
 fi
-# Env allow-list (D6 §6.5, D9 §6.4): qa and prod are never deployed from here; rendering them is fine.
+# Env allow-list (ADR-0019): qa and prod are never deployed from here; rendering them is fine.
 if [ "$MODE" = deploy ]; then
     case "$ENV_NAME" in
         local | *-dev) ;;
-        *) die "$EXIT_REFUSED" "env '$ENV_NAME' refused: qa and prod are deployed by their controller from reviewed config (D9, D11), never by this script" ;;
+        *) die "$EXIT_REFUSED" "env '$ENV_NAME' refused: qa and prod are deployed by their controller from reviewed config (ADR-0004), never by this script" ;;
     esac
 fi
 
@@ -186,7 +186,7 @@ fi
 
 REPO_ROOT="$(git -C "$SCRIPT_DIR" rev-parse --show-toplevel 2>/dev/null || (cd "$SCRIPT_DIR/.." && pwd -P))"
 CONFIG_ROOT_ABS="$(abs_path "${CONFIG_ROOT:-$REPO_ROOT/config}")"
-# The app's chart (D11 §6.1): apps/<AppName>/helm/<AppName> (D12 §6.2), else any <dir>/<AppName>/helm/<AppName>.
+# The app's chart (ADR-0019): apps/<AppName>/helm/<AppName> (ADR-0006), else any <dir>/<AppName>/helm/<AppName>.
 if [ -z "$CHART_ARG" ]; then
     CHART_ARG="$REPO_ROOT/apps/$APP/helm/$APP"
     for candidate in "$REPO_ROOT/apps/$APP" "$REPO_ROOT/$APP" "$REPO_ROOT"/*/"$APP"; do
@@ -216,7 +216,7 @@ for file in "$COMMON/_helm-values.app.yaml" "$INST/_helm-values.instance.yaml" "
     [ -f "$file" ] || die "$EXIT_CONFIG" "config tree: required file missing: $file"
 done
 
-# --- the flag list (D11 §8.3) -----------------------------------------------------------------------------
+# --- the flag list (ADR-0019) -----------------------------------------------------------------------------
 
 FLAGS=(-f "$COMMON/_helm-values.app.yaml" -f "$INST/_helm-values.instance.yaml" --set-string "image.tag=$TAG"
     --set-file "appConfig.common=$COMMON/application.app.yml" --set-file "appConfig.instance=$INST/application.instance.yml")
@@ -225,7 +225,7 @@ if [ -f "$FLOW_DIR/application.flow.yml" ]; then
     FLAGS+=(--set-file "appConfig.flow=$FLOW_DIR/application.flow.yml")
     LAYERS_PRESENT="flow $LAYERS_PRESENT"
 fi
-# Every other file of a layer's directory ships to /config/<layer>/<file> (D5 §6.4); subdirectories (the apps of a
+# Every other file of a layer's directory ships to /config/<layer>/<file> (ADR-0011); subdirectories (the apps of a
 # flow, the instances of an app) are not files. --set-file splits its key on ".": the file name is escaped ("\."),
 # and restricted to what a ConfigMap key allows.
 add_layer_files() {
@@ -295,7 +295,7 @@ LABELS=("app.kubernetes.io/name=$APP" "app.kubernetes.io/instance=$RELEASE" "app
 PSS_LABELS=(pod-security.kubernetes.io/enforce=restricted pod-security.kubernetes.io/enforce-version=latest
     pod-security.kubernetes.io/warn=restricted pod-security.kubernetes.io/audit=restricted)
 
-# The namespace with the restricted Pod Security Standard labels (D6 §6.11), created when missing.
+# The namespace with the restricted Pod Security Standard labels (ADR-0019), created when missing.
 ensure_namespace() {
     local kc=("$KUBECTL" ${KUBECTL_KUBE[@]+"${KUBECTL_KUBE[@]}"})
     if [ "$DRY_RUN" -eq 1 ]; then
@@ -307,14 +307,14 @@ ensure_namespace() {
     run "${kc[@]}" label --overwrite namespace "$NS" "${PSS_LABELS[@]}"
 }
 
-# Secret <release>-secrets, keys = Spring property names (D2 §6.4, §8.1); the chart only mounts it (D11 R4).
+# Secret <release>-secrets, keys = Spring property names; the chart only mounts it (ADR-0013).
 ensure_secret() {
     local kc=("$KUBECTL" ${KUBECTL_KUBE[@]+"${KUBECTL_KUBE[@]}"}) name="$RELEASE-secrets"
     if [ -z "$SECRET_USER" ]; then
         info "no --secret-user / --secret-password: Secret $NS/$name must exist already (or come from the chart's ExternalSecret)"
         return 0
     fi
-    # Both values are masked in the printed command, like every other D2 secret property (D6 §4.3).
+    # Both values are masked in the printed command, like every other secret property (ADR-0013).
     local create=("${kc[@]}" -n "$NS" create secret generic "$name")
     local masked=("${create[@]}" "--from-literal=spring.datasource.username=***"
         "--from-literal=spring.datasource.password=***" --dry-run=client -o yaml)

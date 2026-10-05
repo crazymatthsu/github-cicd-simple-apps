@@ -38,7 +38,7 @@ public class ConnectorFrameworkAutoConfiguration {
     @ConditionalOnClass({ MeterRegistry.class, MeterRegistryCustomizer.class })
     static class MetricsConfiguration {
 
-        /** Common tags {@code env, flow, app, instance} on every meter (D6 §6.9). */
+        /** Common tags {@code env, flow, app, instance} on every meter (ADR-0015). */
         @Bean
         MeterRegistryCustomizer<MeterRegistry> connectorIdentityTags(ConnectorIdentity identity) {
             return registry -> identity.asTags().forEach((key, value) -> registry.config().commonTags(key, value));

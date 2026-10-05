@@ -1,5 +1,5 @@
-# Layer 4 — source-amps on a laptop / in CI test stacks. AMPS is licensed and not in the demo stack
-# (D3 §6.10): the source endpoint names the service a licensed stack would provide.
+# Layer 3 — source-amps on a laptop / in CI test stacks. AMPS is licensed and not in the demo stack:
+# the source endpoint names the service a licensed stack would provide.
 connector:
   source:
     host: amps

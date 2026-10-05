@@ -1,4 +1,4 @@
-# Layer 4 — source-kafka on a laptop / in CI test stacks: the kafka and deephaven services of the dependency stack.
+# Layer 3 — source-kafka on a laptop / in CI test stacks: the kafka and deephaven services of the dependency stack.
 connector:
   source:
     host: kafka

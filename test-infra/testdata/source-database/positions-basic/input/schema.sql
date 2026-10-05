@@ -1,7 +1,7 @@
--- positions-basic: the source table of the reference case (D8 §5.2, §6.5).
+-- positions-basic: the source table of the reference case (ADR-0026).
 -- Runs in database [positions] (manifest input.database), one batch without GO, so it works over JDBC
 -- and with sqlcmd (test-infra/seed/sqlserver/apply.sh). Idempotent: the stack is shared by every test
--- class of a suite (D8 §5.6), so the case recreates its table.
+-- class of a suite, so the case recreates its table.
 DROP TABLE IF EXISTS dbo.positions;
 
 CREATE TABLE dbo.positions (

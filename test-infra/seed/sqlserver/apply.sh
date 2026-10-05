@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# test-infra/seed/sqlserver/apply.sh: apply SQL files inside the test-infra sqlserver container (D8 §6.3).
+# test-infra/seed/sqlserver/apply.sh: apply SQL files inside the test-infra sqlserver container (ADR-0026).
 #
 # sqlserver.yml mounts this directory read-only at /seed and test-infra/testdata at /testdata.
 #

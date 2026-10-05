@@ -1,6 +1,6 @@
 # test-infra/kind
 
-The Kubernetes test tier of demo step 2 (D10 §5.9, D11 §6.4, DL-32). A throwaway
+The Kubernetes test tier of the provisional Helm path ([ADR-0019](../../docs/adr/0019-kubernetes-and-helm-are-provisional.md)). A throwaway
 [kind](https://kind.sigs.k8s.io/) cluster runs one Helm release per AppInstance, waits for readiness,
 runs `helm test` and a smoke comparison of two instances, and is then deleted. It is a deployment test
 of the chart and the config tree, not an integration test. The apps become ready without a reachable
@@ -26,8 +26,8 @@ test-infra/kind/
 | kubeconform | `v0.8.0` | schema check of the rendered releases (config-lint check 12) |
 
 In CI, `.github/actions/setup-kube-tools` installs exactly these from the official download URLs. Each
-download is checked against the SHA-256 file that its project publishes next to it, as in
-`docker/base/ci-build/Dockerfile`. On a laptop, install them yourself. `kind.sh` warns when your kind
+download is checked against the SHA-256 file that its project publishes next to it, as the build of
+the ci-build image does. On a laptop, install them yourself. `kind.sh` warns when your kind
 differs from the pin, because another kind brings another Kubernetes version.
 
 ## `kind.sh`
@@ -87,7 +87,7 @@ repository. In CI, `load` writes the loaded names to `$GITHUB_OUTPUT` as `loaded
 `kind-cluster` action returns them. The alternative, `--set image.digest`, was not chosen: kind loads
 images by name, and the deploy script's interface is `--tag`.
 
-### Teardown and leak check (DL-27)
+### Teardown and leak check ([ADR-0024](../../docs/adr/0024-ephemeral-ci-environments.md))
 
 | Layer | Mechanism |
 |---|---|
@@ -102,7 +102,7 @@ images by name, and the deploy script's interface is `--tag`.
 | Job | Where | What |
 |---|---|---|
 | `kind-deploy` | `.github/workflows/_kind-deploy.yml`, called by `pr.yml` (PR and merge queue, when `detect-affected` reports `deploy-test`) and `main.yml` (after `publish`, before `deploy-dev`) | `ci-<run>-<attempt>`: one release per instance directory of `config/us-dev/*/source-database/`, then `scripts/helm-smoke-diff.sh` across the two releases |
-| `deploy-dev` | `.github/workflows/_deploy-dev.yml` (Helm adapter) | `deploy-<run>-<attempt>` for every `kind: helm` target with `cluster: kind-ci`, followed by the GitHub Deployment record (DL-40) |
+| `deploy-dev` | `.github/workflows/_deploy-dev.yml` (Helm adapter) | `deploy-<run>-<attempt>` for every `kind: helm` target with `cluster: kind-ci`, followed by the GitHub Deployment record ([ADR-0027](../../docs/adr/0027-continuous-deployment-to-dev-and-the-deployment-record.md)) |
 
 Both jobs run the same sequence:
 

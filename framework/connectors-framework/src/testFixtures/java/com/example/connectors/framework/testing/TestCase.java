@@ -20,9 +20,9 @@ import org.yaml.snakeyaml.constructor.SafeConstructor;
 
 /**
  * One case of the test-data tree, {@code <dataset root>/<connector>/<case>/{manifest.yml, input/, expected/}}
- * (D8 §5.4, §6.5). {@link #load} reads the manifest and resolves the files it names against the case directory;
+ * (ADR-0026). {@link #load} reads the manifest and resolves the files it names against the case directory;
  * {@link #assertMatches} compares a connector's output with the expected rows under the manifest's rules and
- * writes the report D8 §6.6 asks for.
+ * writes the reports ADR-0026 asks for.
  *
  * @param directory the case directory
  * @param name {@code case}
@@ -53,16 +53,16 @@ public record TestCase(
         CompareRules rules,
         Duration timeout) {
 
-    /** Points at another dataset root, e.g. one unpacked by fetchTestData into build/testdata (D8 §5.4). */
+    /** Points at another dataset root, e.g. one unpacked by fetchTestData into build/testdata. */
     public static final String TESTDATA_DIR_VARIABLE = "IT_TESTDATA_DIR";
 
-    /** The poll budget when the manifest sets no {@code compare.timeout} (D8 §6.7). */
+    /** The poll budget when the manifest sets no {@code compare.timeout} (ADR-0026). */
     public static final Duration DEFAULT_TIMEOUT = Duration.ofSeconds(60);
 
     /** Where the reports go, relative to the test JVM's working directory (the subproject under Gradle). */
     public static final Path REPORTS_DIR = Path.of("build", "reports", "integrationTest");
 
-    /** At most this many differences per category in the assertion message (D8 §6.6). */
+    /** At most this many differences per category in the assertion message (ADR-0026). */
     private static final int MESSAGE_LIMIT = 10;
 
     public TestCase {

@@ -14,15 +14,15 @@ scripts/run-compose.sh local cash source-kafka bbg-equity-ticks health
 scripts/run-compose.sh local cash source-kafka bbg-equity-ticks down
 ```
 
-`scripts/run-compose.sh` wraps the canonical `<repo>/scripts/run-compose.sh` (D6); `--help` lists every
-command. Configuration lives in `config/<env>/<flow>/source-kafka/` (local instance: `bbg-equity-ticks`), never here (D5).
+`scripts/run-compose.sh` is the one operations CLI of every app ([ADR-0017](../../docs/adr/0017-run-compose-operations-cli-and-runtime-posture.md)); `--help` lists every
+command. Configuration lives in `config/<env>/<flow>/source-kafka/` (local instance: `bbg-equity-ticks`), never here ([ADR-0011](../../docs/adr/0011-configuration-tree-and-spring-layers.md)).
 
-## Helm (demo step 2)
+## Helm (provisional)
 
 The chart is [`helm/source-kafka/`](helm/source-kafka/README.md): one release `source-kafka-<AppInstance>` per
 instance directory, in the namespace of its flow, with the values layers chart `values.yaml` →
 `config/<env>/<flow>/source-kafka/_helm-values.app.yaml` → `<AppInstance>/_helm-values.instance.yaml` (`image.tag`,
-identity, `env`) and the `application.<layer>.yml` layers as file values (D11; the Helm design is deferred, R-0008). One script builds the flag list for
+identity, `env`) and the `application.<layer>.yml` layers as file values (the Helm design is deferred, [ADR-0019](../../docs/adr/0019-kubernetes-and-helm-are-provisional.md)). One script builds the flag list for
 every caller — config-lint, the kind deploy test and deploy-dev; run it from the repository root:
 
 ```bash
@@ -32,7 +32,7 @@ scripts/helm-deploy-instance.sh local cash source-kafka bbg-equity-ticks --tag l
 ```
 
 `--help` lists the options and exit codes, `--dry-run` prints the commands; `./gradlew configLint` lints and
-renders every instance (D5 check 12). A local kind cluster to deploy into: `test-infra/kind/`.
+renders every instance (check 12, [ADR-0014](../../docs/adr/0014-config-lint-enforces-the-config-contract.md)). A local kind cluster to deploy into: `test-infra/kind/`.
 
 ## Configuration keys
 

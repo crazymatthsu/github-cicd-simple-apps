@@ -1,7 +1,7 @@
 name: helm-deploy-instance
 description: >-
   Deploys AppInstances with scripts/helm-deploy-instance.sh, the one implementation of the Helm flag list
-  (D11 §6.4, §8.3): namespace with the Pod Security labels, the <release>-secrets Secret, helm lint, helm
+  (ADR-0019): namespace with the Pod Security labels, the <release>-secrets Secret, helm lint, helm
   upgrade --install --rollback-on-failure --wait, rollout status, helm test. One instance (flow / app /
   instance) or several in order (targets). Every instance is attempted; then the step fails if any failed,
   unless fail-on-error is 'false' (deploy-dev writes back the successful ones first). Writes a job-summary
@@ -36,7 +36,7 @@ inputs:
     description: Image tag (--tag → image.tag); in kind, the tag the image was loaded with.
     required: true
   namespace:
-    description: Namespace; empty or "{flow}" means the instance's flow (DL-38). A target's own namespace wins.
+    description: Namespace; empty or "{flow}" means the instance's flow (ADR-0027). A target's own namespace wins.
     required: false
     default: ''
   kubeconfig:
@@ -48,7 +48,7 @@ inputs:
     required: false
     default: 5m
   secret-user:
-    description: spring.datasource.username in the <release>-secrets Secret (demo stub, D2).
+    description: spring.datasource.username in the <release>-secrets Secret (demo stub, ADR-0013).
     required: false
     default: sa
   secret-password:

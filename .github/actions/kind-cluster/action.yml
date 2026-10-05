@@ -1,12 +1,12 @@
 name: kind-cluster
 description: >-
-  Thin wrapper around test-infra/kind/kind.sh (D10 §5.9), the kind counterpart of compose-stack, so
+  Thin wrapper around test-infra/kind/kind.sh (ADR-0019), the kind counterpart of compose-stack, so
   workflows and laptops run the same commands. The cluster is KIND_CLUSTER_NAME, which the calling job
   sets (kind-deploy: ci-<run_id>-<attempt>; deploy-dev: deploy-<run_id>-<attempt>), or the cluster-name
   input. `up` exports KUBECONFIG and KIND_CLUSTER_NAME to GITHUB_ENV for later steps; `load` returns the
   names it put on the nodes (<repo>:<tag>) as the `loaded` output. Needs the tools of setup-kube-tools
   (`down` and `leak-check` fall back to the container engine when kind is missing). Use `if: always()` on
-  `down` and `leak-check` so they run on success, failure and cancel (DL-27).
+  `down` and `leak-check` so they run on success, failure and cancel (ADR-0024).
 inputs:
   command:
     description: up | load | diagnostics | down | leak-check

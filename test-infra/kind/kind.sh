@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # test-infra/kind/kind.sh: lifecycle of the throwaway kind cluster that the Helm deployment test runs in
-# (D10 §5.9, §6.4; D11 §6.4; DL-27, DL-32).
+# (ADR-0019, ADR-0024).
 #
 # One script, three callers: the kind-deploy job and the deploy-dev Helm adapter (through the kind-cluster
 # composite action) and a laptop (README.md), so all of them run the same commands. It mirrors
@@ -119,7 +119,7 @@ init_run_identity() {
 
 in_ci() { [[ $CI_RUN_ID != local ]]; }
 
-# D10 §6.1: ci-<run_id>-<attempt> in CI, local-kind on a laptop; KIND_CLUSTER_NAME (or --name) wins.
+# ADR-0024: ci-<run_id>-<attempt> in CI, local-kind on a laptop; KIND_CLUSTER_NAME (or --name) wins.
 resolve_cluster() {
   if [[ -n ${KIND_CLUSTER_NAME:-} ]]; then
     CLUSTER=$KIND_CLUSTER_NAME

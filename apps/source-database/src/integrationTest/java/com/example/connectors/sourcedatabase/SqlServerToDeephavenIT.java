@@ -22,7 +22,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.junit.jupiter.api.Assumptions.assumeTrue;
 
 /**
- * The reference case of source-database (D8 §5.2, §6.5), test-infra/testdata/source-database/positions-basic,
+ * The reference case of source-database (ADR-0026), test-infra/testdata/source-database/positions-basic,
  * against the compose stack: sqlserver and deephaven, plus the app image when APP_IMAGE is set.
  *
  * <p>The app is still a hello world that does not publish to Deephaven, so this test plays the connector's part:
@@ -64,7 +64,7 @@ class SqlServerToDeephavenIT {
                 .or(() -> ItEnvironment.optional("IT_SA_PASSWORD"))
                 .orElseThrow(() -> new AssertionError("SPRING_DATASOURCE_PASSWORD (or IT_SA_PASSWORD) is not set: "
                         + "use the stack's sa password, which stack.sh up records in test-infra/compose/.state/"));
-        // Step 2 of D8 §5.2, idempotent on the shared stack: the generic helpers create the database if the seed
+        // Seed the inputs (ADR-0026), idempotent on the shared stack: the generic helpers create the database if the seed
         // has not, schema.sql drops and recreates the table, then the seed files fill it.
         Path seedHelpers = ItEnvironment.repositoryRoot().resolve("test-infra/seed/sqlserver");
         try (Connection master = SqlServerSource.connect(sqlServer, "master", user, password, budget)) {
@@ -109,7 +109,7 @@ class SqlServerToDeephavenIT {
         testCase.assertMatches(null, "Deephaven table " + targetTable + " (" + snapshot.note() + ")", snapshot.rows());
     }
 
-    /** D8 §5.1: the image under test runs with the instance config and reports the instance's identity. */
+    /** ADR-0025: the image under test runs with the instance config and reports the instance's identity. */
     @Test
     void appUnderTestIsReadyWithTheInstanceIdentity() throws Exception {
         Optional<String> image = ItEnvironment.optional("APP_IMAGE");

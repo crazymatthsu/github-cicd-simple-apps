@@ -1,9 +1,9 @@
-// `buildlogic.config-lint` (D5 §6.5): root task `configLint` over the config/ tree. Checks 1–6 and 9–12
+// `buildlogic.config-lint` (ADR-0014): root task `configLint` over the config/ tree. Checks 1–6 and 9–12
 // run here; 7 (merged configuration vs spring-configuration-metadata.json) and 8 (parity across envs) are
-// reported as TODO. A deployable app is a subproject that applies `buildlogic.docker-image` (R-0008: every app is
+// reported as TODO. A deployable app is a subproject that applies `buildlogic.docker-image` (ADR-0012: every app is
 // run from the one compose template docker/docker-compose.yml, plus its optional
 // <subproject>/docker/docker-compose.override.yml); its name is the AppName directory expected in the tree, and its
-// Helm chart is <subproject>/helm/<AppName>/Chart.yaml (D11 §6.1).
+// Helm chart is <subproject>/helm/<AppName>/Chart.yaml (ADR-0019).
 //
 //   ./gradlew configLint                      # render check 6 with docker compose / podman compose if present,
 //                                             # check 12 with helm (and kubeconform) if present
@@ -32,7 +32,7 @@ val appCharts: Provider<Map<String, File>> = deployableApps.map { projects ->
 
 tasks.register<ConfigLintTask>("configLint") {
     group = "verification"
-    description = "Lints the config/ tree (D5 §6.5 checks 1–6, 9–12; 7–8 TODO)."
+    description = "Lints the config/ tree (ADR-0014 checks 1–6, 9–12; 7–8 TODO)."
     configDir = layout.projectDirectory.dir("config")
     apps = deployableApps.map { projects -> projects.map { it.name }.toSet() }
     template = layout.projectDirectory.file("docker/docker-compose.yml")

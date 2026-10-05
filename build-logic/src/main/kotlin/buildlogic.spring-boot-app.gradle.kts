@@ -1,4 +1,4 @@
-// `buildlogic.spring-boot-app` (D1 §6.4): the three connector apps. java-conventions + the Spring Boot
+// `buildlogic.spring-boot-app` (ADR-0007): the three connector apps. java-conventions + the Spring Boot
 // plugin, a layered bootJar with a version-less name (the Dockerfile copies build/libs/<AppName>.jar), no
 // plain jar, and bootBuildInfo carrying the version and git facts into /actuator/info.
 import buildlogic.buildlogicProperty
@@ -14,7 +14,7 @@ tasks.named<Jar>("jar") { enabled = false }
 tasks.named<BootJar>("bootJar") {
     archiveFileName = "${project.name}.jar"
     // Layered (default in Boot 4.1, stated for the reader) with the tools jarmode included, so that the
-    // Dockerfile can run `java -Djarmode=tools -jar app.jar extract --layers --launcher` (D3 §6.11).
+    // Dockerfile can run `java -Djarmode=tools -jar app.jar extract --layers --launcher` (ADR-0009).
     layered { enabled = true }
     includeTools = true
 }

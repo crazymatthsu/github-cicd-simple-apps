@@ -1,23 +1,23 @@
-# Deploy-dev inventory of us-dev/cash (D5 §6.6, D9 §6.4–§6.5): one file per flow, owned with the flow directory
+# Deploy-dev inventory of us-dev/cash (ADR-0027): one file per flow, owned with the flow directory
 # (CODEOWNERS on config/<env>/<flow>/**); one target per instance directory of the flow, checked by configLint
 # (check 11). A target's instance is <AppName>/<AppInstance>, relative to this flow; kind, cluster, namespace,
 # host and user come from the target, else from defaults.
-#   pool     the bare-metal boxes of us-dev/cash (DL-39): every box receives the flow's host bundle (the compose
+#   pool     the bare-metal boxes of us-dev/cash (ADR-0028): every box receives the flow's host bundle (the compose
 #            runtime plus every app, instance and layer of the flow) as one version directory per deploy under
-#            /apps/<user>/versions/<project>/ with `current` a symlink to the live one (DL-41, DL-46; the project
+#            /apps/<user>/versions/<project>/ with `current` a symlink to the live one (ADR-0018; the project
 #            is platform.yml's), so any instance of the flow can run on any box and a rollback points `current`
-#            back. `user` is the SSH user of DL-35 (forced command run-compose.sh) and names the root /apps/<user>;
+#            back. `user` is the SSH deploy user (forced command run-compose.sh, ADR-0018) and names the root /apps/<user>;
 #            `keep` is how many versions a box keeps. scripts/pool-deploy.sh syncs, deploys and rolls back;
 #            deploy-dev's runner plays every box (transport local) until the boxes exist and the Environment us-dev
 #            holds DEV_DEPLOY_SSH_KEY with config/us-dev/known_hosts.
-#   compose  demo step 1: run-compose.sh pull / start / health on a box of the pool. `host` pins the box; when
+#   compose  ADR-0028: run-compose.sh pull / start / health on a box of the pool. `host` pins the box; when
 #            absent, the deploy resolves it (pinned → discovered → assigned) and records the box in the run's
-#            GitHub Deployment (DL-40) — nothing is written back; a PR that sets or changes `host` moves the instance.
+#            GitHub Deployment (ADR-0027) — nothing is written back; a PR that sets or changes `host` moves the instance.
 #            Without a pool, a compose target needs its own `host`.
-#   helm     demo step 2: helm upgrade --install into `cluster`, namespace `namespace` (default: the flow name,
-#            DL-38; "{flow}" stands for it). cluster kind-ci = a throwaway kind cluster inside the deploy-dev job
-#            until a dev cluster exists (DL-32); any other cluster needs its kubeconfig from the Environment us-dev
-#            secrets (Phase 3) and fails the deploy until then.
+#   helm     ADR-0019: helm upgrade --install into `cluster`, namespace `namespace` (default: the flow name,
+#            ADR-0027; "{flow}" stands for it). cluster kind-ci = a throwaway kind cluster inside the deploy-dev job
+#            until a dev cluster exists (ADR-0019); any other cluster needs its kubeconfig from the Environment us-dev
+#            secrets (left to the EKS design, ADR-0019) and fails the deploy until then.
 # Layout: yq v4's own (one space before a trailing comment), so a yq edit changes one line.
 env: us-dev
 flow: cash
@@ -25,14 +25,14 @@ pool: # optional: the bare-metal boxes of us-dev/cash
   hosts: # non-empty, unique, lower-case DNS names (or IPv4)
     - dev-cash-01.us-dev.example.com
     - dev-cash-02.us-dev.example.com
-  user: deploy # default deploy (DL-35 forced command): the versions live under /apps/deploy/versions/<project>/ (DL-46)
-  keep: 5 # default 5: version directories kept per box, never fewer than current and the one before it (DL-41)
+  user: deploy # default deploy (the forced-command user): the versions live under /apps/deploy/versions/<project>/ (ADR-0018)
+  keep: 5 # default 5: version directories kept per box, never fewer than current and the one before it (ADR-0018)
 defaults:
   kind: helm
   cluster: kind-ci
   namespace: cash # default: the flow name; the literal "{flow}" is still accepted
 targets:
   - instance: source-database/trades-db-to-amps # <AppName>/<AppInstance>, relative to this flow
-    kind: compose # any box of the pool; `host` pins it (DL-39)
+    kind: compose # any box of the pool; `host` pins it (ADR-0028)
     host: dev-cash-01.us-dev.example.com
   - instance: source-database/positions-db-to-deephaven # inherits the helm defaults

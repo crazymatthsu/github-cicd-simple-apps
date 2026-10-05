@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Affected-subproject detection for CI (D7 §5.4, §6.3; D1 §6.9).
+"""Affected-subproject detection for CI (ADR-0022).
 
 Maps the paths changed between two commits onto Gradle projects with .github/affected-map.yml and
 prints what the PR workflow must build and test. Standard library only; the YAML map is converted

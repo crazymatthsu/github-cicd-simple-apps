@@ -1,12 +1,12 @@
-// Root project: aggregate tasks only (D1 §6.2). Conventions live in build-logic/ (D1 §6.4), never here.
+// Root project: aggregate tasks only (ADR-0007). Conventions live in build-logic/, never here.
 //
 //   ./gradlew build                 compile, unit tests, coverage floor, bootJar (no ITs, no images)
-//   ./gradlew configLint            lint the config/ tree (D5 §6.5)
-//   ./gradlew -q printVersion       project.version from git (D4 §6.1)
-//   ./gradlew buildImages           buildImage of every app (D3)
-//   ./gradlew pushImages            pushImage of the same, tags from D4 §6.2 (never a local build)
-//   ./gradlew integrationTest       every app's compose lifecycle + ITs, one stack at a time (D8)
-//   ./gradlew devUp / devDown       the local dependency stack (D6 §6.12)
+//   ./gradlew configLint            lint the config/ tree (ADR-0014)
+//   ./gradlew -q printVersion       project.version from git (ADR-0008)
+//   ./gradlew buildImages           buildImage of every app (ADR-0009)
+//   ./gradlew pushImages            pushImage of the same, tags from ADR-0010 (never a local build)
+//   ./gradlew integrationTest       every app's compose lifecycle + ITs, one stack at a time (ADR-0025)
+//   ./gradlew devUp / devDown       the local dependency stack (ADR-0025)
 plugins {
     base
     id("buildlogic.config-lint")
@@ -23,7 +23,7 @@ tasks.register("buildImages") {
 
 tasks.register("pushImages") {
     group = "container image"
-    description = "Pushes every image with the tags of this build (D4 §6.2)."
+    description = "Pushes every image with the tags of this build (ADR-0010)."
     dependsOn(subprojectTasks("pushImage"))
 }
 
@@ -47,7 +47,7 @@ tasks.register("devDown") {
 
 tasks.register("printVersion") {
     group = "help"
-    description = "Prints project.version derived from git (D4 §6.1): the repository's one release line."
+    description = "Prints project.version derived from git (ADR-0008): the repository's one release line."
     val value = version.toString() // a local copy: the action must not capture the script (configuration cache)
     inputs.property("version", value)
     doLast { println(value) }

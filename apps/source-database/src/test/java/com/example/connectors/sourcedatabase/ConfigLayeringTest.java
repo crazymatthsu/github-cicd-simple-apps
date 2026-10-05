@@ -25,9 +25,9 @@ import com.example.connectors.framework.SecretMasker;
 import static org.assertj.core.api.Assertions.assertThat;
 
 /**
- * The rendered-config test of D5 §8 (R2): the jar's import list, pointed at a temporary tree instead of
+ * The rendered-config test of ADR-0011: the jar's import list, pointed at a temporary tree instead of
  * /config and /secrets, applies jar defaults < flow (the cluster layer) < app < instance < secrets. Each layer is one
- * file of the config tree (application.<layer>.yml, R-0008) mounted at /config/<flow|common|instance>/application.yml.
+ * file of the config tree (application.<layer>.yml, ADR-0011) mounted at /config/<flow|common|instance>/application.yml.
  */
 class ConfigLayeringTest {
 

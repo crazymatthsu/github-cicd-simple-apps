@@ -1,4 +1,4 @@
-# test-infra/compose/kafka.yml: single-node Apache Kafka in KRaft mode (D8 §5.3, §6.4).
+# test-infra/compose/kafka.yml: single-node Apache Kafka in KRaft mode (ADR-0025).
 #
 # Two client listeners, following the apache/kafka image's own single-node example:
 #   PLAINTEXT      kafka:9092      for containers on the stack network (connector, it-runner)
@@ -43,7 +43,7 @@ services:
       - kafka-secrets:/etc/kafka/secrets
       - kafka-config:/mnt/shared/config
     healthcheck:
-      # A broker API probe (D8 §6.4). The tool starts its own JVM, so its heap is kept small.
+      # A broker API probe (ADR-0025). The tool starts its own JVM, so its heap is kept small.
       test: ["CMD-SHELL", "KAFKA_HEAP_OPTS=-Xmx128m /opt/kafka/bin/kafka-broker-api-versions.sh --bootstrap-server localhost:9092 > /dev/null 2>&1"]
       start_period: 15s
       interval: 5s

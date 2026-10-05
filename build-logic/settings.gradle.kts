@@ -1,4 +1,4 @@
-// Included build holding the convention plugins (D1 §4.4, §6.4). Same repository switch as the root build:
+// Included build holding the convention plugins (ADR-0007). Same repository switch as the root build:
 // public repositories unless ARTIFACTORY_URL points at the JFrog virtual repositories. Credentials only ever
 // come from the environment (ARTIFACTORY_USER / ARTIFACTORY_TOKEN).
 

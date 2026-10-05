@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# test-infra/compose/stack.sh: lifecycle of the test-infra compose stacks (D10 §6.2; D8 §4.2, §6.2).
+# test-infra/compose/stack.sh: lifecycle of the test-infra compose stacks (ADR-0025).
 #
 # One script, two callers: the integration-test workflow steps and Gradle's composeUp / composeDown /
 # devUp / devDown Exec tasks, so a laptop and a runner execute the same commands. Portable to bash 3.2
@@ -14,7 +14,7 @@ Commands
   up --project <gradle path> [--local]
       Start the dependency stacks that stacks.yml declares for the project (base.yml, <stack>.yml...,
       it-runner.yml), plus the shared docker/docker-compose.yml and the app's overrides when APP_IMAGE is set
-      (R-0008): pull --quiet,
+      (ADR-0025): pull --quiet,
       up --wait --wait-timeout 180, apply the SQL Server seed, then start the app under test.
       Exports COMPOSE_FILE, COMPOSE_PROJECT_NAME, COMPOSE_ENV_FILES and the IT_* values to
       $GITHUB_ENV in CI and records them in test-infra/compose/.state/<project>.env.
@@ -160,7 +160,7 @@ init_run_identity() {
 
 in_ci() { [[ $CI_RUN_ID != local ]]; }
 
-# D10 §6.1: ci-<run_id>-<attempt> in CI, local-<AppName> on a laptop; COMPOSE_PROJECT_NAME wins.
+# ADR-0024: ci-<run_id>-<attempt> in CI, local-<AppName> on a laptop; COMPOSE_PROJECT_NAME wins.
 project_name_for() {
   if [[ -n ${COMPOSE_PROJECT_NAME:-} ]]; then
     printf '%s' "$COMPOSE_PROJECT_NAME"
@@ -269,7 +269,7 @@ short_sha() {
 }
 
 # The AppInstance the project's test cases run against (manifest key `instance`), when they agree.
-# The instance directories of config/<env>/<flow>/<app>, one per line (the app's own layers are files, R-0008).
+# The instance directories of config/<env>/<flow>/<app>, one per line (the app's own layers are files, ADR-0011).
 instance_dirs() {
   local d name
   for d in "$1"/*/; do
@@ -296,7 +296,7 @@ manifest_instance() {
 }
 
 # Interpolation values for the app's compose files when it joins the stack, mirroring what run-compose.sh exports
-# (D6 §6.2, R-0008): identity, the Spring layer files, the combined env, the image under test. APP_OVERRIDES: the
+# (ADR-0012): identity, the Spring layer files, the combined env, the image under test. APP_OVERRIDES: the
 # instance's config-tree compose overrides that exist (the shared template and the app's override come from cmd_up).
 prepare_app() {
   local app=$1 base config_root=${CONFIG_ROOT:-$REPO_ROOT/config} file
@@ -304,7 +304,7 @@ prepare_app() {
   if [[ -d $config_root ]]; then config_root=$(cd "$config_root" && pwd -P); fi
   export APP_NAME=${APP_NAME:-$app} APP_ENV=${APP_ENV:-local} APP_FLOW=${APP_FLOW:-cash}
   base=$config_root/$APP_ENV/$APP_FLOW/$APP_NAME
-  # The instance whose config the app under test runs with (D8 §5.1): APP_INSTANCE, else the instance the
+  # The instance whose config the app under test runs with (ADR-0025): APP_INSTANCE, else the instance the
   # app's test-case manifest names, else the app's only instance directory under config/<env>/<flow>/<app>
   # (the hello-world apps have no test case yet). The app template requires it (${APP_INSTANCE:?}), so a
   # missing instance fails here, with the remedy, rather than as a compose interpolation error.
@@ -315,7 +315,7 @@ prepare_app() {
     local candidates
     candidates=$(instance_dirs "$base")
     case $(wc -w <<<"$candidates") in
-      0) usage_error "up: no instance for $app: $(rel "$base") has no instance directory. Add one (D5), set APP_INSTANCE, or add a test-infra/testdata/$app/<case>/manifest.yml that names one" ;;
+      0) usage_error "up: no instance for $app: $(rel "$base") has no instance directory. Add one (ADR-0011), set APP_INSTANCE, or add a test-infra/testdata/$app/<case>/manifest.yml that names one" ;;
       1) APP_INSTANCE=$candidates ;;
       *) usage_error "up: $app has several instances under $(rel "$base") ($(printf '%s' "$candidates" | tr '\n' ' ')); set APP_INSTANCE or add a test-infra/testdata/$app/<case>/manifest.yml that names one" ;;
     esac
@@ -382,21 +382,21 @@ write_local_ports() {
   if [[ $(wc -l <"$out") -le 1 ]]; then printf 'services: {}\n' >"$out"; fi
 }
 
-# D10 §5.6: nothing publishes a port in CI. The app template publishes its actuator on 127.0.0.1; this
+# ADR-0024: nothing publishes a port in CI. The app template publishes its actuator on 127.0.0.1; this
 # override, merged after it, empties that list (compose `!reset`, Docker Compose 2.24+), so the template
 # stays as it is. Tests reach the app as <AppName>:8080 on the stack network (the alias of the service `app`).
 write_app_no_ports() {
   local out=$1 service=$2
   (
     umask 077
-    printf '# Written by stack.sh up in CI: the app under test publishes no port (D10 §5.6).\n' >"$out"
+    printf '# Written by stack.sh up in CI: the app under test publishes no port (ADR-0024).\n' >"$out"
     printf 'services:\n  %s:\n    ports: !reset []\n' "$service" >>"$out"
   )
 }
 
 # --- labels, prune, leftovers ------------------------------------------------------------------------
 
-# Filters that identify what this run created (D10 §6.4). In CI: the run label, which also covers
+# Filters that identify what this run created (ADR-0024). In CI: the run label, which also covers
 # run-compose.sh stacks of the same run, plus the project label. On a laptop every stack shares the
 # run label "local", so only the project label is used; without a project, all local stacks.
 label_filters() {
@@ -480,8 +480,8 @@ cmd_up() {
     local re='^[^/@[:space:]]+(/[^/@[:space:]]+)+(:[A-Za-z0-9_][A-Za-z0-9_.-]*)?(@sha256:[0-9a-f]{64})?$'
     [[ $APP_IMAGE =~ $re && ( ${APP_IMAGE##*/} == *:* || $APP_IMAGE == *@* ) ]] \
       || usage_error "up: APP_IMAGE '$APP_IMAGE' must be <registry>/<path>/<AppName>:<tag>, <...>@sha256:<digest>, or both"
-    # The shared compose template (D8 §6.2, R-0008), then the app's own override when it has one: apps/<AppName>/
-    # (D12 §6.2), else the directory of the Gradle path (a monorepo nesting its apps, e.g. deephaven-connectors/<AppName>/).
+    # The shared compose template (ADR-0012), then the app's own override when it has one: apps/<AppName>/
+    # (ADR-0006), else the directory of the Gradle path (a monorepo nesting its apps, e.g. deephaven-connectors/<AppName>/).
     app_file=$REPO_ROOT/docker/docker-compose.yml
     [[ -f $app_file ]] || usage_error "up: APP_IMAGE is set but docker/docker-compose.yml (the shared compose template) is missing"
     for candidate in "$REPO_ROOT/apps/$app" "$REPO_ROOT/$project_dir"; do
@@ -496,7 +496,7 @@ cmd_up() {
   validate_project_name
   STATE_FILE=$(state_file_for "$COMPOSE_PROJECT_NAME")
 
-  # Test-only settings (D2 §6.4, D10 §5.3, §6.3).
+  # Test-only settings (ADR-0013, ADR-0025).
   if [[ -z ${IT_SA_PASSWORD:-} ]]; then
     IT_SA_PASSWORD=$(previous_value IT_SA_PASSWORD)
     [[ -n $IT_SA_PASSWORD ]] || IT_SA_PASSWORD=$(generate_password)

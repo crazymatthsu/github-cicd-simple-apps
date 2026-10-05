@@ -10,7 +10,7 @@ import java.io.Serializable
 import java.time.OffsetDateTime
 
 /**
- * Version computation from git (D1 §6.10, D4 §6.1, §6.2). The pure scheme ([VersionScheme]) is kept apart
+ * Version computation from git (ADR-0008). The pure scheme ([VersionScheme]) is kept apart
  * from the git reader ([GitReader]) so that it is unit-tested without a repository.
  *
  * | Situation                          | project.version                  | image tags (first = primary)       |
@@ -30,8 +30,8 @@ enum class Bump { MAJOR, MINOR, PATCH }
 
 /**
  * A version line: the projects released together from one tag series. This repository is one release line
- * (D12 §6.1, one project per repository), the family: tags `v1.2.3`, every Gradle project. An independent
- * line inside the same repository (the demo monorepo's deephaven-server, tags `deephaven-server/v1.2.3`)
+ * (ADR-0002, one project per repository), the family: tags `v1.2.3`, every Gradle project. An independent
+ * line inside the same repository (for example a deephaven-server project, tags `deephaven-server/v1.2.3`)
  * would be a second entry with its own tag prefix and the path filter of its commits.
  */
 enum class VersionLine(val id: String, val tagPrefix: String, val pathFilter: String?) {
@@ -141,7 +141,7 @@ object VersionScheme {
         return VersionResult(version, kind, imageTags(kind, version, facts.sha7, ci.prNumber))
     }
 
-    /** D4 §6.2: one immutable tag pair per commit; convenience tags only where the scheme allows them. */
+    /** ADR-0010: one immutable tag pair per commit; convenience tags only where the scheme allows them. */
     fun imageTags(kind: VersionKind, version: String, sha7: String, prNumber: String?): List<String> = when (kind) {
         VersionKind.RELEASE -> listOf(version, "sha-$sha7")
         VersionKind.MAIN -> listOf(version, "sha-$sha7", "main")
@@ -249,7 +249,7 @@ class ApplyProjectVersion(private val info: VersionInfo) : IsolatedAction<Projec
 object GitVersionSettings {
     fun apply(settings: Settings) {
         val providers = settings.providers
-        // -Pversion=<v> overrides every line (experiments only; never used by workflows, D1 §6.10).
+        // -Pversion=<v> overrides every line (experiments only; never used by workflows, ADR-0008).
         val override = providers.gradleProperty("version").orNull?.takeIf { it.isNotBlank() && it != "unspecified" }
         val ci = CiContext.from { name -> providers.environmentVariable(name).orNull }
         val git = GitReader(providers, settings.rootDir)

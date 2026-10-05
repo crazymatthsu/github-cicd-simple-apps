@@ -1,14 +1,14 @@
-// `buildlogic.docker-image` (D1 §6.4, D3 §6.4–§6.7, D4 §6.2): buildImage, pushImage, printImageRef.
+// `buildlogic.docker-image` (ADR-0007, ADR-0009, ADR-0010): buildImage, pushImage, printImageRef.
 //
 //   ./gradlew :source-database:buildImage      # docker buildx / podman build
 //   ./gradlew -q :source-database:printImageRef
 //
-// ONE shared Dockerfile for every app (R-0007): the build context staged under build/docker/ holds exactly
+// ONE shared Dockerfile for every app (ADR-0009): the build context staged under build/docker/ holds exactly
 // `Dockerfile` (docker/spring-boot.Dockerfile of the root), `entrypoint.sh` (docker/entrypoint.sh) and
 // `application.jar` (bootJar), so the Dockerfile is generic and an app carries no image files of its own. A
 // module-local docker/Dockerfile is a documented override, not the norm: when it exists it wins. By hand:
 // `./gradlew :<AppName>:stageDockerContext`, then `docker buildx build build/docker` from the subproject.
-// Tags come from buildlogic.git-version (D4 §6.2); labels and build args from project.version and git (D3 §6.5).
+// Tags come from buildlogic.git-version (ADR-0010); labels and build args from project.version and git (ADR-0009).
 //
 // Properties: -Pimage.registry (env IMAGE_REGISTRY, default ghcr.io/crazymatthsu), -Pimage.tags=a,b,
 // -Pimage.engine=auto|docker|podman (env CONTAINER_ENGINE), -Pimage.requireEngine=true (default when CI=true),
@@ -36,8 +36,8 @@ image.registry.convention(
         .orElse(providers.environmentVariable("IMAGE_REGISTRY"))
         .orElse("ghcr.io/crazymatthsu"),
 )
-// Images are <registry>/<project>/<AppName> (D12 §6.7): the project is the release line — the parent Gradle
-// path when an app is nested (the demo monorepo's :deephaven-connectors:source-kafka -> "deephaven-connectors"),
+// Images are <registry>/<project>/<AppName> (ADR-0010): the project is the release line — the parent Gradle
+// path when an app is nested (:deephaven-connectors:source-kafka -> "deephaven-connectors"),
 // else the root project, i.e. the repository (:source-kafka -> "github-cicd-simple-apps", platform.yml).
 image.group.convention(path.removePrefix(":").split(':').dropLast(1).joinToString("/").ifEmpty { rootProject.name })
 image.imageName.convention(name)

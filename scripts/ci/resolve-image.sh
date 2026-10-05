@@ -3,7 +3,7 @@
 #
 # Usage: resolve-image.sh <image-ref>
 #   <image-ref>  repo:tag, repo@sha256:..., or repo:tag@sha256:...
-# Prints the digest-pinned reference (D4 §6.2: digests, not tags, flow between CI jobs).
+# Prints the digest-pinned reference (ADR-0010: digests, not tags, flow between CI jobs).
 # Exit codes: 0 resolved · 1 image missing or not accessible · 2 usage.
 #
 # Order of methods: registry query through `docker buildx imagetools inspect` (no pull; works for

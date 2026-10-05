@@ -1,4 +1,4 @@
-# Layer 5 — instance trades-db-to-amps: trades from its SQL Server into AMPS (D5 §6.3).
+# Layer 4 — instance trades-db-to-amps: trades from its SQL Server into AMPS (ADR-0011).
 connector:
   source:
     host: sql-trades.us-dev.example.com

@@ -1,4 +1,4 @@
-// Root settings (D1 §6.1, §6.7, §6.10).
+// Root settings (ADR-0006, ADR-0007, ADR-0008).
 //
 // Repositories: public repositories when ARTIFACTORY_URL is unset (the demo on GitHub-hosted runners),
 // the JFrog virtual repositories when it is set (the enterprise). Credentials only ever come from the
@@ -27,7 +27,7 @@ pluginManagement {
 }
 
 plugins {
-    // Computes project.version from git for every project (D4 §6.1); -Pversion=... overrides it.
+    // Computes project.version from git for every project (ADR-0008); -Pversion=... overrides it.
     id("buildlogic.git-version")
 }
 
@@ -53,11 +53,11 @@ dependencyResolutionManagement {
 
 rootProject.name = "github-cicd-simple-apps"
 
-// Repository layout of D12 §6.2 (DL-42, DL-43): every directory under apps/ (the deployable apps) and framework/
+// Repository layout of ADR-0006: every directory under apps/ (the deployable apps) and framework/
 // (the shared code the apps are built on: built and published, never deployed) that holds a build.gradle.kts is a
 // top-level Gradle project.
-// Directory name == Gradle project name == image name == AppName (D1 §6.1); the release line — the <project>
-// of the image path <registry>/<project>/<AppName> — is the repository itself (platform.yml, D12 §6.6).
+// Directory name == Gradle project name == image name == AppName (ADR-0006); the release line — the <project>
+// of the image path <registry>/<project>/<AppName> — is the repository itself (platform.yml, ADR-0002).
 // Adding an app is a directory under apps/, never an edit here.
 listOf("apps", "framework").forEach { dir ->
     rootDir.resolve(dir).listFiles { file -> file.isDirectory && file.resolve("build.gradle.kts").isFile }

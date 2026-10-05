@@ -1,13 +1,13 @@
-# Pull-request pipeline (D7 §5.1, §5.3, §5.4, §6.1; D10 §5.2).
+# Pull-request pipeline (ADR-0022).
 #
 #   push to a branch            fast tier: affected build + unit tests + lint + config-lint (no images, no containers)
 #   pull_request / merge_group  fast tier + images pr-<n>-<sha7> + component ITs of the affected projects
 #                               (all projects when shared code changed, on the merge queue, or with label ci:full)
-#                               + kind-deploy (demo step 2: Helm releases of us-dev/*/source-database in a
+#                               + kind-deploy (ADR-0019: Helm releases of us-dev/*/source-database in a
 #                               throwaway kind cluster) when detect-affected reports deploy-test and the
 #                               source-database image was pushed
 #   docs-only changes           everything skipped; pr-gate passes with a docs-only summary
-# `pr-gate` fans everything in and is the ONLY required status check on `main` (D7 §5.6).
+# `pr-gate` fans everything in and is the ONLY required status check on `main` (ADR-0022).
 name: pr
 
 on:
@@ -48,7 +48,7 @@ jobs:
         with:
           base-ref: ${{ github.event.pull_request.base.sha || github.event.merge_group.base_sha || '' }}
           head-ref: ${{ github.event.pull_request.head.sha || github.event.merge_group.head_sha || github.sha }}
-          # The merge queue proves the actual merge result with every component IT (D7 §4.6).
+          # The merge queue proves the actual merge result with every component IT (ADR-0022).
           force-full: ${{ github.event_name == 'merge_group' || contains(github.event.pull_request.labels.*.name, 'ci:full') }}
           force-full-reason: ${{ github.event_name == 'merge_group' && 'merge queue' || 'label ci:full' }}
 
@@ -84,7 +84,7 @@ jobs:
           shellcheck --severity=warning "${files[@]}"
 
       # Plain-bash tests of the scripts (stub ssh / rsync / docker; no host, registry or engine is reached):
-      # scripts/test/pool-deploy-test.sh covers the host pools of DL-39.
+      # scripts/test/pool-deploy-test.sh covers the host pools of ADR-0028.
       - name: Script tests
         run: |
           set -euo pipefail
@@ -106,7 +106,7 @@ jobs:
       packages: write
     with:
       projects: ${{ needs.detect-affected.outputs.projects }}
-      # Plain branch pushes stay in the container-free fast tier (D7 §5.3).
+      # Plain branch pushes stay in the container-free fast tier (ADR-0022).
       build-images: ${{ github.event_name != 'push' }}
       # Fork PRs get a read-only token: they build images but cannot push them, so their ITs are skipped.
       push-images: ${{ github.event_name == 'merge_group' || (github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name == github.repository) }}
@@ -141,7 +141,7 @@ jobs:
       retention-days: 7
 
   kind-deploy:
-    # Demo step 2 (D10 §5.9, D11 §6.4): one Helm release per us-dev instance of source-database in a kind
+    # Kind deployment test (ADR-0019, ADR-0022): one Helm release per us-dev instance of source-database in a kind
     # cluster, readiness, helm test, smoke diff, cluster deleted. Needs the source-database image this run
     # pushed (same-repo PRs and the merge queue); a config-only change builds no image, so there the
     # per-instance helm lint / template of config-lint is the PR check and main.yml's kind-deploy runs
@@ -210,7 +210,7 @@ jobs:
               echo "- **component ITs skipped**: fork PR without registry write access" >> "$GITHUB_STEP_SUMMARY"
             fi
           fi
-          # kind-deploy (demo step 2) is skipped when no source-database image was pushed in this run.
+          # kind-deploy (ADR-0022) is skipped when no source-database image was pushed in this run.
           if [[ $DOCS_ONLY != true && ($EVENT == pull_request || $EVENT == merge_group) && $DEPLOY_TEST == true &&
                 $KIND_RESULT == skipped && ($BUILD_RESULT == success || $BUILD_RESULT == skipped) ]]; then
             if [[ $EVENT == merge_group ]]; then

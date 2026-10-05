@@ -1,4 +1,4 @@
-# test-infra/compose/sqlserver.yml: SQL Server for the source-database stacks (D8 §5.3, §6.4; D3 §6.10).
+# test-infra/compose/sqlserver.yml: SQL Server for the source-database stacks (ADR-0025).
 #
 # Developer edition, test-only: the EULA is accepted here and nowhere else. The image is amd64 only,
 # about 2 GB, and needs 30-60 s to start, so it is pre-pulled (stack.sh pull) and its health check gates
@@ -13,12 +13,12 @@ services:
     platform: linux/amd64
     environment:
       ACCEPT_EULA: "Y"
-      # Generated per run by stack.sh (D2 §6.4). The same value reaches the app and the tests as
+      # Generated per run by stack.sh (ADR-0013). The same value reaches the app and the tests as
       # SPRING_DATASOURCE_PASSWORD and is never stored in git.
       MSSQL_SA_PASSWORD: ${IT_SA_PASSWORD:?IT_SA_PASSWORD is not set - test-infra/compose/stack.sh up generates one}
       MSSQL_PID: Developer
       # SQL Server refuses to start with less than about 2000 MB visible. mem_limit leaves headroom above
-      # the engine's own limit so the container is not OOM-killed (D10 §6.8, measure and adjust).
+      # the engine's own limit so the container is not OOM-killed (measure and adjust).
       MSSQL_MEMORY_LIMIT_MB: ${MSSQL_MEMORY_LIMIT_MB:-2048}
     mem_limit: ${MSSQL_MEM_LIMIT:-2560m}
     volumes:

@@ -1,4 +1,4 @@
-# Layer 5 — Reuters FX rates from AMPS into Deephaven (connector.source.table is the AMPS topic).
+# Layer 4 — Reuters FX rates from AMPS into Deephaven (connector.source.table is the AMPS topic).
 connector:
   source:
     table: reuters.fx

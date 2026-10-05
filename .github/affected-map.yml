@@ -1,4 +1,4 @@
-# Affected-subproject detection map (D7 §5.4, §6.3; D1 §6.9; D12 §6.2).
+# Affected-subproject detection map (ADR-0022).
 #
 # Read by .github/actions/affected-matrix through scripts/ci/affected.py; run the script locally to see
 # what CI will build and test for your branch:  python3 scripts/ci/affected.py --base origin/main
@@ -7,20 +7,20 @@
 # Every changed path is classified by the FIRST section that matches, in this order:
 #   docs → config → shared → paths → (no match: treated as shared, so an unmapped file can never
 #   silently skip the tests it affects). Keep this file in step with the repository tree: one `projects`
-#   entry and one `paths` glob per directory under apps/ (D12 §6.8 generates it once render-workflows exists).
+#   entry and one `paths` glob per directory under apps/ (by hand until it is derived from the build, ADR-0022).
 # `base-images` and `deploy-test` are flags instead: any matching path raises them, whatever its class.
 schema: 1
 
 # Every Gradle project CI knows: apps/<AppName> and framework/<name> are top-level projects (settings.gradle.kts).
-# `image`: has buildImage / pushImage / printImageRef (D1 §6.2).
-# `it`: has an integrationTest task, so it joins the component IT matrix (D8 §6.2).
+# `image`: has buildImage / pushImage / printImageRef (ADR-0007).
+# `it`: has an integrationTest task, so it joins the component IT matrix (ADR-0022).
 projects:
   ":connectors-framework": { image: false, it: false }
   ":source-kafka": { image: true, it: true }
   ":source-amps": { image: true, it: true }
   ":source-database": { image: true, it: true }
 
-# Nothing to build or test: when every changed path is here, the run is "docs-only" (D7 §5.4 rule 4).
+# Nothing to build or test: when every changed path is here, the run is "docs-only" (ADR-0022).
 docs:
   - "docs/**"
   - "**/*.md"
@@ -34,12 +34,12 @@ docs:
   # Claude Code skills and settings: guidance for the assistant, never part of a build or an image.
   - ".claude/**"
 
-# Config tree: config-lint only — no Gradle build, no image (D7 §5.4 rule 5, DL-06).
-# On main a config-only merge still runs the whole pipeline and deploy-dev (D9).
+# Config tree: config-lint only — no Gradle build, no image (ADR-0022).
+# On main a config-only merge still runs the whole pipeline and deploy-dev (ADR-0027).
 config:
   - "config/**"
 
-# Shared inputs: any change here means "everything" (full=true, D7 §5.4 rule 2).
+# Shared inputs: any change here means "everything" (full=true, ADR-0022).
 shared:
   - "framework/**"
   - "build-logic/**"
@@ -49,7 +49,7 @@ shared:
   - "*.gradle.kts"
   - "gradle.properties"
   - "platform.yml"
-  - "docker/**"                      # the shared spring-boot.Dockerfile and entrypoint.sh (R-0007)
+  - "docker/**"                      # the shared spring-boot.Dockerfile and entrypoint.sh (ADR-0009)
   - "**/Dockerfile"
   - "**/*.Dockerfile"
   - "**/.dockerignore"
@@ -67,11 +67,11 @@ paths:
   - glob: "apps/source-database/**"
     projects: [":source-database"]
 
-# Company base images (D3 §6.1) are built and published by the platform repository (github-demo,
-# base-image.yml); this repository only consumes ghcr.io/crazymatthsu/base/*, so no path raises the flag.
+# Company base images (ADR-0009) are built and published outside this repository; this repository only
+# consumes ghcr.io/crazymatthsu/base/*, so no path raises the flag.
 base-images: []
 
-# Kind deployment test (demo step 2, D10 §5.9): `deploy-test` is true when `full` is, or when a path
+# Kind deployment test (ADR-0019, ADR-0022): `deploy-test` is true when `full` is, or when a path
 # here changed — the charts, the config tree, the kind tier, the Helm deploy scripts and their actions,
 # or the app the test deploys. pr.yml then runs `kind-deploy` (PR and merge queue) when this run also
 # pushed the source-database image; without one (a config-only change builds nothing) config-lint's

@@ -1,5 +1,5 @@
-# Version catalog: the only place a dependency or plugin version appears (D1 §6.3).
-# Upgrades arrive as Renovate / Dependabot PRs; Spring Boot 4.x minors are tracked (DL-23).
+# Version catalog: the only place a dependency or plugin version appears (ADR-0007).
+# Upgrades arrive as Renovate / Dependabot PRs; Spring Boot 4.x minors are tracked (ADR-0007).
 # Libraries without a version are managed by the Spring Boot BOM, which the `buildlogic.java-conventions`
 # plugin applies as a platform to every JVM subproject: Spring, Jackson 3, Micrometer, JUnit Jupiter,
 # HikariCP and the SQL Server JDBC driver therefore move together with Boot.
