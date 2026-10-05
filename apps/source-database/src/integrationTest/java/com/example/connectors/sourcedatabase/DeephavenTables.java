@@ -46,8 +46,8 @@ import com.example.connectors.framework.testing.ItEnvironment.Endpoint;
 
 /**
  * The Deephaven side of an integration test through the Deephaven Java client 42.5, Flight flavour
- * ({@code io.deephaven:deephaven-java-client-flight-dagger}): an anonymous plaintext session (the CI profile, D10
- * §6.3), tables uploaded with Flight DoPut and published into the query scope, snapshots taken with Flight DoGet on
+ * ({@code io.deephaven:deephaven-java-client-flight-dagger}): an anonymous plaintext session (the CI profile),
+ * tables uploaded with Flight DoPut and published into the query scope, snapshots taken with Flight DoGet on
  * the scope ticket, and the published names removed again through the server's script console.
  */
 final class DeephavenTables implements AutoCloseable {
@@ -91,8 +91,8 @@ final class DeephavenTables implements AutoCloseable {
     }
 
     /**
-     * Opens a session, retrying for at most {@code budget} while the server is not ready (the client-level probe
-     * of D10 §5.3); a server that refuses anonymous sessions fails at once.
+     * Opens a session, retrying for at most {@code budget} while the server is not ready (the client-level probe);
+     * a server that refuses anonymous sessions fails at once.
      */
     static DeephavenTables connect(Endpoint endpoint, Duration budget) throws InterruptedException {
         ClientConfig config = ClientConfig.builder()
@@ -135,7 +135,7 @@ final class DeephavenTables implements AutoCloseable {
     }
 
     /**
-     * Polls the table until it has at least {@code expectedRows} rows or {@code timeout} has passed (D8 §6.6); the
+     * Polls the table until it has at least {@code expectedRows} rows or {@code timeout} has passed (ADR-0026); the
      * caller compares the returned snapshot once. A table that does not exist yet counts as empty.
      */
     Snapshot awaitRows(String table, int expectedRows, Duration timeout) throws Exception {
@@ -181,7 +181,7 @@ final class DeephavenTables implements AutoCloseable {
     }
 
     /**
-     * Removes every table this client published from the query scope (D10 §5.3: a class releases its tables in
+     * Removes every table this client published from the query scope (a class releases its tables in
      * {@code @AfterAll}) and releases the uploads. The server has no API call for that, so it goes through the
      * script console of whichever type the server runs.
      */

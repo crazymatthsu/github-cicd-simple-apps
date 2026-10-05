@@ -3,7 +3,7 @@ Names, labels and shared snippets. The helpers are prefixed "connector." (not th
 three connector charts stay identical apart from Chart.yaml and image.repository.
 */}}
 
-{{/* Release = Deployment = Service = ServiceAccount name: <AppName>-<AppInstance> (D11 §6.2, DL-33). */}}
+{{/* Release = Deployment = Service = ServiceAccount name: <AppName>-<AppInstance> (ADR-0003). */}}
 {{- define "connector.fullname" -}}
 {{- .Release.Name | trunc 63 | trimSuffix "-" -}}
 {{- end -}}
@@ -12,7 +12,7 @@ three connector charts stay identical apart from Chart.yaml and image.repository
 {{- printf "%s-config" (include "connector.fullname" .) -}}
 {{- end -}}
 
-{{/* The Secret mounted at /secrets/: never templated from values (D11 R4); created by the deployer or ESO. */}}
+{{/* The Secret mounted at /secrets/: never templated from values (ADR-0013); created by the deployer or ESO. */}}
 {{- define "connector.secretName" -}}
 {{- .Values.secrets.existingSecret | default (printf "%s-secrets" (include "connector.fullname" .)) -}}
 {{- end -}}
@@ -25,7 +25,7 @@ three connector charts stay identical apart from Chart.yaml and image.repository
 {{- end -}}
 {{- end -}}
 
-{{/* repository:tag, or repository@digest when image.digest pins it (DL-20, D4 §4.7). */}}
+{{/* repository:tag, or repository@digest when image.digest pins it (ADR-0010). */}}
 {{- define "connector.image" -}}
 {{- if .Values.image.digest -}}
 {{- printf "%s@%s" .Values.image.repository .Values.image.digest -}}
@@ -34,7 +34,7 @@ three connector charts stay identical apart from Chart.yaml and image.repository
 {{- end -}}
 {{- end -}}
 
-{{/* The expected identity tuple <env>/<flow>/<AppName>/<AppInstance> (D5 §6.2). */}}
+{{/* The expected identity tuple <env>/<flow>/<AppName>/<AppInstance> (ADR-0003). */}}
 {{- define "connector.tuple" -}}
 {{- with .Values.identity -}}
 {{- printf "%s/%s/%s/%s" .env .flow .app .instance -}}
@@ -51,7 +51,7 @@ app.kubernetes.io/instance: {{ .Release.Name }}
 app.kubernetes.io/component: connector
 {{- end -}}
 
-{{/* Labels every object carries besides its component (D11 §6.2, D6 §6.9). */}}
+{{/* Labels every object carries besides its component (ADR-0003). */}}
 {{- define "connector.commonLabels" -}}
 app.kubernetes.io/name: {{ .Chart.Name }}
 app.kubernetes.io/instance: {{ .Release.Name }}
@@ -112,7 +112,7 @@ readable in diffs), else a double-quoted string. Argument: (list key content).
 {{- end -}}
 {{- end -}}
 
-{{/* ConfigMap keys in mount order: [key, path] for every layer file present (D11 §6.3). */}}
+{{/* ConfigMap keys in mount order: [key, path] for every layer file present (ADR-0011). */}}
 {{- define "connector.configItems" -}}
 {{- $items := list -}}
 {{- range $layer := list "flow" "common" "instance" -}}

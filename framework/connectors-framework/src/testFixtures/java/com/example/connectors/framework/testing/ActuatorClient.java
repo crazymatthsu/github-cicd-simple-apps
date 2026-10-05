@@ -9,7 +9,7 @@ import java.time.Duration;
 import java.util.Map;
 
 /**
- * The actuator of a running connector container (D6 §6.9) as an integration test sees it: readiness polled within
+ * The actuator of a running connector container (ADR-0015) as an integration test sees it: readiness polled within
  * a bounded time, {@code /actuator/info} read once. The in-JVM equivalent is {@link AbstractConnectorApplicationTest}.
  */
 public final class ActuatorClient {

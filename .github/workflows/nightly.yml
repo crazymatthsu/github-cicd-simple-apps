@@ -1,11 +1,11 @@
-# Nightly (D7 §5.1, Figure 4; D4 §6.5; D10 §5.4). Demo step 1 subset: image retention and the
+# Nightly (ADR-0010, ADR-0024): image retention and the
 # teardown drill. (Full IT matrix, Deephaven version matrix, Podman parity, soak and scans are later.)
 #
 #   retention              GHCR sweep (scripts/ci/retention.sh). Dry run unless DRY_RUN=false
 #                          (workflow_dispatch input) or, for scheduled runs, the repository variable
 #                          RETENTION_DRY_RUN=false.
 #   teardown-drill-fail    starts the reference stack, fails a test on purpose; teardown + leak check
-#                          must still leave the runner clean (the failing-run proof of DL-27)
+#                          must still leave the runner clean (the failing-run proof of ADR-0024)
 #   teardown-drill-cancel  dispatches a second run of this workflow (drill=cancel-target) that cancels
 #                          itself once its stack is up, then checks that run's teardown and leak-check
 #                          steps succeeded (the cancelled-run proof); every PR and main run is the
@@ -43,10 +43,10 @@ permissions:
 
 env:
   IMAGE_NAMESPACE: ghcr.io/crazymatthsu
-  # The reference scenario (D8 §5.2): Deephaven + SQL Server + the connector image, i.e. containers,
+  # The reference scenario (ADR-0024): Deephaven + SQL Server + the connector image, i.e. containers,
   # named volumes and a network that could leak.
   DRILL_PROJECT: ':source-database'
-  # <registry>/<project>/<AppName> of platform.yml (D12 §6.7), at the `main` tag main.yml publishes.
+  # <registry>/<project>/<AppName> of platform.yml (ADR-0010), at the `main` tag main.yml publishes.
   DRILL_IMAGE: ghcr.io/crazymatthsu/github-cicd-simple-apps/source-database:main
 
 jobs:
@@ -58,11 +58,11 @@ jobs:
       contents: read
       packages: write
       pull-requests: read
-      deployments: read # the last successful Deployment of each dev env names the tags in use (DL-40)
+      deployments: read # the last successful Deployment of each dev env names the tags in use (ADR-0027)
     steps:
       - uses: actions/checkout@v7
 
-      - name: Sweep GHCR (D4 §6.5)
+      - name: Sweep GHCR (ADR-0010)
         env:
           # GITHUB_TOKEN deletes versions only of packages that grant this repository admin access;
           # otherwise store a token with read:packages + delete:packages as RETENTION_TOKEN.
@@ -301,7 +301,7 @@ jobs:
             fail_verdict=pass
           fi
           {
-            echo "### Teardown drill (DL-27)"
+            echo "### Teardown drill (ADR-0024)"
             echo ""
             echo "| drill | verdict | detail |"
             echo "|---|---|---|"

@@ -12,7 +12,7 @@ import java.util.List;
 import java.util.Optional;
 
 /**
- * What an integration test reads from its environment (D8 §6.2, D10 §6.6): the endpoints of the test stack, the
+ * What an integration test reads from its environment (ADR-0025): the endpoints of the test stack, the
  * table prefix and the connection budget. The test JVM is the host JVM locally (Gradle's integrationTest passes
  * {@code localhost} and the published ports) or the it-runner container in CI (service names on the compose
  * network); the defaults below are the local ones.
@@ -22,7 +22,7 @@ public final class ItEnvironment {
     /** {@code IT_TABLE_PREFIX} outside Gradle and CI (an IDE run); stack.sh and Gradle pass {@code it_<sha7>_}. */
     public static final String LOCAL_TABLE_PREFIX = "it_local_";
 
-    /** Client-level readiness budget per dependency (D10 §5.3), overridden by {@code IT_CONNECT_TIMEOUT}. */
+    /** Client-level readiness budget per dependency, overridden by {@code IT_CONNECT_TIMEOUT}. */
     public static final Duration DEFAULT_CONNECT_TIMEOUT = Duration.ofSeconds(60);
 
     private static final Duration PROBE_TIMEOUT = Duration.ofSeconds(3);
@@ -67,7 +67,7 @@ public final class ItEnvironment {
                 new Endpoint("app under test", host, port("IT_APP_PORT", 8080), "IT_APP_HOST", "IT_APP_PORT"));
     }
 
-    /** {@code IT_TABLE_PREFIX}: the run's prefix for Deephaven table names (D8 §6.6). */
+    /** {@code IT_TABLE_PREFIX}: the run's prefix for Deephaven table names (ADR-0025). */
     public static String tablePrefix() {
         return optional("IT_TABLE_PREFIX").orElse(LOCAL_TABLE_PREFIX);
     }

@@ -7,7 +7,7 @@ import java.util.Map;
 import java.util.Set;
 
 /**
- * The {@code compare:} block of a test case manifest (D8 §6.5): key columns for a set match (or
+ * The {@code compare:} block of a test case manifest (ADR-0026): key columns for a set match (or
  * {@code ordered}), ignored columns, and tolerances for timestamp and numeric columns.
  */
 public record CompareRules(

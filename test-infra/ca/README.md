@@ -1,7 +1,7 @@
 # Demo root CA
 
 `demo-root-ca.pem` is a self-signed **public** root certificate that stands in for the enterprise CA
-bundle in the demo (D3 §6.3, DL-13). The company base images in `docker/base/` import it into the OS
+bundle in the demo ([ADR-0009](../../docs/adr/0009-one-shared-image-definition.md), [ADR-0013](../../docs/adr/0013-secrets.md)). The company base images, built outside this repository, import it into the OS
 trust store and into the JVM `cacerts`, exactly as they will import the real bundle.
 
 | Property | Value |
@@ -20,25 +20,25 @@ the certificate was written. Nothing can ever be signed by this root, so trustin
 It only proves that the import mechanism works. **Never commit a private key here** (secret scanning
 and review both check for it).
 
-A consequence: no leaf certificate can be issued from this root. The TLS test service that D3 §8
-mentions, which would present a leaf signed by the demo root, is therefore not part of the demo. If
-it is wanted later, the test should create a throwaway CA for each run instead of reusing this one.
+A consequence: no leaf certificate can be issued from this root. A TLS test service, which would
+present a leaf signed by the demo root, is therefore not part of the demo. If it is wanted later, the
+test should create a throwaway CA for each run instead of reusing this one.
 
 ## Who consumes it
 
 | Consumer | How |
 |---|---|
-| `docker/base/jre21/Dockerfile` | build context = this directory; every certificate in the file is imported into `/usr/local/share/ca-certificates/` (then `update-ca-certificates`) and into `$JAVA_HOME/lib/security/cacerts` (first certificate under the alias `demo-root-ca`); verified with `keytool -list` at build time |
-| `docker/base/ci-build/Dockerfile` | the same steps, so Gradle, `curl`, `git` and the container CLIs in the build image trust it |
-| the platform's `deephaven-server` image (github-demo, `deephaven-server/docker/Dockerfile`) | imports it into the upstream Deephaven image's own JVM trust store (D3 §6.10); this repository only pins that image for its system test (`DEEPHAVEN_SERVER_IMAGE` in `test-infra/compose/versions.env`) |
+| the company `jre21` base image, built outside this repository | build context = this directory; every certificate in the file is imported into `/usr/local/share/ca-certificates/` (then `update-ca-certificates`) and into `$JAVA_HOME/lib/security/cacerts` (first certificate under the alias `demo-root-ca`); verified with `keytool -list` at build time |
+| the company `ci-build` image, built outside this repository | the same steps, so Gradle, `curl`, `git` and the container CLIs in the build image trust it |
+| the platform's `deephaven-server` image, built outside this repository | imports it into the upstream Deephaven image's own JVM trust store; this repository only pins that image for its system test (`DEEPHAVEN_SERVER_IMAGE` in `test-infra/compose/versions.env`) |
 
-## Rotation (D3 §6.3, Figure 3)
+## Rotation
 
 1. Put the new root into this file **next to** the old one: the Dockerfiles import every certificate
    in the file, so both are trusted during the overlap window.
-2. Bump `CA_BUNDLE_VERSION` (the `com.example.ca-bundle` label) in the `base-image.yml` build
-   arguments, or in the Dockerfile defaults.
-3. `base-image.yml` rebuilds `jre21` and `ci-build` with a new `<yyyymmdd>-<n>` tag. The bump PR moves
+2. Bump `CA_BUNDLE_VERSION` (the `com.example.ca-bundle` label) in the base images' build
+   arguments, outside this repository, or in their Dockerfile defaults.
+3. The base-image build rebuilds `jre21` and `ci-build` with a new `<yyyymmdd>-<n>` tag. The bump PR moves
    every app `FROM` line to it, and the apps are rebuilt and released as a patch line.
 4. Once every environment runs images labelled with the new bundle version, remove the old root and
    repeat the cycle once.
@@ -57,6 +57,6 @@ shred -u "$keydir/demo-root-ca.key" && rmdir "$keydir"
 openssl x509 -in test-infra/ca/demo-root-ca.pem -noout -subject -dates -fingerprint -sha256
 ```
 
-In the enterprise, the bundle is not kept in git. `base-image.yml` downloads
+In the enterprise, the bundle is not kept in git. The base-image build downloads
 `ca-bundle/<version>/<company>-ca-bundle.pem` from the JFrog generic repository into a directory and
-passes that directory as the build context (see `docker/base/README.md`).
+passes that directory as the build context.

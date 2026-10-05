@@ -1,8 +1,8 @@
 name: registry-login
 description: >-
-  Logs the container engine in to the image registry (D7 §6.2). Demo: GHCR with the workflow's
+  Logs the container engine in to the image registry (ADR-0021). Demo: GHCR with the workflow's
   GITHUB_TOKEN (the calling job needs `packages: read` to pull, `packages: write` to push).
-  Enterprise: JFrog Artifactory through GitHub OIDC (DL-18) — stubbed below.
+  Enterprise: JFrog Artifactory through GitHub OIDC (ADR-0021) — stubbed below.
 inputs:
   registry:
     description: Registry host (ghcr.io in the demo; artifactory.<company>.com in the enterprise).
@@ -29,13 +29,13 @@ runs:
       env:
         REGISTRY: ${{ inputs.registry }}
       run: |
-        # TODO(DL-18): enterprise path, not built in the demo. The calling job grants `id-token: write`;
+        # TODO(ADR-0021): enterprise path, not built in the demo. The calling job grants `id-token: write`;
         # this step requests the job's OIDC token (ACTIONS_ID_TOKEN_REQUEST_URL / _TOKEN, audience set by
         # the JFrog OIDC integration), exchanges it at the Artifactory token endpoint for a short-lived
         # access token scoped by the claims (repository, ref, environment) and logs in with it:
         #   jf config add --url "https://$REGISTRY" --oidc-provider-name github --oidc-audience ... ;
         #   docker login "$REGISTRY" --username <identity> --password-stdin <<<"$ACCESS_TOKEN"
-        echo "::error title=registry-login::mode 'oidc' is a stub (TODO(DL-18)); use mode 'token' for $REGISTRY"
+        echo "::error title=registry-login::mode 'oidc' is a stub (TODO(ADR-0021)); use mode 'token' for $REGISTRY"
         exit 1
     - name: Unknown mode
       if: inputs.mode != 'oidc' && inputs.mode != 'token'

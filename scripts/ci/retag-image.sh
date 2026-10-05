@@ -1,10 +1,10 @@
 #!/usr/bin/env bash
 # retag-image.sh — point tags at an existing digest inside the registry, without pulling or rebuilding
-# ("promote, never rebuild", D4 §4.5 demo stand-in for Artifactory promotion; D7 §5.7).
+# ("promote, never rebuild", ADR-0010: the demo stand-in for Artifactory promotion; ADR-0029).
 #
 # Usage: retag-image.sh <repository>[:<tag>]@sha256:<digest> <tag>...
 # For each tag: unchanged when it already points at the digest; created or moved otherwise. Version
-# tags are immutable (D4 §6.2): moving one that points elsewhere is refused (exit 3). Only the
+# tags are immutable (ADR-0010): moving one that points elsewhere is refused (exit 3). Only the
 # convenience tags `main`, `latest`, `<major>` and `<major>.<minor>` may move.
 # Every write is verified by resolving the tag again: the digest must be unchanged (exit 1 if not).
 # Output: one line per tag, "<tag>\t<unchanged|created|moved>".

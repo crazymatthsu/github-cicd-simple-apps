@@ -1,4 +1,4 @@
-# Helm values layer 2 (D11 §6.2) — source-kafka in local / cash, shared by every instance: sizing and the
+# Helm values layer 2 (ADR-0019) — source-kafka in local / cash, shared by every instance: sizing and the
 # time zone (the compose env layers say MEM_LIMIT=768m and TZ=UTC for compose). Layer 1 is the chart
 # (apps/source-kafka/helm/source-kafka/values.yaml), layer 3 <AppInstance>/_helm-values.instance.yaml.
 resources:

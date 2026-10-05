@@ -27,7 +27,7 @@ import tools.jackson.databind.DeserializationFeature;
 import tools.jackson.databind.json.JsonMapper;
 
 /**
- * Canonical JSON for expected-output comparison (D8 §5.5, §6.6): keys sorted, UTF-8, no insignificant
+ * Canonical JSON for expected-output comparison (ADR-0026): keys sorted, UTF-8, no insignificant
  * whitespace, numbers as plain decimals without exponent or trailing zeros, timestamps as ISO-8601 UTC with
  * millisecond precision, {@code null} written explicitly.
  */

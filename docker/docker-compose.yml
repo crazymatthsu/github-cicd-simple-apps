@@ -1,4 +1,4 @@
-# The ONE compose template of every app, for every env / flow / instance (D6 §6.3, §6.7, R-0008): local development,
+# The ONE compose template of every app, for every env / flow / instance (ADR-0012, ADR-0017): local development,
 # CI test stacks and the dev compose hosts — never qa or prod. It names no app: the service is `app`, reached by the
 # others as ${APP_NAME} (a network alias; compose does not interpolate mapping keys). What one app needs in every env
 # goes in apps/<AppName>/docker/docker-compose.override.yml; what one env / flow / app / instance needs, in the
@@ -8,7 +8,7 @@
 #    APP_APP_YML, INSTANCE_APP_YML, PROJECT and the SELinux mount suffixes; with DEPS_NETWORK, an override that joins
 #    that network (below).
 #  - test-infra/compose/stack.sh up (APP_IMAGE set): merges this file into the dependency stack, on the stack's
-#    default network, with the same variables (D8 §6.2, D10 §6.2).
+#    default network, with the same variables (ADR-0025).
 # Relative paths in any -f file resolve against this file's directory (docker/): overrides use variable-based paths only.
 services:
   app:
@@ -17,22 +17,22 @@ services:
     env_file:
       - ${COMPOSE_ENV_FILE:?run through run-compose.sh}
     environment:
-      # Identity from the config-tree path (overrides the combined env, whose instance layer must restate it, D5 §6.3).
+      # Identity from the config-tree path (overrides the combined env, whose instance layer must restate it, ADR-0003).
       APP_ENV: ${APP_ENV:?run through run-compose.sh}
       APP_FLOW: ${APP_FLOW:?run through run-compose.sh}
       APP_NAME: ${APP_NAME:?run through run-compose.sh}
       APP_INSTANCE: ${APP_INSTANCE:?run through run-compose.sh}
-      # Integration tests prefix their target tables (D8 §6.6); empty everywhere else.
+      # Integration tests prefix their target tables (ADR-0025); empty everywhere else.
       IT_TABLE_PREFIX: ${IT_TABLE_PREFIX:-}
     volumes:
-      # The Spring layers, one file each, read-only (D5 §6.1): the jar imports /config/{flow,common,instance}/
+      # The Spring layers, one file each, read-only (ADR-0011): the jar imports /config/{flow,common,instance}/
       # application.yml. Only application.<layer>.yml is mounted, never a directory of the config tree. The
       # optional flow layer mounts /dev/null (an empty file) when it does not exist. Shared layers get :z and the
-      # instance :Z on SELinux hosts (run-compose.sh sets the suffixes when getenforce reports Enforcing, D6 §6.6).
+      # instance :Z on SELinux hosts (run-compose.sh sets the suffixes when getenforce reports Enforcing, ADR-0017).
       - ${FLOW_APP_YML:-/dev/null}:/config/flow/application.yml:ro${SELINUX_LABEL_SHARED:-}
       - ${APP_APP_YML:?run through run-compose.sh}:/config/common/application.yml:ro${SELINUX_LABEL_SHARED:-}
       - ${INSTANCE_APP_YML:?run through run-compose.sh}:/config/instance/application.yml:ro${SELINUX_LABEL_PRIVATE:-}
-      # Optional file appenders only; stdout is the log channel (D6 §6.9). LOGS_DIR binds a host path.
+      # Optional file appenders only; stdout is the log channel (ADR-0016). LOGS_DIR binds a host path.
       - ${LOGS_DIR:-logs}:/app/logs
     read_only: true
     tmpfs:
@@ -50,7 +50,7 @@ services:
       retries: 3
       start_period: 120s
     ports:
-      # The actuator only, on localhost only (D5 §6.3, D6 §6.6).
+      # The actuator only, on localhost only (ADR-0012, ADR-0017).
       - "127.0.0.1:${ACTUATOR_HOST_PORT:?ACTUATOR_HOST_PORT is set in _docker-compose.instance.env}:8080"
     networks:
       default:

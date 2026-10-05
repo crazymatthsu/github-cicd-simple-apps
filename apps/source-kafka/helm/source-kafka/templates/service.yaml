@@ -1,4 +1,4 @@
-{{- /* ClusterIP for the actuator port only (health, metrics); connectors have no ingress (D11 §6.1). */}}
+{{- /* ClusterIP for the actuator port only (health, metrics); connectors have no ingress (ADR-0015). */}}
 apiVersion: v1
 kind: Service
 metadata:

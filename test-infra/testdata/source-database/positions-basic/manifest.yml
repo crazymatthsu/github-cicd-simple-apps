@@ -1,10 +1,10 @@
-# The reference case of source-database (D8 §5.2, §6.5): SQL Server -> connector image -> Deephaven.
+# The reference case of source-database (ADR-0026): SQL Server -> connector image -> Deephaven.
 case: positions-basic
 connector: source-database
 # config/local/cash/source-database/<instance>. stack.sh also uses it as the default APP_INSTANCE when
 # it starts the app under test.
 instance: positions-db-to-deephaven
-# Major == the connector family's major (lockstep, DL-03). The family is still 0.x.
+# Major == the connector family's major (lockstep, ADR-0026). The family is still 0.x.
 datasetVersion: 0.1.0
 input:
   # The database the input files run in. test-infra/seed/sqlserver/00-databases.sql creates it.
@@ -13,8 +13,8 @@ input:
   seed: [input/positions.sql]
 expected:
   target: deephaven                # deephaven | amps | stub
-  table: positions                 # the harness prepends the run prefix IT_TABLE_PREFIX (D8 §6.6)
-  file: expected/positions.jsonl   # canonical JSON lines (D8 §5.5), without the ignored columns
+  table: positions                 # the harness prepends the run prefix IT_TABLE_PREFIX (ADR-0025)
+  file: expected/positions.jsonl   # canonical JSON lines (ADR-0026), without the ignored columns
 compare:
   keyColumns: [account, instrument]
   ordered: false

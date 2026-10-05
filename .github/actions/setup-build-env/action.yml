@@ -1,10 +1,10 @@
 name: setup-build-env
 description: >-
-  Shared build environment (D7 §6.2, D10 §6.7): Temurin 21 only when the job does not run in the
+  Shared build environment (ADR-0021): Temurin 21 only when the job does not run in the
   ci-build image, Gradle wrapper validation and Gradle user-home cache, an optional CA bundle, and the
-  company base images (D3 §6.1). A base image is taken from GHCR (digest-pinned) when published and
+  company base images (ADR-0009). A base image is taken from GHCR (digest-pinned) when published and
   otherwise built locally from docker/base/<name>/Dockerfile with a GitHub Actions layer cache, so the
-  very first run on a new repository succeeds before base-image.yml has published anything.
+  very first run on a new repository succeeds before the base images are published (outside this repository).
   Exports BASE_IMAGE (jre21) and CI_BUILD_IMAGE (ci-build) for later steps.
 inputs:
   java:
@@ -42,7 +42,7 @@ inputs:
   ca-bundle:
     description: >-
       Optional path of a PEM bundle for tools outside the JVM (curl, jf, node). Empty in the demo:
-      GitHub-hosted runners need no enterprise CA; in the enterprise the ci-build image carries it (D3).
+      GitHub-hosted runners need no enterprise CA; in the enterprise the ci-build image carries it (ADR-0009).
     required: false
     default: ''
 outputs:
@@ -127,13 +127,13 @@ runs:
           fi
           if [[ -z $ref ]]; then
             [[ -f docker/base/$name/Dockerfile ]] ||
-              { echo "::error::$NAMESPACE/base/$name:latest is not published and docker/base/$name/Dockerfile is missing (the base images are built by base-image.yml of the platform repository, github-demo)"; exit 1; }
+              { echo "::error::$NAMESPACE/base/$name:latest is not published and docker/base/$name/Dockerfile is missing (the base images are built and published outside this repository)"; exit 1; }
             ref="$NAMESPACE/base/$name:bootstrap-${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}"
             local_builds+=("$name")
             if [[ $REBUILD == true ]]; then
               echo "::notice title=base image::building $name locally because docker/base/$name changed in this change set"
             else
-              echo "::notice title=base image::$NAMESPACE/base/$name:latest is not published yet — building it locally (bootstrap). Run base-image.yml of the platform repository once to publish it."
+              echo "::notice title=base image::$NAMESPACE/base/$name:latest is not published yet — building it locally (bootstrap). Run the base-image build outside this repository once to publish it."
             fi
           fi
           key=${name//-/_}
@@ -156,7 +156,7 @@ runs:
       uses: docker/build-push-action@v7
       with:
         builder: ${{ steps.buildx.outputs.name }}
-        # Build contexts as documented in each Dockerfile's header; keep in step with base-image.yml.
+        # Build contexts as documented in each Dockerfile's header; keep in step with the base-image build.
         context: test-infra/ca
         file: docker/base/jre21/Dockerfile
         platforms: linux/amd64

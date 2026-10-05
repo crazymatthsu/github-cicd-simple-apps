@@ -1,9 +1,9 @@
 name: setup-kube-tools
 description: >-
-  Kubernetes tools of demo step 2 (D10 §5.9, D11 §6.4): installs kind, kubectl, helm and kubeconform at
+  Kubernetes tools of the Helm deployment test (ADR-0019, ADR-0021): installs kind, kubectl, helm and kubeconform at
   the versions pinned in test-infra/kind/versions.env (equal to the ci-build image pins) from their
   official download URLs, each checked against the SHA-256 file its project publishes next to it — the
-  method of docker/base/ci-build/Dockerfile. A tool already on PATH at the pinned version is kept (the
+  method of the ci-build image's build. A tool already on PATH at the pinned version is kept (the
   runner image's kind / kubectl / helm are other versions, so they are shadowed, not replaced). The
   install directory is prepended to PATH for later steps; nothing else is exported. Linux runners,
   amd64 or arm64.

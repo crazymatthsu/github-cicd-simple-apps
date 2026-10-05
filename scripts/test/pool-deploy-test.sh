@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# pool-deploy-test.sh — script tests of the host pools (DL-39, DL-41, DL-46; D6 §6.8): scripts/pool-deploy.sh, the
+# pool-deploy-test.sh — script tests of the host pools (ADR-0018, ADR-0028): scripts/pool-deploy.sh, the
 # versioned layout /apps/<user>/versions/<project>/<version>/ with `current`, `activate`, the .platform-bundle root,
 # the pool guard and record-tag of scripts/run-compose.sh. Plain bash: stub ssh and rsync (POOL_SSH / POOL_RSYNC)
 # and a stub docker and curl (PATH) record their arguments and answer from STUB_* variables, so nothing reaches a
@@ -14,7 +14,7 @@ REPO="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd -P)"
 readonly REPO POOL_DEPLOY="$REPO/scripts/pool-deploy.sh"
 readonly H1=dev-cash-01.us-dev.example.com H2=dev-cash-02.us-dev.example.com
 readonly TRADES=cash/source-database/trades-db-to-amps POSITIONS=cash/source-database/positions-db-to-deephaven
-# The layout of a box (DL-41, DL-46): the project's versions under the deploy user's directory, `current` the live one.
+# The layout of a box (ADR-0018): the project's versions under the deploy user's directory, `current` the live one.
 readonly PROJECT=github-cicd-simple-apps ROOT=/apps/deploy/versions/github-cicd-simple-apps
 readonly V0=20261004-110000 V1=20261004-120000 V2=20261004-130000 V3=20261004-140000 V4=20261004-150000
 # The commands a box runs: the new version's run-compose.sh (a deploy) and the current one's (discovery, rollback).
@@ -190,11 +190,11 @@ bundle() { # <config root> <out>: a verified bundle of us-dev/cash
     CONFIG_ROOT="$1" "$POOL_DEPLOY" us-dev cash bundle --out "$2" --tag t1 >/dev/null 2>"$WORK/bundle.err" ||
         { fail "bundle failed: $(tail -n 3 "$WORK/bundle.err")"; return 1; }
 }
-# The instance layer (what record-tag writes) and the combined env run-compose.sh generates (R-0008) in a version.
+# The instance layer (what record-tag writes) and the combined env run-compose.sh generates (ADR-0012) in a version.
 box_env() { printf '%s/%s%s/%s/config/us-dev/cash/source-database/trades-db-to-amps/_docker-compose.instance.env' "$1" "$2" "$ROOT" "$3"; } # <boxes> <host> <version>
 box_combined() { printf '%s/%s%s/%s/.run/us-dev/cash/source-database/trades-db-to-amps/compose.env' "$1" "$2" "$ROOT" "$3"; } # <boxes> <host> <version>
 
-# --- cases (DL-39 contract §4; DL-41 decisions 2, 3, 5; DL-46) ----------------------------------------------
+# --- cases (ADR-0018, ADR-0028) -----------------------------------------------------------------------------
 
 case_bundle() { # the layout and manifest for us-dev/cash; every instance validates from the bundle alone
     local b="$WORK/bundle/out" m f n sha checkout inst
@@ -209,8 +209,8 @@ case_bundle() { # the layout and manifest for us-dev/cash; every instance valida
         config/us-dev/cash/source-database/positions-db-to-deephaven/application.instance.yml; do
         [ -f "$b/$f" ] || fail "the bundle lacks $f"
     done
-    # One compose template for every app (R-0008) and no per-app wrapper (D12 §6.2): apps/source-database/ holds only
-    # its compose override; no platform layer (DL-45); no combined env (.run/ is written on the box).
+    # One compose template for every app (ADR-0012) and no per-app wrapper (ADR-0017): apps/source-database/ holds only
+    # its compose override; no platform layer (ADR-0011); no combined env (.run/ is written on the box).
     for f in config/us-dev/workflows-config.yml config/us-dev/_common config/_common config/local apps/source-amps apps/source-kafka \
         apps/source-database/src apps/source-database/build apps/source-database/scripts \
         apps/source-database/docker/docker-compose.yml .run scripts/ci scripts/test .git; do
@@ -218,7 +218,7 @@ case_bundle() { # the layout and manifest for us-dev/cash; every instance valida
     done
     [ -x "$b/scripts/run-compose.sh" ] && [ -x "$b/scripts/smoke.sh" ] || fail "the bundle's scripts are not executable"
     [ "$OUT" = "$(cat "$m")" ] || fail "bundle does not print its manifest"
-    # Shell-sourceable, so a box needs no yq; the manifest names the project and the versions root (DL-46).
+    # Shell-sourceable, so a box needs no yq; the manifest names the project and the versions root (ADR-0018).
     (
         set +u
         # shellcheck disable=SC1090 # the manifest under test
@@ -257,7 +257,7 @@ case_bundle() { # the layout and manifest for us-dev/cash; every instance valida
     expect_rc 2
 }
 
-case_activate() { # run-compose.sh activate: current -> this version, atomically; --previous / --to; keep N (DL-41, DL-46)
+case_activate() { # run-compose.sh activate: current -> this version, atomically; --previous / --to; keep N (ADR-0018)
     local b="$WORK/activate/bundle" box="$WORK/activate/box" vroot v rc_cur
     vroot="$box$ROOT"
     bundle "$REPO/config" "$b" || return 0
@@ -482,7 +482,7 @@ case_dry_run() { # dry-run prints the sync into the version directory, record-ta
     [ -z "$OUT" ] || fail "a dry-run rollback reports '$OUT' on stdout"
 }
 
-case_health_fails() { # a failed health check sends every started instance back to current; current never moves (DL-41)
+case_health_fails() { # a failed health check sends every started instance back to current; current never moves (ADR-0028)
     local cfg log="$WORK/health-fails.log" report="$WORK/health-fails.json"
     cfg="$(fixture health-fails '.targets[].kind = "compose"')"
     known_hosts "$cfg"
@@ -669,11 +669,11 @@ case_refusals() { # env, flow, pool, version and usage rules
     cfg="$(fixture refusals-flow '.flow = "deriv"')"
     run env CONFIG_ROOT="$cfg" "$POOL_DEPLOY" us-dev cash plan --dry-run
     expect_rc 4
-    # The layout is fixed (DL-46): no root in the inventory; keep is at least 2.
+    # The layout is fixed (ADR-0018): no root in the inventory; keep is at least 2.
     cfg="$(fixture refusals-root '.pool.root = "/opt/platform"')"
     run env CONFIG_ROOT="$cfg" "$POOL_DEPLOY" us-dev cash plan --dry-run
     expect_rc 4
-    expect_in "pool.root is gone (DL-46)" "$ERR"
+    expect_in "pool.root is gone (ADR-0018)" "$ERR"
     cfg="$(fixture refusals-keep '.pool.keep = 1')"
     run env CONFIG_ROOT="$cfg" "$POOL_DEPLOY" us-dev cash plan --dry-run
     expect_rc 4
@@ -709,7 +709,7 @@ case_refusals() { # env, flow, pool, version and usage rules
     expect_in "/apps/<user>/versions/<project>/" "$OUT"
 }
 
-case_guard() { # run-compose.sh start / restart on a pooled box asks the other boxes' current version first (D6 §6.5)
+case_guard() { # run-compose.sh start / restart on a pooled box asks the other boxes' current version first (ADR-0017)
     local b="$WORK/guard/bundle" log="$WORK/guard.log" rc peer
     bundle "$REPO/config" "$b" || return 0
     rc="$b/scripts/run-compose.sh"

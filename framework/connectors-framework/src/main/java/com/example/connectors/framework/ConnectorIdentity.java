@@ -8,7 +8,7 @@ import java.util.regex.Pattern;
 import org.springframework.core.env.PropertyResolver;
 
 /**
- * The identity tuple {@code <env>/<flow>/<AppName>/<AppInstance>} of one running pipeline (D5 §6.2, DL-37).
+ * The identity tuple {@code <env>/<flow>/<AppName>/<AppInstance>} of one running pipeline (ADR-0003).
  *
  * <p>The deployer sets it through the environment variables {@code APP_ENV}, {@code APP_FLOW},
  * {@code APP_NAME} and {@code APP_INSTANCE} (the compose env layers / Helm values); it must equal the config-tree path
@@ -75,22 +75,22 @@ public record ConnectorIdentity(String env, String flow, String app, String inst
         return env + "/" + flow + "/" + app + "/" + instance;
     }
 
-    /** The compose project name {@code <env>-<flow>-<app>-<instance>} (D6 §6.2). */
+    /** The compose project name {@code <env>-<flow>-<app>-<instance>} (ADR-0003). */
     public String composeProject() {
         return env + "-" + flow + "-" + app + "-" + instance;
     }
 
-    /** The Helm release / Deployment name {@code <app>-<instance>} (D11). */
+    /** The Helm release / Deployment name {@code <app>-<instance>} (ADR-0003). */
     public String releaseName() {
         return app + "-" + instance;
     }
 
-    /** The Deephaven table-name prefix {@code <flow>_<instance>_} with dashes as underscores (D5 §6.2). */
+    /** The Deephaven table-name prefix {@code <flow>_<instance>_} with dashes as underscores (ADR-0003). */
     public String tablePrefix() {
         return (flow + "_" + instance + "_").replace('-', '_');
     }
 
-    /** {@code env, flow, app, instance}: metric tags, MDC fields, log fields and labels (D6 §6.9). */
+    /** {@code env, flow, app, instance}: metric tags, MDC fields, log fields and labels (ADR-0003). */
     public Map<String, String> asTags() {
         Map<String, String> tags = new LinkedHashMap<>();
         tags.put("env", env);

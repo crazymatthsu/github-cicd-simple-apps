@@ -1,7 +1,7 @@
-# test-infra/compose/deephaven.yml: the Deephaven CI profile (D10 §5.3, §6.3; D8 §6.4).
+# test-infra/compose/deephaven.yml: the Deephaven CI profile (ADR-0025).
 #
 # Image: upstream ghcr.io/deephaven/server for component ITs, pinned in versions.env. System ITs set
-# DEEPHAVEN_IMAGE to the platform's own Deephaven server image (DEEPHAVEN_SERVER_IMAGE in versions.env, DL-26).
+# DEEPHAVEN_IMAGE to the platform's own Deephaven server image (DEEPHAVEN_SERVER_IMAGE in versions.env, ADR-0025).
 # Port 10000 is never published here; only local-ports.yml publishes it, on localhost.
 x-ci-labels: &ci-labels
   com.example.ci.run: "${CI_RUN_ID:-local}"
@@ -11,8 +11,8 @@ services:
   deephaven:
     image: ${DEEPHAVEN_IMAGE:?DEEPHAVEN_IMAGE is not set - see test-infra/compose/versions.env}
     environment:
-      # Heap sized from the runner budget (D10 §6.8). The anonymous handler switches authentication off,
-      # which is acceptable only because this stack publishes no port in CI (D10 §4.4). Property name
+      # Heap sized from the runner budget. The anonymous handler switches authentication off,
+      # which is acceptable only because this stack publishes no port in CI (ADR-0024). Property name
       # verified against the Deephaven 42.5 documentation (how-to-guides/authentication/auth-anon).
       # DEEPHAVEN_AUTH_OPTS replaces it, e.g. with -Dauthentication.psk=<key> for a pre-shared key.
       START_OPTS: "-Xmx${DEEPHAVEN_HEAP:-1536m} ${DEEPHAVEN_AUTH_OPTS:--DAuthHandlers=io.deephaven.auth.AnonymousAuthenticationHandler}"

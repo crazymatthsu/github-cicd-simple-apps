@@ -1,8 +1,8 @@
-# platform.yml — the manifest of this repository for the shared pipeline (D12 §6.6, DL-42): only what the tree
-# cannot derive. Everything else is derived, never declared twice: apps from the subprojects applying buildlogic.docker-image (R-0008), libraries
-# from framework/* (DL-43), envs / flows / instances from the config/ directories, deploy policy and boxes from each flow's
+# platform.yml — the manifest of this repository for the shared pipeline (ADR-0002): only what the tree
+# cannot derive. Everything else is derived, never declared twice: apps from the subprojects applying buildlogic.docker-image (ADR-0006), libraries
+# from framework/* (ADR-0006), envs / flows / instances from the config/ directories, deploy policy and boxes from each flow's
 # workflows-config.yml, versions from git tags.
-platform: v1                        # the platform-ci major this repository follows (vendored copies until it exists, README)
+platform: v1                        # the major version of the contract this repository follows (ADR-0002)
 kind: app                           # builds, publishes and deploys its dev envs
 registry: ghcr.io/crazymatthsu      # images are <registry>/<project>/<AppName>
 projects:

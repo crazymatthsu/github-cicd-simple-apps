@@ -11,7 +11,7 @@ import java.security.SecureRandom
 abstract class ComposeStackLock : BuildService<BuildServiceParameters.None>
 
 /**
- * The throwaway SQL Server `sa` password of a Gradle-managed test stack (D2 §6.4, D8 §6.4): generated once per
+ * The throwaway SQL Server `sa` password of a Gradle-managed test stack (ADR-0013, ADR-0025): generated once per
  * build at execution time (never stored in the configuration cache) and handed to both `composeUp` (SQL
  * Server's MSSQL_SA_PASSWORD) and the host-JVM `integrationTest` (SPRING_DATASOURCE_PASSWORD). An
  * `IT_SA_PASSWORD` set in the environment wins.

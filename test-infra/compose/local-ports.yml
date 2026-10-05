@@ -1,4 +1,4 @@
-# test-infra/compose/local-ports.yml: published ports for local development only (D10 §5.6, §6.6).
+# test-infra/compose/local-ports.yml: published ports for local development only (ADR-0025).
 #
 # `stack.sh up --local` (Gradle composeUp / devUp) adds this file, so a host JVM or a SQL client
 # reaches the stack on localhost. All ports are above 1024 (fine for rootless Podman) and bound to

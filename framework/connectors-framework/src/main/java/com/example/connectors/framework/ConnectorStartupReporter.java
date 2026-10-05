@@ -7,7 +7,7 @@ import org.springframework.boot.context.event.ApplicationReadyEvent;
 import org.springframework.context.ApplicationListener;
 import org.springframework.core.env.ConfigurableEnvironment;
 
-/** Logs the identity and the masked effective configuration once the application is ready (brief §4). */
+/** Logs the identity and the masked effective configuration once the application is ready (ADR-0016). */
 public class ConnectorStartupReporter implements ApplicationListener<ApplicationReadyEvent> {
 
     private static final Logger log = LoggerFactory.getLogger(ConnectorStartupReporter.class);

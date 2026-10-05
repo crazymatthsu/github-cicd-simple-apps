@@ -1,9 +1,9 @@
 #!/usr/bin/env bash
-# retention.sh — GHCR image retention for the demo (D4 §4.10, §6.5; D7 §7.4). Dry run by default.
+# retention.sh — GHCR image retention (ADR-0010). Dry run by default.
 #
 # Usage: retention.sh [--dry-run | --delete] [--owner <owner>] [--repo <owner/repo>] [--package <name>]...
 #   --package   container package, e.g. github-cicd-simple-apps/source-database (repeatable). Default: every
-#               image project in .github/affected-map.yml under the project of platform.yml (D12 §6.7).
+#               image project in .github/affected-map.yml under the project of platform.yml (ADR-0010).
 # Rules, per package version (one version = one digest with its tags):
 #   pr-<n>-<sha7>   deleted once pull request #<n> has been closed (merged or not) for PR_GRACE_DAYS days
 #   *-rc.<n>        the RC_KEEP newest are kept, and every one younger than RC_MIN_AGE_DAYS; the rest go
@@ -11,7 +11,7 @@
 #   - a version carrying a tag that config/**/_docker-compose.instance.env (IMAGE_TAG) or
 #     config/**/_helm-values.instance.yaml (tag:)
 #     references on this checkout, or that the last successful GitHub Deployment of a dev env names (its
-#     payload's tag and images; the dev tree itself declares `main`, DL-40) — the in-use protection;
+#     payload's tag and images; the dev tree itself declares `main`, ADR-0027) — the in-use protection;
 #   - a version carrying a release tag (x.y.z) or a convenience tag (main, latest, x, x.y);
 #   - untagged versions: in GHCR they include the per-platform manifests of tagged indexes.
 # Environment: GH_TOKEN (packages: write to delete; pull requests and deployments readable) · DRY_RUN (true|false, default
@@ -53,9 +53,9 @@ for n in "$grace_days" "$rc_keep" "$rc_min_age_days"; do
 done
 
 if [[ ${#packages[@]} -eq 0 ]]; then
-  # The package is the image path without the registry, <project>/<AppName> (D12 §6.7): for a top-level app
+  # The package is the image path without the registry, <project>/<AppName> (ADR-0010): for a top-level app
   # the project is the release line of platform.yml (:source-database → github-cicd-simple-apps/source-database);
-  # a nested app keeps its Gradle parent path (:deephaven-connectors:source-database, the demo monorepo).
+  # a nested app keeps its Gradle parent path (:deephaven-connectors:source-database, in a monorepo).
   project_name=""
   if [[ -f platform.yml ]]; then project_name=$(yq '.projects[0].name // ""' platform.yml); fi
   mapfile -t packages < <(yq '.projects | to_entries | map(select(.value.image == true) | .key) | .[]' \
@@ -81,7 +81,7 @@ if [[ -d $config_dir ]]; then
     } | sort -u
   )
 fi
-# DL-40: a dev env's tree declares `main`, so the version it runs is in no file; the last successful GitHub
+# ADR-0027: a dev env's tree declares `main`, so the version it runs is in no file; the last successful GitHub
 # Deployment of its Environment (named like the env) names it — the payload's tag and digest-pinned images.
 for env_dir in "$config_dir"/*-dev/; do
   [[ -d $env_dir ]] || continue

@@ -1,6 +1,6 @@
 {{- if .Values.networkPolicy.enabled }}
 {{- /*
-D6 §6.11: ingress to the http port only from this release's own pods (the helm test Job) and the listed
+Ingress to the http port only from this release's own pods (the helm test Job) and the listed
 namespaces (metrics scrape); egress DNS plus the allow-list in networkPolicy.egress (source / target CIDRs,
 Vault). Enforced by the EKS CNI; kind's default CNI ignores it.
 */}}

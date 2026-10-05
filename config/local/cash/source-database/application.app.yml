@@ -1,4 +1,4 @@
-# Layer 4 — source-database on a laptop and in CI test stacks (D6 §6.12, D8 §5.2): endpoints are the compose
+# Layer 3 — source-database on a laptop and in CI test stacks (ADR-0025): endpoints are the compose
 # service names of the dependency stack (test-infra/compose, ./gradlew devUp), reached through DEPS_NETWORK.
 connector:
   source:
@@ -7,7 +7,7 @@ connector:
     poll-interval: 5s
   sink:
     amps:
-      # AMPS is licensed and absent from the demo stack (D3 §6.10): instances aiming at it use the stub sink.
+      # AMPS is licensed and absent from the demo stack: instances aiming at it use the stub sink.
       host: amps
       port: 9007
     deephaven:

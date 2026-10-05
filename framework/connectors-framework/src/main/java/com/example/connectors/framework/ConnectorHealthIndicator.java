@@ -8,7 +8,7 @@ import org.springframework.boot.health.contributor.HealthIndicator;
  * {@code management.endpoint.health.group.readiness.include=readinessState,connector}). The hello-world
  * connectors have no pipeline yet, so it reports UP with the identity and the sink; a real pipeline reports
  * its source and sink connections here, so that {@code start --wait} and {@code helm --atomic} wait for a
- * working pipeline (D6 §6.9).
+ * working pipeline (ADR-0015).
  */
 public class ConnectorHealthIndicator implements HealthIndicator {
 

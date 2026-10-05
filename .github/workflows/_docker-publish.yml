@@ -1,10 +1,10 @@
-# Reusable: point the D4 tag set at digests that were already built and tested (D7 §5.7, D4 §6.2).
+# Reusable: point the ADR-0010 tag set at digests that were already built and tested (ADR-0023, ADR-0029).
 #
 # "Promote, never rebuild": tags are written inside GHCR by digest (scripts/ci/retag-image.sh →
 # `docker buildx imagetools create --prefer-index=false`), every write is verified, version tags are
 # immutable and only the convenience tags (main, latest, <major>, <major>.<minor>) may move.
 # main.yml calls it after the system test (pre-release set + `main`); release.yml calls it with the
-# release set. Enterprise: `jf rt docker-promote` between docker-dev-local → docker-qa-local (D4 §6.3).
+# release set. Enterprise: `jf rt docker-promote` between docker-dev-local → docker-qa-local (ADR-0010).
 name: _docker-publish
 
 on:

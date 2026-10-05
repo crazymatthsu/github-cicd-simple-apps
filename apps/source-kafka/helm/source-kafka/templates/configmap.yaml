@@ -1,7 +1,7 @@
 {{- /*
-One ConfigMap per release with a key per layer file (D11 §6.3): <layer>.application.yml from appConfig
+One ConfigMap per release with a key per layer file (ADR-0011): <layer>.application.yml from appConfig
 (flow, common, instance — only the layers given) and <layer>.<file> from appFiles. The Deployment
-projects each key to /config/<layer>/<file>; the jar's optional: imports skip a missing layer (D5 §6.1).
+projects each key to /config/<layer>/<file>; the jar's optional: imports skip a missing layer (ADR-0011).
 */ -}}
 apiVersion: v1
 kind: ConfigMap

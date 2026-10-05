@@ -1,7 +1,7 @@
-// connectors-framework (D1 §6.4): the library every connector app depends on — identity, the `connector.*`
-// property contract (D5 §6.3), the masked start-up summary, identity tags on metrics and log lines, a
+// connectors-framework (ADR-0006): the library every connector app depends on — identity, the `connector.*`
+// property contract (ADR-0011), the masked start-up summary, identity tags on metrics and log lines, a
 // readiness health indicator and /actuator/info identity. Test fixtures carry the canonical-JSON comparator
-// that the apps' integration tests use (D8 §5.5).
+// that the apps' integration tests use (ADR-0026).
 plugins {
     id("buildlogic.java-conventions")
     `java-library`

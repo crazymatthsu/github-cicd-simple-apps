@@ -21,16 +21,16 @@ scripts/run-compose.sh local cash source-database positions-db-to-deephaven app-
 scripts/run-compose.sh local cash source-database positions-db-to-deephaven down
 ```
 
-`scripts/run-compose.sh` wraps the canonical `<repo>/scripts/run-compose.sh` (D6); `--help` lists every
+`scripts/run-compose.sh` is the one operations CLI of every app ([ADR-0017](../../docs/adr/0017-run-compose-operations-cli-and-runtime-posture.md)); `--help` lists every
 command, `--dry-run` shows what would run. Configuration lives in `config/<env>/cash/source-database/`
-(instances `trades-db-to-amps`, `positions-db-to-deephaven`), never in this directory (D5).
+(instances `trades-db-to-amps`, `positions-db-to-deephaven`), never in this directory ([ADR-0011](../../docs/adr/0011-configuration-tree-and-spring-layers.md)).
 
-## Helm (demo step 2)
+## Helm (provisional)
 
 The chart is [`helm/source-database/`](helm/source-database/README.md): one release `source-database-<AppInstance>` per
 instance directory, in the namespace of its flow, with the values layers chart `values.yaml` →
 `config/<env>/<flow>/source-database/_helm-values.app.yaml` → `<AppInstance>/_helm-values.instance.yaml` (`image.tag`,
-identity, `env`) and the `application.<layer>.yml` layers as file values (D11; the Helm design is deferred, R-0008). One script builds the flag list for
+identity, `env`) and the `application.<layer>.yml` layers as file values (the Helm design is deferred, [ADR-0019](../../docs/adr/0019-kubernetes-and-helm-are-provisional.md)). One script builds the flag list for
 every caller — config-lint, the kind deploy test and deploy-dev; run it from the repository root:
 
 ```bash
@@ -41,7 +41,7 @@ scripts/helm-smoke-diff.sh -n cash source-database-trades-db-to-amps source-data
 ```
 
 `--help` lists the options and exit codes, `--dry-run` prints the commands; `./gradlew configLint` lints and
-renders every instance (D5 check 12). A local kind cluster to deploy into: `test-infra/kind/`.
+renders every instance (check 12, [ADR-0014](../../docs/adr/0014-config-lint-enforces-the-config-contract.md)). A local kind cluster to deploy into: `test-infra/kind/`.
 
 ## Configuration keys
 
@@ -53,7 +53,7 @@ renders every instance (D5 check 12). A local kind cluster to deploy into: `test
 | `connector.sink.type` | `amps`, `deephaven` or `stub` (default) |
 | `connector.sink.amps.host`, `.port`, `.topic` | AMPS target (required when the sink is `amps`) |
 | `connector.sink.deephaven.host`, `.port`, `.table` | Deephaven target (required when the sink is `deephaven`) |
-| `SPRING_DATASOURCE_USERNAME`, `SPRING_DATASOURCE_PASSWORD` | credentials: environment or `/secrets/spring.datasource.*` only (D2 §6.4) |
+| `SPRING_DATASOURCE_USERNAME`, `SPRING_DATASOURCE_PASSWORD` | credentials: environment or `/secrets/spring.datasource.*` only ([ADR-0013](../../docs/adr/0013-secrets.md)) |
 | `APP_ENV`, `APP_FLOW`, `APP_NAME`, `APP_INSTANCE` | identity, set by the deployer from the config-tree path |
 | `LOG_LEVEL_ROOT` | root log level (default `INFO`) |
 

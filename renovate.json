@@ -1,6 +1,6 @@
 {
   "$schema": "https://docs.renovatebot.com/renovate-schema.json",
-  "description": "Dependency updates (D1 §6.3, D3 §6.3, D10 §6.10). Conventional Commit messages size the next release for release-please and buildlogic.git-version: fix(deps) → patch release; ci(deps) for CI-only updates releases nothing.",
+  "description": "Dependency updates (ADR-0007, ADR-0009, ADR-0025). Conventional Commit messages size the next release for release-please and buildlogic.git-version: fix(deps) → patch release; ci(deps) for CI-only updates releases nothing.",
   "extends": [
     "config:recommended",
     ":dependencyDashboard"
@@ -17,7 +17,7 @@
   "semanticCommitScope": "deps",
   "packageRules": [
     {
-      "description": "Spring Boot plugin and BOM move together (DL-23: 4.x minors tracked, majors by decision).",
+      "description": "Spring Boot plugin and BOM move together (ADR-0007: 4.x minors tracked, majors by decision).",
       "matchPackageNames": [
         "org.springframework.boot",
         "org.springframework.boot:**"
@@ -34,7 +34,7 @@
       "groupName": "Deephaven"
     },
     {
-      "description": "Company base images are tagged <yyyymmdd>-<n> by base-image.yml of the platform repository, github-demo (D3 §6.1).",
+      "description": "Company base images, published outside this repository, are tagged <yyyymmdd>-<n> (ADR-0009).",
       "matchDatasources": [
         "docker"
       ],
@@ -63,7 +63,7 @@
   ],
   "customManagers": [
     {
-      "description": "Test-infra images pinned as <image>:<tag>@sha256:<digest> in test-infra/compose/versions.env (D10 §6.10).",
+      "description": "Test-infra images pinned as <image>:<tag>@sha256:<digest> in test-infra/compose/versions.env (ADR-0025).",
       "customType": "regex",
       "managerFilePatterns": [
         "/(^|/)test-infra/compose/versions\\.env$/"
@@ -74,7 +74,7 @@
       "datasourceTemplate": "docker"
     },
     {
-      "description": "Kubernetes tools pinned in test-infra/kind/versions.env: a `# renovate:` hint names the datasource and package of the KEY=value line below it (D10 §5.9).",
+      "description": "Kubernetes tools pinned in test-infra/kind/versions.env: a `# renovate:` hint names the datasource and package of the KEY=value line below it (ADR-0021).",
       "customType": "regex",
       "managerFilePatterns": [
         "/(^|/)test-infra/kind/versions\\.env$/"

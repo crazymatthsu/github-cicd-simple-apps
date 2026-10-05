@@ -5,8 +5,8 @@ import java.util.Locale;
 import java.util.regex.Pattern;
 
 /**
- * Decides which configuration values are printed as {@value #MASK} (D2 §6.4, D6 §4.3): every key under the
- * secret property names of D2 (usernames included, they rotate with their password) and every key with a
+ * Decides which configuration values are printed as {@value #MASK} (ADR-0013): every key under the
+ * secret property names below (usernames included, they rotate with their password) and every key with a
  * secret-looking segment ({@code password}, {@code secret}, {@code token}, {@code credential}, {@code *key}).
  * Credentials embedded in URLs are masked in the value itself.
  */
@@ -14,7 +14,7 @@ public final class SecretMasker {
 
     public static final String MASK = "******";
 
-    /** D2 §6.4: the secret properties of the connectors, in normalised form. */
+    /** The secret properties of the connectors (ADR-0013), in normalised form. */
     private static final List<String> SECRET_PROPERTIES = List.of(
             "spring.datasource.username", "spring.datasource.password",
             "connector.amps.username", "connector.amps.password",

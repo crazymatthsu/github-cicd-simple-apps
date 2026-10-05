@@ -19,7 +19,7 @@ import org.springframework.core.env.PropertySource;
 
 /**
  * The effective configuration of a connector as every app prints it at start-up, as
- * {@code --print-config} prints it and as {@code /actuator/connectorconfig} returns it (D6 §4.3): the
+ * {@code --print-config} prints it and as {@code /actuator/connectorconfig} returns it (ADR-0016): the
  * identity, the configuration layers that were found, and every property under {@link #PREFIXES} with its
  * effective value — secrets masked by {@link SecretMasker}.
  */
@@ -66,7 +66,7 @@ public record ConfigurationSummary(ConnectorIdentity identity, List<String> laye
     }
 
     /**
-     * The config-tree layers and secret trees that contributed, lowest precedence first (D5 §6.1). Property
+     * The config-tree layers and secret trees that contributed, lowest precedence first (ADR-0011). Property
      * source names carry the resource location, never a value.
      */
     private static List<String> configLayers(ConfigurableEnvironment environment) {

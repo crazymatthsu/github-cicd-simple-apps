@@ -11,7 +11,7 @@ class ConfigLinterTest {
     @TempDir
     lateinit var root: File
 
-    /** The one compose template (R-0008); its comment names a required variable that must not count. */
+    /** The one compose template (ADR-0012); its comment names a required variable that must not count. */
     private val template: File by lazy {
         File(root, "docker/docker-compose.yml").apply {
             parentFile.mkdirs()
@@ -73,7 +73,7 @@ class ConfigLinterTest {
     private fun List<Finding>.text() = joinToString("\n")
 
     @Test
-    fun `the shared layer is the cluster's application_flow_yml in the flow directory, never under the env (DL-44)`() {
+    fun `the shared layer is the cluster's application_flow_yml in the flow directory, never under the env (ADR-0011)`() {
         validInstance("local", "trades-db-to-amps")
         write("local/cash/application.flow.yml", "logging:\n  structured:\n    format:\n      console: ecs\n")
         assertEquals(emptyList<Finding>(), lint(), lint().text())
@@ -85,11 +85,11 @@ class ConfigLinterTest {
     }
 
     @Test
-    fun `a top-level _common is rejected because nothing is shared across envs (DL-45)`() {
+    fun `a top-level _common is rejected because nothing is shared across envs (ADR-0011)`() {
         validInstance("local", "trades-db-to-amps")
         write("_common/source-database/application.yml", "connector:\n  source:\n    poll-interval: 15s\n")
         val messages = lint().text()
-        assertTrue(messages.contains("config/_common/ removed: nothing is shared across envs (DL-45)"), messages)
+        assertTrue(messages.contains("config/_common/ removed: nothing is shared across envs (ADR-0011)"), messages)
         assertEquals(1, lint().count { it.check == 1 }, messages)
     }
 
@@ -208,7 +208,7 @@ class ConfigLinterTest {
         assertEquals(listOf(7, 8), todo.map { it.check })
     }
 
-    // --- R-0008: layer files, env layers, the compose file chain ---------------------------------------------
+    // --- ADR-0011, ADR-0012: layer files, env layers, the compose file chain ---------------------------------
 
     @Test
     fun `the env layers merge flow, app, instance into the env file check 6 renders with, after the whole -f chain`() {
@@ -261,7 +261,7 @@ class ConfigLinterTest {
     }
 
     @Test
-    fun `layer files belong to the directory of their level, and the layout before R-0008 is named`() {
+    fun `layer files belong to the directory of their level, and the layout before ADR-0011 is named`() {
         validInstance("local", "trades-db-to-amps")
         write("local/cash/source-database/application.instance.yml", "a: 1\n")
         write("local/cash/application.app.yml", "a: 1\n")
@@ -276,8 +276,8 @@ class ConfigLinterTest {
             "local/cash/source-database/application.instance.yml: a instance-layer file in the app level's directory: it " +
                 "belongs in config/<env>/<flow>/<AppName>/<AppInstance>/",
             "local/cash/application.app.yml: a app-layer file in the flow level's directory: it belongs in config/<env>/<flow>/<AppName>/",
-            "trades-db-to-amps/compose.env: the layout before R-0008: rename it to _docker-compose.instance.env",
-            "trades-db-to-amps/values.yaml: the layout before R-0008: rename it to _helm-values.instance.yaml",
+            "trades-db-to-amps/compose.env: the layout before ADR-0011: rename it to _docker-compose.instance.env",
+            "trades-db-to-amps/values.yaml: the layout before ADR-0011: rename it to _helm-values.instance.yaml",
             "local/cash/source-database/app-common: the app layer is files now",
             "trades-db-to-amps/_docker: layer directories are flat",
             "local/cash/source-database/notes.txt: unexpected file in the app level's directory",
@@ -300,7 +300,7 @@ class ConfigLinterTest {
         assertTrue(messages.contains("docker-compose.override.yml: '../secrets.env' is a relative path"), messages)
     }
 
-    // --- demo step 2: Helm values (checks 3, 4, 10) and helm (check 12) -----------------------------------
+    // --- ADR-0019: Helm values (checks 3, 4, 10) and helm (check 12) --------------------------------------
 
     @Test
     fun `check 3 requires the Helm values of the app and of every instance`() {
@@ -454,7 +454,7 @@ class ConfigLinterTest {
         assertTrue(helmRequests.isEmpty(), "nothing to render without a chart: $helmRequests")
     }
 
-    // --- host pools (DL-39): check 11 on config/<env>/<flow>/workflows-config.yml ---------------------------------------
+    // --- host pools (ADR-0028): check 11 on config/<env>/<flow>/workflows-config.yml ------------------------------------
 
     private fun flowTargets(pool: String, targets: String, flow: String = "cash") =
         "env: us-dev\nflow: $flow\n$pool\ntargets:\n$targets"
@@ -500,7 +500,7 @@ class ConfigLinterTest {
             "pool.hosts[1]: 'dev-cash-02.example.com.' is not a lower-case DNS name or IPv4 address",
             "pool.hosts[2]: '42' is not a lower-case DNS name or IPv4 address",
             "pool.user 'Root!' is not a valid login name",
-            "pool.root is gone (DL-46): every box holds the project's versions under /apps/<user>/versions/<project>/",
+            "pool.root is gone (ADR-0018): every box holds the project's versions under /apps/<user>/versions/<project>/",
             "pool.keep '1' must be an integer of at least 2",
             "pool: unknown key 'port'",
         )) {
@@ -527,9 +527,9 @@ class ConfigLinterTest {
         val messages = findings.text()
         assertTrue(messages.contains("cash/workflows-config.yml: pool.hosts[2]: dev-01.example.com is listed twice"), messages)
         assertTrue(messages.contains("swap/workflows-config.yml: pool.hosts: dev-02.example.com is also a box of flow 'cash': " +
-            "a box serves exactly one <env>/<flow> (DL-41)"), messages)
+            "a box serves exactly one <env>/<flow> (ADR-0018)"), messages)
         assertTrue(messages.contains("pool.hosts: dev-03.example.com is also a box of flow"), messages)
-        assertEquals(3, findings.size, "dev-03 serves deriv and swap, which is no longer allowed (DL-41):\n$messages")
+        assertEquals(3, findings.size, "dev-03 serves deriv and swap, which is no longer allowed (ADR-0018):\n$messages")
     }
 
     @Test

@@ -29,7 +29,7 @@ import java.util.stream.Stream;
 import com.example.connectors.framework.testing.ItEnvironment.Endpoint;
 
 /**
- * The SQL Server side of the reference case (D8 §5.2 steps 2 and 4): connect with mssql-jdbc, apply SQL files,
+ * The SQL Server side of the reference case (ADR-0026): connect with mssql-jdbc, apply SQL files,
  * read a table back with typed columns. Only JDBC is used; the driver is on the runtime classpath through the
  * app's own dependencies.
  */

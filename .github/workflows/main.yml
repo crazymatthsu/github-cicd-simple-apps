@@ -1,15 +1,15 @@
-# Main pipeline (D7 §5.1, §6.10, Figure 3; D9 §6.4; D10 §5.2, §5.9; DL-40).
+# Main pipeline (ADR-0023).
 #
 #   build (all, images pushed with the pre-release tags) ─┬─ integration-test (all, component)
 #                                                         └─ config-lint
-#   integration-test → system-test (the platform's Deephaven server image, DL-26) → publish (verify + `main` tag)
-#   → kind-deploy (demo step 2: one Helm release per us-dev instance of source-database in a throwaway
+#   integration-test → system-test (the platform's Deephaven server image, ADR-0023) → publish (verify + `main` tag)
+#   → kind-deploy (ADR-0019: one Helm release per us-dev instance of source-database in a throwaway
 #     kind cluster, readiness, helm test, smoke diff) → deploy-dev (Environment us-dev, main only: compose
 #     pools + Helm into kind-ci) → GitHub Deployment record
 #
-# No workflow writes to main (DL-40): the dev tree declares `main`, the Deployment record names the literal
-# version, and no job here holds `contents: write` — so no loop guard is needed (DL-36 superseded).
-# hotfix/* branches run the same pipeline without deploy-dev (D4 §6.6).
+# No workflow writes to main (ADR-0020, ADR-0027): the dev tree declares `main`, the Deployment record names the literal
+# version, and no job here holds `contents: write` — so no loop guard is needed.
+# hotfix/* branches run the same pipeline without deploy-dev (ADR-0023).
 name: main
 
 on:
@@ -65,8 +65,8 @@ jobs:
       contents: read
       packages: read
     with:
-      # The reference scenario (D8 §5.2) against this run's images and the platform's Deephaven server image
-      # (DEEPHAVEN_SERVER_IMAGE in test-infra/compose/versions.env, DL-26).
+      # The reference scenario (ADR-0023) against this run's images and the platform's Deephaven server image
+      # (DEEPHAVEN_SERVER_IMAGE in test-infra/compose/versions.env, ADR-0025).
       project: ':source-database'
       images: ${{ needs.build.outputs.images }}
       level: system
@@ -80,7 +80,7 @@ jobs:
       contents: read
       packages: write
     with:
-      # The build job pushed the D4 set (<next>-rc.<n>, sha-<sha7>, main) so the IT jobs on other
+      # The build job pushed the ADR-0010 set (<next>-rc.<n>, sha-<sha7>, main) so the IT jobs on other
       # runners can pull the digests. After the system test, publish re-asserts every tag on exactly
       # the tested digests (a tag pointing elsewhere is moved if convenience, refused if immutable);
       # deploy-dev and release.yml consume nothing before this gate has passed.
@@ -89,7 +89,7 @@ jobs:
 
   kind-deploy:
     # Proves the chart and the us-dev config tree with exactly the published digests before deploy-dev
-    # (D10 §5.9); the cluster is deleted and leak-checked in always() steps (DL-27).
+    # (ADR-0019); the cluster is deleted and leak-checked in always() steps (ADR-0024).
     needs: [build, publish]
     uses: ./.github/workflows/_kind-deploy.yml
     permissions:
@@ -107,7 +107,7 @@ jobs:
     if: github.ref == 'refs/heads/main'
     uses: ./.github/workflows/_deploy-dev.yml
     permissions:
-      contents: read # no workflow writes to main (DL-40)
+      contents: read # no workflow writes to main (ADR-0020)
       deployments: write # the GitHub Deployment record
       packages: read # the Helm adapter pulls this run's images into its kind cluster
     with:

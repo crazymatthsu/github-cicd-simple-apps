@@ -1,4 +1,4 @@
-# Layer 4 — source-database in us-dev / cash, shared by every instance (D5 §6.3 worked example):
+# Layer 3 — source-database in us-dev / cash, shared by every instance (ADR-0011):
 # the AMPS and Deephaven endpoints of the flow and the SQL Server port. Hosts are demo placeholders.
 connector:
   source:

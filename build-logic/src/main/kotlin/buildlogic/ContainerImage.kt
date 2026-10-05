@@ -24,7 +24,7 @@ import java.time.Instant
 import java.time.temporal.ChronoUnit
 import javax.inject.Inject
 
-/** The image build tool decided by DL-14: a Dockerfile built with `docker buildx` or `podman build`. */
+/** The image build tool decided by ADR-0009: a Dockerfile built with `docker buildx` or `podman build`. */
 enum class EngineKind(val executable: String) { DOCKER("docker"), PODMAN("podman") }
 
 data class Engine(val kind: EngineKind, val buildx: Boolean) {
@@ -41,7 +41,7 @@ sealed interface EngineProbe {
 
 object ContainerEngines {
     /**
-     * `auto` tries Docker, then Podman (D3 §6.7): a CLI on the PATH is not enough, the daemon (Docker) or the
+     * `auto` tries Docker, then Podman (ADR-0009): a CLI on the PATH is not enough, the daemon (Docker) or the
      * service (Podman) must answer `info`. Pure function over [run] so that it is unit-tested.
      */
     fun detect(choice: String, run: (List<String>) -> CommandResult): EngineProbe {
@@ -74,7 +74,7 @@ object ContainerEngines {
         return EngineProbe.Missing(reasons)
     }
 
-    /** The build command line for [engine] (D3 §6.7: Podman builds with `--format docker` to keep HEALTHCHECK). */
+    /** The build command line for [engine] (ADR-0009: Podman builds with `--format docker` to keep HEALTHCHECK). */
     fun buildCommand(
         engine: Engine,
         contextDir: File,
@@ -168,7 +168,7 @@ abstract class ContainerEngineTask : DefaultTask() {
         }
 }
 
-/** `buildImage`: builds the staged `Dockerfile` against the context `build/docker/` (D1 §6.4, D3 §6.4–§6.5, R-0007). */
+/** `buildImage`: builds the staged `Dockerfile` against the context `build/docker/` (ADR-0009). */
 @DisableCachingByDefault(because = "The image lands in the local engine, not in a Gradle output")
 abstract class BuildImageTask : ContainerEngineTask() {
     @get:InputDirectory
@@ -270,7 +270,7 @@ object PushRetry {
     }
 }
 
-/** `pushImage`: pushes every tag of this build; local builds are never pushed (D4 §6.2). */
+/** `pushImage`: pushes every tag of this build; local builds are never pushed (ADR-0010). */
 @DisableCachingByDefault(because = "Pushes to a registry")
 abstract class PushImageTask : ContainerEngineTask() {
     @get:Input
@@ -303,7 +303,7 @@ abstract class PushImageTask : ContainerEngineTask() {
         if (versionKind.get() == "LOCAL" && !allowLocalPush.get()) {
             throw GradleException(
                 "$path: refusing to push a local build (${imageRefs.get().joinToString()}); local images are never " +
-                    "published (D4 §6.2). CI computes pr-/rc-/release tags; override with -Pimage.allowLocalPush=true.",
+                    "published (ADR-0010). CI computes pr-/rc-/release tags; override with -Pimage.allowLocalPush=true.",
             )
         }
         val engine = engineOrSkip("push of ${imageRefs.get().joinToString()}") ?: return
@@ -351,10 +351,10 @@ abstract class DockerImageExtension {
     /** The `<project>` of `<registry>/<project>/<AppName>`: the parent project of a nested app, else the root project. */
     abstract val group: Property<String>
 
-    /** Image name == AppName == project name (D1 §6.1). */
+    /** Image name == AppName == project name (ADR-0006). */
     abstract val imageName: Property<String>
 
-    /** Dockerfile relative to the staged context (`Dockerfile`: the shared one, or the app's override, R-0007). */
+    /** Dockerfile relative to the staged context (`Dockerfile`: the shared one, or the app's override, ADR-0009). */
     abstract val dockerfile: Property<String>
 
     /** Dockerfile ARG naming the base image, overridable with `-Pimage.arg.<ARG>=` or env `<ARG>`. */

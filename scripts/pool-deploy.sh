@@ -1,14 +1,14 @@
 #!/usr/bin/env bash
-# pool-deploy.sh — host pools per env/flow for the bare-metal compose targets (DL-39, DL-41, DL-46; D9 §6.4, D5 §6.6).
+# pool-deploy.sh — host pools per env/flow for the bare-metal compose targets (ADR-0018, ADR-0027, ADR-0028).
 #
 # Every box of the `pool` in config/<env>/<flow>/workflows-config.yml (one inventory per flow) holds this project's host
 # bundles — the compose runtime plus every app, instance and layer of the flow — as version directories under
-# /apps/<user>/versions/<project>/ (DL-46: the root is the deploy user's directory under /apps), one per deploy, never
+# /apps/<user>/versions/<project>/ (ADR-0018: the root is the deploy user's directory under /apps), one per deploy, never
 # changed afterwards, with `current` a symlink to the live one; so any instance of the flow can run on any box, and a
 # rollback points `current` back. Each compose target runs on exactly one box, resolved as pinned (`host` in
 # workflows-config.yml) → discovered (the one box it already runs on) → assigned (the box with the fewest placements);
-# deploy-dev records the box and the version in the run's GitHub Deployment (DL-40; nothing is written to git). The
-# one implementation behind the pooled flows of .github/workflows/_deploy-dev.yml; transports ssh (DL-35), local (the
+# deploy-dev records the box and the version in the run's GitHub Deployment (ADR-0027; nothing is written to git). The
+# one implementation behind the pooled flows of .github/workflows/_deploy-dev.yml; transports ssh (ADR-0028), local (the
 # runner plays every box: the demo, until the boxes exist) and dry-run. Stub-tested by scripts/test/pool-deploy-test.sh
 # through POOL_SSH / POOL_RSYNC. Run with --help. Needs bash 4+, mikefarah yq v4 and jq; rsync and ssh for the
 # transports that use them.
@@ -35,7 +35,7 @@ usage() {
     cat <<'EOF'
 Usage: pool-deploy.sh <env> <flow> <command> [options]
 
-Host pools (DL-39, DL-41, DL-46): every box of the pool in config/<env>/<flow>/workflows-config.yml (one inventory per
+Host pools (ADR-0018, ADR-0028): every box of the pool in config/<env>/<flow>/workflows-config.yml (one inventory per
 flow) holds this project's host bundles — the flow's whole configuration and the compose runtime — as version
 directories under <root> = /apps/<user>/versions/<project>/ (the deploy user's directory under /apps), one per
 deploy and never changed afterwards, with <root>/current a symlink to the live one. Any instance of the flow can run
@@ -61,7 +61,7 @@ Commands:
   deploy   --tag <tag> [--bundle <dir>] [--version <YYYYMMDD-HHMMSS>] [--move] [--report <file>]
            bundle (unless --bundle) → sync into <root>/<version>/ on every box → plan → per placement:
              IMAGE_TAG=<tag> run-compose.sh ... record-tag on every box that holds the new version (its
-             _docker-compose.instance.env names the tag: the version directory is the record, DL-41), then on the
+             _docker-compose.instance.env names the tag: the version directory is the record, ADR-0018), then on the
              instance's box,
              from the new directory, run-compose.sh ... pull → start → health
            → once every instance passed: run-compose.sh activate on every box (<root>/current → <version>,
@@ -86,7 +86,7 @@ Options:
   --transport ssh|local|dry-run   default $POOL_TRANSPORT, else ssh
       ssh      $POOL_SSH $POOL_SSH_OPTS <user>@<host> -- '[IMAGE_TAG=<tag>] <root>/<version>/scripts/run-compose.sh
                <env> <flow> <app> <inst> <command>' (or .../activate), and rsync -az --delete over the same ssh into
-               <root>/<version>/ (DL-35: the deploy user's forced command on every box; the boxes are provisioned
+               <root>/<version>/ (ADR-0018: the deploy user's forced command on every box; the boxes are provisioned
                with /apps/<user>/versions/<project>/ and /apps/<user>/shared/<project>/)
       local    the runner plays every box: <local-root>/<host><root>/<version>/ per box (rsync -a --delete); per
                placement validate, record-tag --dry-run and start --dry-run, activate --dry-run per box, and the
@@ -110,10 +110,10 @@ Exit codes: 0 ok · 1 transport or command failure (after trying every box and i
   host not in the pool, missing files, no project in platform.yml, a bundle that does not validate or changed
   since it was built) · 5 tool missing (yq v4, jq, rsync, ssh, sha256sum, known_hosts) · 6 placement conflict (an
   instance running on more than one box, or on a box other than its pin without --move)
-Bundle: scripts/run-compose.sh and smoke.sh (the one implementation for every app, D12 §6.2) and the one compose
-  template docker/docker-compose.yml (R-0008); per app with a directory under config/<env>/<flow>/, when the app ships
+Bundle: scripts/run-compose.sh and smoke.sh (the one implementation for every app, ADR-0017) and the one compose
+  template docker/docker-compose.yml (ADR-0012); per app with a directory under config/<env>/<flow>/, when the app ships
   them, its apps/<app>/docker/docker-compose.override.yml and scripts/smoke.sh; the flow's own layer files
-  (application.flow.yml, _docker-compose.flow.env / .yml: the cluster layer, DL-44), config/<env>/<flow>/<app>/,
+  (application.flow.yml, _docker-compose.flow.env / .yml: the cluster layer, ADR-0011), config/<env>/<flow>/<app>/,
   config/<env>/<flow>/workflows-config.yml, and config/<env>/known_hosts when present. BUNDLE_SHA256 is the sha256 of
   the sorted "<sha256>  <path>" lines of every file but .platform-bundle and .run/ (the combined envs run-compose.sh
   generates, never synced). A sync is verified by rsync's exit code and a second rsync --dry-run --itemize-changes
@@ -219,7 +219,7 @@ if [ -n "$ROLLBACK_TO" ] && ! [[ $ROLLBACK_TO =~ $VERSION_RE ]]; then die "$EXIT
 case "$ENV_NAME" in
     local | *-dev) ;;
     *) die "$EXIT_REFUSED" "env '$ENV_NAME' refused: host pools serve local and *-dev only; qa and prod run on" \
-        "Kubernetes (D9, D11)" ;;
+        "Kubernetes (ADR-0004)" ;;
 esac
 EXECUTE=false
 [ "${POOL_LOCAL_EXECUTE:-false}" != true ] || EXECUTE=true
@@ -251,7 +251,7 @@ trap cleanup EXIT
 
 # --- the project (platform.yml), the pool and the compose targets of <env>/<flow> (4) ---------------------
 
-[ -f "$REPO_ROOT/platform.yml" ] || die "$EXIT_CONFIG" "platform.yml not found at the repository root (D12 §6.6): it names the project"
+[ -f "$REPO_ROOT/platform.yml" ] || die "$EXIT_CONFIG" "platform.yml not found at the repository root (ADR-0002): it names the project"
 PROJECT_NAME="$(yq '.projects[0].name // ""' "$REPO_ROOT/platform.yml" 2>/dev/null || true)"
 [[ $PROJECT_NAME =~ $PROJECT_RE ]] ||
     die "$EXIT_CONFIG" "platform.yml: projects[0].name '$PROJECT_NAME' is not a project name (lower-case kebab-case); it names the version directory /apps/<user>/versions/<project>/"
@@ -261,7 +261,7 @@ CONFIG_ROOT="$(cd "$CONFIG_ROOT" && pwd -P)"
 ENV_DIR="$CONFIG_ROOT/$ENV_NAME"
 TARGETS_FILE="$ENV_DIR/$FLOW/workflows-config.yml"
 KNOWN_HOSTS="$ENV_DIR/known_hosts"
-[ -f "$TARGETS_FILE" ] || die "$EXIT_CONFIG" "$(rel "$TARGETS_FILE") not found (the flow's deploy-dev inventory, D5 §6.6)"
+[ -f "$TARGETS_FILE" ] || die "$EXIT_CONFIG" "$(rel "$TARGETS_FILE") not found (the flow's deploy-dev inventory, ADR-0027)"
 TARGETS_JSON="$(yq -o=json -I=0 '.' "$TARGETS_FILE" 2>&1)" || die "$EXIT_CONFIG" "$(rel "$TARGETS_FILE") does not parse: $TARGETS_JSON"
 if [ "$(jq -r '.env // "" | tostring' <<<"$TARGETS_JSON")" != "$ENV_NAME" ] ||
     [ "$(jq -r '.flow // "" | tostring' <<<"$TARGETS_JSON")" != "$FLOW" ]; then
@@ -273,7 +273,7 @@ mapfile -t POOL_HOSTS < <(jq -r '.pool.hosts // [] | if type == "array" then .[]
 POOL_USER="$(jq -r '.pool.user // "deploy" | tostring' <<<"$TARGETS_JSON")"
 POOL_KEEP="$(jq -r '.pool.keep // 5 | tostring' <<<"$TARGETS_JSON")"
 [ "$(jq -r '.pool | has("root")' <<<"$TARGETS_JSON")" = false ] ||
-    die "$EXIT_CONFIG" "$(rel "$TARGETS_FILE"): pool.root is gone (DL-46): every box holds this project's versions under /apps/<user>/versions/$PROJECT_NAME/ — remove the key"
+    die "$EXIT_CONFIG" "$(rel "$TARGETS_FILE"): pool.root is gone (ADR-0018): every box holds this project's versions under /apps/<user>/versions/$PROJECT_NAME/ — remove the key"
 [ "${#POOL_HOSTS[@]}" -gt 0 ] || die "$EXIT_CONFIG" "pool.hosts is empty in $(rel "$TARGETS_FILE")"
 for host in "${POOL_HOSTS[@]}"; do
     [[ $host =~ $HOST_RE ]] || die "$EXIT_CONFIG" "pool.hosts: '$host' is not a lower-case DNS name or IPv4 address"
@@ -281,14 +281,14 @@ done
 [ "$(printf '%s\n' "${POOL_HOSTS[@]}" | sort | uniq -d)" = "" ] || die "$EXIT_CONFIG" "pool.hosts lists a box twice"
 [[ $POOL_USER =~ $LOGIN_RE ]] || die "$EXIT_CONFIG" "pool.user '$POOL_USER' is not a valid login name"
 [[ $POOL_KEEP =~ ^[0-9]+$ ]] && [ "$POOL_KEEP" -ge 2 ] || die "$EXIT_CONFIG" "pool.keep '$POOL_KEEP' must be an integer of at least 2 (versions kept per box)"
-# The layout of every box (DL-41, DL-46): <root>/<version>/ holds one deployed bundle, <root>/current the live one.
+# The layout of every box (ADR-0018): <root>/<version>/ holds one deployed bundle, <root>/current the live one.
 POOL_ROOT="/apps/$POOL_USER/versions/$PROJECT_NAME"
 CURRENT_DIR="$POOL_ROOT/current"
 # The directory whose run-compose.sh a box runs: current, or the version a deploy just synced.
 BOX_DIR="$CURRENT_DIR"
 
 # The subproject of an app, relative to the repository (as run-compose.sh finds it): apps/<app>, else any <dir>/<app>
-# that is a Gradle subproject. Optional: it only adds the app's compose override and smoke test (R-0008).
+# that is a Gradle subproject. Optional: it only adds the app's compose override and smoke test (ADR-0006).
 app_rel() {
     local candidate
     for candidate in "$REPO_ROOT/apps/$1" "$REPO_ROOT/$1" "$REPO_ROOT"/*/"$1"; do
@@ -417,7 +417,7 @@ local_run() { # <host> <instance> <command> <tag> [args...]
         "${envs[@]}" "$dir/scripts/run-compose.sh" "$ENV_NAME" "$flow" "$app" "$inst" "$cmd" "$@")
 }
 # Placeholders for the secrets the compose files require (${VAR:?...}) that neither the env layers, run-compose.sh
-# nor this shell provides: `validate` checks the compose files, not the box's secrets (as config-lint does, D5 check 6).
+# nor this shell provides: `validate` checks the compose files, not the box's secrets (as config-lint does, ADR-0014 check 6).
 # <root> is a repository or a bundle; <instance> is <flow>/<app>/<inst>.
 validation_env() { # <root> <instance>
     local root="$1" flow app inst var rel_dir files=() layers=() f
@@ -488,11 +488,11 @@ box_activate() { # <host> [activate options...]
     return "$rc"
 }
 
-# --- the host bundle (§2 of DL-39's contract; D6 §6.2) ----------------------------------------------------
+# --- the host bundle (ADR-0018) ---------------------------------------------------------------------------
 
 TREE_FILES=0 TREE_SHA256=""
 # "<sha256>  <path>" of every file below $1 but .platform-bundle and .run/ (the combined envs run-compose.sh writes
-# on every command, R-0008), sorted by path (C locale).
+# on every command, ADR-0012), sorted by path (C locale).
 tree_listing() {
     (cd "$1" && find . -type f ! -path ./.platform-bundle ! -path './.run/*' -print0 | LC_ALL=C sort -z | xargs -0 -r "${SHA256[@]}") |
         sed 's|  \./|  |'
@@ -532,7 +532,7 @@ build_bundle() { # <out> <tag>
     local tag="$2" dir app rel apps=() app_rels=() git_sha dirty paths i instance flow inst envs failed=0 var file
     prepare_out "$1"
     [ -d "$ENV_DIR/$FLOW" ] || die "$EXIT_CONFIG" "config tree: $(rel "$ENV_DIR/$FLOW")/ missing"
-    # Every app with a directory under the flow (the flow's own layers are files, R-0008); its subproject is optional.
+    # Every app with a directory under the flow (the flow's own layers are files, ADR-0011); its subproject is optional.
     for dir in "$ENV_DIR/$FLOW"/*/; do
         [ -d "$dir" ] || continue
         app="$(basename "$dir")"
@@ -545,7 +545,7 @@ build_bundle() { # <out> <tag>
     for ((i = 0; i < ${#apps[@]}; i++)); do
         app="${apps[i]}" rel="${app_rels[i]}"
         if [ -n "$rel" ]; then
-            # What the app needs in every env (R-0008) and its own smoke test (D12 §6.2), when it ships them;
+            # What the app needs in every env (ADR-0012) and its own smoke test (ADR-0006), when it ships them;
             # otherwise the shared template and scripts/smoke.sh above serve it.
             [ ! -f "$REPO_ROOT/$rel/docker/docker-compose.override.yml" ] || copy_file "$rel/docker/docker-compose.override.yml"
             [ ! -f "$REPO_ROOT/$rel/scripts/smoke.sh" ] || copy_file "$rel/scripts/smoke.sh"
@@ -553,7 +553,7 @@ build_bundle() { # <out> <tag>
         copy_tree "$ENV_DIR/$FLOW/$app" "config/$ENV_NAME/$FLOW/$app"
     done
     mkdir -p "$OUT_DIR/config/$ENV_NAME/$FLOW"
-    # The flow's own layers (the cluster layer, DL-44), when present.
+    # The flow's own layers (the cluster layer, ADR-0011), when present.
     for file in application.flow.yml _docker-compose.flow.env _docker-compose.flow.yml; do
         [ ! -f "$ENV_DIR/$FLOW/$file" ] || cp -p "$ENV_DIR/$FLOW/$file" "$OUT_DIR/config/$ENV_NAME/$FLOW/$file"
     done
@@ -573,7 +573,7 @@ build_bundle() { # <out> <tag>
     fi
     tree_stats "$OUT_DIR"
     {
-        printf '# Host bundle of %s for %s/%s (DL-39, DL-41, DL-46), written by scripts/pool-deploy.sh. On a box it is one\n' \
+        printf '# Host bundle of %s for %s/%s (ADR-0018, ADR-0028), written by scripts/pool-deploy.sh. On a box it is one\n' \
             "$PROJECT_NAME" "$ENV_NAME" "$FLOW"
         printf '# version directory POOL_ROOT/<YYYYMMDD-HHMMSS>/; POOL_ROOT/current is the live one (run-compose.sh activate).\n'
         printf '# KEY=value lines: shell-sourceable; run-compose.sh reads them without sourcing. BUNDLE_SHA256 is the\n'
@@ -645,7 +645,7 @@ sync_box() { # <host>
             mkdir -p "$dest"
             ;;
         ssh)
-            # The box's /apps/<user>/versions/<project>/ exists (provisioned, DL-41); rsync creates <version>/ in it.
+            # The box's /apps/<user>/versions/<project>/ exists (provisioned, ADR-0018); rsync creates <version>/ in it.
             dest="$POOL_USER@$host:$target"
             args=(-az --delete --exclude=/.run/)
             shell=(-e "$(rsync_shell)")
@@ -834,7 +834,7 @@ P_RESULT=() P_COMMANDS=()
 FAILED=() STARTED=() ACTIVATE_FAILED=()
 deployed_line() { printf 'deployed %s@%s=%s\n' "$1" "$2" "$TAG"; }
 # The tag into the new version directory's _docker-compose.instance.env on each given box (record-tag), before anything starts:
-# the directory names what it runs (DL-41), and nothing ever syncs over it again. A box that fails to record it is
+# the directory names what it runs (ADR-0018), and nothing ever syncs over it again. A box that fails to record it is
 # reported in RECORD_MISSED; the instance's own box must have it (deploy_one), every other box only warns.
 RECORD_MISSED=()
 record_tag() { # <index> <tag> <box>...
@@ -930,7 +930,7 @@ deploy_one() { # <index>
     P_RESULT[i]="failed: $step"
     return 1
 }
-# DL-41: a deploy is never partial. Every instance started from the new version goes back to current — the previous
+# ADR-0028: a deploy is never partial. Every instance started from the new version goes back to current — the previous
 # version directory, old image and old config — on its box; current never moves. A box without a current version
 # (a first deploy) has nothing to go back to: the failed instance is stopped.
 undo_started() {
@@ -940,7 +940,7 @@ undo_started() {
         case "${P_RESULT[i]}" in
             deployed*) P_RESULT[i]="rolled back: ${FAILED[*]} failed" ;;
         esac
-        warn "$instance on $host: back to current, the version that ran before (${FAILED[*]} failed; DL-41)"
+        warn "$instance on $host: back to current, the version that ran before (${FAILED[*]} failed; ADR-0028)"
         rc=0
         from_current on_box "$host" "$instance" start "" || rc=$?
         if [ "$rc" -eq 0 ]; then

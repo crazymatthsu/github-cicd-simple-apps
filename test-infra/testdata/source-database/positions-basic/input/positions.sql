@@ -1,5 +1,5 @@
--- positions-basic: seed rows (D8 §6.5). ingested_at takes its default.
--- The quantities cover what the canonical form must handle (D8 §5.5): integers, fractions, negatives
+-- positions-basic: seed rows (ADR-0026). ingested_at takes its default.
+-- The quantities cover what the canonical form must handle (ADR-0026): integers, fractions, negatives
 -- and a large value, all exact in binary floating point so DECIMAL and double pipelines agree. as_of
 -- values are UTC, one with a non-zero millisecond part.
 INSERT INTO dbo.positions (account, instrument, qty, as_of) VALUES

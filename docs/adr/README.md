@@ -210,7 +210,6 @@ that opens a gap adds a row.
 | G18 | A hotfix branch and `main` can compute the same `-rc.<n>` version, and `pushImage` overwrites an existing tag: immutability is enforced only when re-tagging. | [0010](0010-image-tags-digests-promotion-retention.md), [0020](0020-branching-protection-and-merge-rules.md) |
 | G19 | The deploy user's forced command is not implemented, and no boxes exist yet (deploys use the `local` transport). A flow without a pool gets only a validated dry run. | [0018](0018-on-prem-host-layout-versioned-bundles.md), [0027](0027-continuous-deployment-to-dev-and-the-deployment-record.md), [0028](0028-host-pool-deployment.md) |
 | G20 | Config-lint checks 7 (merged configuration against metadata) and 8 (parity across envs) are not implemented. | [0014](0014-config-lint-enforces-the-config-contract.md) |
-| G21 | Comments in code and configuration, and the READMEs outside `docs/`, cite identifiers of retired documents instead of ADR numbers. | [0001](0001-adrs-are-the-repository-contract.md) |
 | G22 | Nothing checks that a derived repository's shared tooling is unchanged. | [0005](0005-repository-layout-and-shared-tooling.md) |
 | G23 | The merge queue is not enabled on `main`. Without it, a pull request from a fork merges with no integration test before the merge (`main.yml` still runs them after it). | [0020](0020-branching-protection-and-merge-rules.md), [0022](0022-pull-request-pipeline.md) |
 

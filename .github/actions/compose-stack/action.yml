@@ -1,10 +1,10 @@
 name: compose-stack
 description: >-
-  Thin wrapper around test-infra/compose/stack.sh (D10 §6.2) so workflows and laptops run the same
+  Thin wrapper around test-infra/compose/stack.sh (ADR-0025) so workflows and laptops run the same
   commands. The calling job sets COMPOSE_PROJECT_NAME (ci-<run_id>-<attempt>), CI_RUN_ID,
   CI_RUN_ATTEMPT and, for `up`, the image variables (APP_IMAGE, optional DEEPHAVEN_IMAGE,
   CI_BUILD_IMAGE). `up` exports COMPOSE_FILE / COMPOSE_PROJECT_NAME to GITHUB_ENV for later steps.
-  Use `if: always()` on `down` and `leak-check` so they run on success, failure and cancel (DL-27).
+  Use `if: always()` on `down` and `leak-check` so they run on success, failure and cancel (ADR-0024).
 inputs:
   command:
     description: up | diagnostics | down | leak-check
@@ -14,7 +14,7 @@ inputs:
     required: false
     default: ''
   diagnostics-dir:
-    description: Directory `diagnostics` writes into (D10 §6.5).
+    description: Directory `diagnostics` writes into (ADR-0024).
     required: false
     default: build/ci-logs
   local:
@@ -22,7 +22,7 @@ inputs:
     required: false
     default: 'false'
   warn-only:
-    description: "'true' makes leak-check report without failing (the first weeks, DL-27)."
+    description: "'true' makes leak-check report without failing (the first weeks)."
     required: false
     default: 'false'
 runs:

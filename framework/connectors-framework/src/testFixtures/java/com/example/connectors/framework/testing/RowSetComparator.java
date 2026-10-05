@@ -13,7 +13,7 @@ import java.util.TreeSet;
 
 /**
  * Compares the rows a connector produced with the golden rows of a test case under {@link CompareRules}
- * (D8 §5.5, §6.6): set match on the key columns unless ordered, duplicates are failures, ignored columns are
+ * (ADR-0026): set match on the key columns unless ordered, duplicates are failures, ignored columns are
  * dropped, timestamps and numerics match within their tolerances.
  */
 public final class RowSetComparator {

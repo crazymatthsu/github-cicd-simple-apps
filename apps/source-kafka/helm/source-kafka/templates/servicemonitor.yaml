@@ -1,5 +1,5 @@
 {{- if .Values.serviceMonitor.enabled }}
-{{- /* Prometheus Operator scrape of /actuator/prometheus through the Service port http (D6 §6.9). */}}
+{{- /* Prometheus Operator scrape of /actuator/prometheus through the Service port http (ADR-0015). */}}
 apiVersion: monitoring.coreos.com/v1
 kind: ServiceMonitor
 metadata:

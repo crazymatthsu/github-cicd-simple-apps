@@ -1,18 +1,18 @@
 # test-infra
 
-Dependency stacks, test data and the demo CA for the integration tests (D8, D10). One script,
+Dependency stacks, test data and the demo CA for the integration tests ([ADR-0025](../docs/adr/0025-integration-tests-on-compose-stacks.md), [ADR-0026](../docs/adr/0026-integration-test-data-and-comparison.md)). One script,
 `compose/stack.sh`, drives the stacks for both callers: the CI workflow and Gradle's
 `composeUp` / `composeDown` / `devUp` / `devDown`. A laptop and a runner therefore run the same
 commands against the same files. Docker compose is the only stack mechanism of the integration tests
-(no Testcontainers, DL-15, DL-24). Demo step 2 adds `kind/`, a throwaway Kubernetes cluster for the Helm
-deployment test (DL-32), which is not an integration-test stack.
+(no Testcontainers, [ADR-0025](../docs/adr/0025-integration-tests-on-compose-stacks.md)). The provisional Helm path adds `kind/`, a throwaway Kubernetes cluster for the Helm
+deployment test ([ADR-0019](../docs/adr/0019-kubernetes-and-helm-are-provisional.md)), which is not an integration-test stack.
 
 ```
 test-infra/
 ├── ca/                       demo-root-ca.pem: public stand-in for the enterprise CA bundle (README inside)
 ├── compose/
-│   ├── base.yml              first file of every stack: run labels on the default network (D10 §5.4)
-│   ├── deephaven.yml         Deephaven CI profile: heap, anonymous auth, readiness on 10000 (D10 §6.3)
+│   ├── base.yml              first file of every stack: run labels on the default network (ADR-0024)
+│   ├── deephaven.yml         Deephaven CI profile: heap, anonymous auth, readiness on 10000 (ADR-0025)
 │   ├── sqlserver.yml         SQL Server 2022 Developer, sqlcmd health check, seed mounts
 │   ├── kafka.yml             single-node KRaft broker
 │   ├── it-runner.yml         the test JVM as a compose service (ci-build image, profile "tools")
@@ -20,12 +20,12 @@ test-infra/
 │   ├── versions.env          image references, tag + digest, one line each
 │   ├── stacks.yml            which stacks each Gradle subproject declares
 │   └── stack.sh              up | diagnostics | down | leak-check
-├── kind/                     demo step 2: the kind cluster of the Helm deployment test (README inside)
+├── kind/                     the kind cluster of the Helm deployment test (ADR-0019; README inside)
 │   ├── versions.env          pinned kind, kubectl, helm, kubeconform (= the ci-build image pins)
 │   ├── cluster.yaml          one control-plane node, no port mappings
 │   └── kind.sh               up | load | diagnostics | down | leak-check
 ├── seed/sqlserver/           generic SQL helpers (databases) + apply.sh, run inside the container
-└── testdata/<connector>/<case>/{manifest.yml,input/,expected/}   (D8 §6.5)
+└── testdata/<connector>/<case>/{manifest.yml,input/,expected/}   (ADR-0026)
 ```
 
 ## Stacks
@@ -34,7 +34,7 @@ test-infra/
 |---|---|
 | `:source-database` | `deephaven`, `sqlserver` |
 | `:source-kafka` | `deephaven`, `kafka` |
-| `:source-amps` | `deephaven` (AMPS has no public image; stub sink, D8 §4.5) |
+| `:source-amps` | `deephaven` (AMPS has no public image; stub sink) |
 | `:connectors-framework` | `deephaven` |
 
 | Service | Image (`versions.env`) | Readiness | Memory (limit) |
@@ -51,7 +51,7 @@ named volume and network carries `com.example.ci.run` / `com.example.ci.attempt`
 anchor, repeated in each file because anchors do not cross files). Image-declared volumes are
 replaced by labelled named volumes (Deephaven) or tmpfs (Kafka), so no unlabelled anonymous volume
 can escape the leak check. A system IT sets `DEEPHAVEN_IMAGE` to the platform's `deephaven-server` image (`DEEPHAVEN_SERVER_IMAGE` in `versions.env`)
-(DL-26).
+([ADR-0025](../docs/adr/0025-integration-tests-on-compose-stacks.md)).
 
 ## `compose/stack.sh`
 
@@ -69,7 +69,7 @@ What `up` does:
 
 1. Merges `base.yml`, the declared `<stack>.yml` files and `it-runner.yml`. When `APP_IMAGE` is set,
    it adds the shared `docker/docker-compose.yml`, the app's `apps/<AppName>/docker/docker-compose.override.yml` and
-   the instance's config-tree `_docker-compose.<layer>.yml` overrides (R-0008); with `--local`, it adds
+   the instance's config-tree `_docker-compose.<layer>.yml` overrides ([ADR-0012](../docs/adr/0012-compose-template-and-generated-env.md)); with `--local`, it adds
    `local-ports.yml` filtered to the stack's services. It exports `COMPOSE_FILE`,
    `COMPOSE_PROJECT_NAME` and `COMPOSE_ENV_FILES`: one file, `compose/.state/<project>.compose.env`, which is
    `versions.env` plus the instance's combined env when the app joins (podman-compose keeps only the last of
@@ -86,7 +86,7 @@ What `up` does:
    `APP_IMAGE` is set, a second `up --wait` starts the app after its dependencies are healthy and
    seeded. The app image is not pulled up front, because Gradle's `buildImage` produces it locally.
 
-When the app joins the stack, its template gets what `run-compose.sh` would export (D6 §6.2):
+When the app joins the stack, its template gets what `run-compose.sh` would export ([ADR-0025](../docs/adr/0025-integration-tests-on-compose-stacks.md)):
 `APP_ENV=local`, `APP_FLOW=cash`, `APP_NAME`, and `APP_INSTANCE` (when unset: the `instance:` of the
 project's testdata manifests, `positions-db-to-deephaven` for `source-database`; else the app's only instance
 directory under `config/local/cash/<AppName>/`, as for `source-kafka` and `source-amps`; several candidates
@@ -102,7 +102,7 @@ becomes `by-digest@sha256:...`; the digest wins). `APP_IMAGE` must be
 `diagnostics`, `down` and `leak-check` find the stack through `COMPOSE_PROJECT_NAME`, else through
 the only state file (with several, pass `--project <gradle path>`). Labels decide what `down` prunes
 and what `leak-check` reports. In CI that is the run label, which also catches `run-compose.sh`
-stacks of the same run (D6 §6.5), plus the project label. On a laptop only the project label is
+stacks of the same run ([ADR-0024](../docs/adr/0024-ephemeral-ci-environments.md)), plus the project label. On a laptop only the project label is
 used, because every local stack shares the run label `local`. `down` exits 0 only when nothing is
 left.
 
@@ -114,10 +114,10 @@ left.
 | `STACK_WAIT_TIMEOUT` | `180` | seconds for each `up --wait` |
 | `STACK_SKIP_PULL` | unset | `1` skips the pull (offline laptop) |
 | `DEEPHAVEN_HEAP`, `DEEPHAVEN_MEM_LIMIT`, `DEEPHAVEN_AUTH_OPTS` | `1536m`, `2g`, anonymous handler | Deephaven profile; `DEEPHAVEN_AUTH_OPTS=-Dauthentication.psk=<key>` switches to a pre-shared key |
-| `MSSQL_MEM_LIMIT`, `MSSQL_MEMORY_LIMIT_MB`, `KAFKA_MEM_LIMIT`, `IT_RUNNER_MEM_LIMIT` | see the table above | memory budget (D10 §6.8: measure, then adjust) |
+| `MSSQL_MEM_LIMIT`, `MSSQL_MEMORY_LIMIT_MB`, `KAFKA_MEM_LIMIT`, `IT_RUNNER_MEM_LIMIT` | see the table above | memory budget (measure, then adjust) |
 | `DEEPHAVEN_HOST_PORT`, `SQLSERVER_HOST_PORT`, `KAFKA_HOST_PORT` | `10000`, `1433`, `9092` | local ports with `--local` |
 
-## In CI (D10 §6.11)
+## In CI ([ADR-0024](../docs/adr/0024-ephemeral-ci-environments.md), [ADR-0025](../docs/adr/0025-integration-tests-on-compose-stacks.md))
 
 ```yaml
 env:
@@ -151,7 +151,7 @@ default when `docker` is missing. SQL Server is amd64 only, so Apple silicon run
 emulation and may need `STACK_WAIT_TIMEOUT=300`.
 
 ```bash
-# dependencies for local work, ports published on 127.0.0.1 (D6 §6.12, D8 §5.7)
+# dependencies for local work, ports published on 127.0.0.1 (ADR-0025)
 ./gradlew :source-database:devUp        # stack.sh up --project ... --local (project local-dev)
 DEPS_NETWORK=local-dev_default scripts/run-compose.sh local cash source-database positions-db-to-deephaven start
 ./gradlew :source-database:devDown      # stack.sh down
@@ -196,10 +196,10 @@ test-infra/compose/stack.sh up --project :source-database
 test-infra/compose/stack.sh down
 ```
 
-## kind (demo step 2, D10 §5.9)
+## kind ([ADR-0019](../docs/adr/0019-kubernetes-and-helm-are-provisional.md))
 
 `kind/kind.sh` is the kind counterpart of `compose/stack.sh`. It uses the same exit codes (0 / 1 / 2 /
-5), runs teardown in `down` and proves it with `leak-check` (DL-27). The workflows call it through
+5), runs teardown in `down` and proves it with `leak-check` ([ADR-0024](../docs/adr/0024-ephemeral-ci-environments.md)). The workflows call it through
 `.github/actions/kind-cluster`:
 
 - The `kind-deploy` job (`.github/workflows/_kind-deploy.yml`, in `pr.yml` and `main.yml`) creates
@@ -214,7 +214,7 @@ test-infra/compose/stack.sh down
 `kind/README.md` covers the commands, the image-loading rule, the teardown layers and the local flow:
 create, load, deploy both `local` instances, smoke diff, delete.
 
-## Test data (D8 §5.4, §5.5, §6.5)
+## Test data ([ADR-0026](../docs/adr/0026-integration-test-data-and-comparison.md))
 
 `testdata/<connector>/<case>/` holds `manifest.yml` (instance, dataset version, input database and
 files, expected target and comparison rules), `input/*.sql` and `expected/*.jsonl`. The reference
@@ -223,7 +223,7 @@ ingested_at) in the `positions` database and seeds 8 rows. `expected/positions.j
 JSON: sorted keys, no whitespace, plain decimals without exponent or trailing zeros, and ISO-8601 UTC
 timestamps with milliseconds. Ignored columns such as `ingested_at` are omitted. The SQL files are
 single batches without `GO`, so a test can apply them over JDBC or with
-`seed/sqlserver/apply.sh`. A dataset's major version follows the connector family's major (DL-03).
+`seed/sqlserver/apply.sh`. A dataset's major version follows the connector family's major ([ADR-0026](../docs/adr/0026-integration-test-data-and-comparison.md)).
 
 ## What only CI proves
 
@@ -231,7 +231,7 @@ The stacks have been validated with `docker compose config` and a stubbed engine
 no Docker daemon in the authoring environment. The first real runs have to confirm several things:
 Deephaven 42.5 reaches healthy within the start period on a GitHub-hosted runner; SQL Server starts
 with the chosen memory settings; Kafka's dual listeners work; the whole stack fits the runner's
-memory (D10 §5.8, measure with `docker stats`); and the teardown drill (passing, failing and
+memory (measure with `docker stats`); and the teardown drill (passing, failing and
 cancelled runs) leaves nothing behind. `kind/kind.sh` is likewise tested against a stub engine only.
 The cluster start, image load, rollout, `helm test`, smoke diff and kind teardown are proven by the
 first `kind-deploy` runs.

@@ -1,11 +1,11 @@
-# Reusable: Helm deployment test in a throwaway kind cluster (D10 §5.9, D11 §6.4, §7.3; DL-27, DL-32, DL-33).
+# Reusable: Helm deployment test in a throwaway kind cluster (ADR-0019, ADR-0024).
 #
 #   kind up (ci-<run_id>-<attempt>) → load the app image built in this run → one Helm release per
 #   AppInstance directory of config/<env>/*/<app>/ (namespace with the restricted PSS labels, Secret,
 #   helm lint, upgrade --install --wait (--rollback-on-failure once a revision exists; a failed first install
 #   stays for the diagnostics), rollout status, helm test) → smoke diff
 #   across the releases → diagnostics on failure → kind down and leak check on success, failure AND
-#   cancel (always(), DL-27).
+#   cancel (always(), ADR-0024).
 # A deployment test of the chart and the config tree, not an integration test: the apps become ready
 # without a reachable database or Deephaven (readiness = readinessState + the connector indicator).
 #
@@ -36,7 +36,7 @@ on:
         type: string
         default: ''
       retention-days:
-        description: Retention of the diagnostics artefact (D10 §6.1 — 7 on PRs, 14 on main).
+        description: Retention of the diagnostics artefact (ADR-0021 — 7 on PRs, 14 on main).
         type: number
         default: 7
     outputs:
@@ -57,7 +57,7 @@ jobs:
       packages: read # pull this run's image by digest
     env:
       # One cluster per job and runner VM; kind-cluster's down and leak-check find it by this name even
-      # when `up` never finished (DL-27).
+      # when `up` never finished (ADR-0024).
       KIND_CLUSTER_NAME: ci-${{ github.run_id }}-${{ github.run_attempt }}
       CI_RUN_ID: ${{ github.run_id }}
       CI_RUN_ATTEMPT: ${{ github.run_attempt }}
@@ -78,7 +78,7 @@ jobs:
           [[ $DEPLOY_ENV =~ ^[a-z][a-z0-9]*(-[a-z0-9]+)*$ ]] || { echo "::error::invalid env '$DEPLOY_ENV'"; exit 2; }
           [[ $DEPLOY_APP =~ ^[a-z][a-z0-9-]*$ ]] || { echo "::error::invalid app '$DEPLOY_APP'"; exit 2; }
           # The app's Gradle project is the images key whose last segment is the AppName: :<AppName> here
-          # (apps/<AppName>, D12 §6.2), :<parent>:<AppName> in a monorepo that nests its apps.
+          # (apps/<AppName>, ADR-0006), :<parent>:<AppName> in a monorepo that nests its apps.
           project=$(jq -r --arg a "$DEPLOY_APP" '[to_entries[] | select((.key | split(":") | last) == $a) | .key][0] // empty' <<<"$IMAGES") ||
             { echo "::error::the images input is not a JSON object"; exit 2; }
           project=${project:-":$DEPLOY_APP"}
@@ -96,7 +96,7 @@ jobs:
             echo "::error::no valid tag: input '$TAG_INPUT', image reference '$ref_tag'"
             exit 2
           fi
-          # Every instance directory of config/<env>/<flow>/<app>/ (the app's own layers are files, R-0008).
+          # Every instance directory of config/<env>/<flow>/<app>/ (the app's own layers are files, ADR-0011).
           targets='[]'
           for dir in config/"$DEPLOY_ENV"/*/"$DEPLOY_APP"/*/; do
             [[ -d $dir ]] || continue
