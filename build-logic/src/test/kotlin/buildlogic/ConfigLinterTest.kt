@@ -574,7 +574,7 @@ class ConfigLinterTest {
         validInstance("us-dev", "trades-db-to-amps")
         write("us-dev/cash/workflows-config.yml", flowTargets(cashPool,
             "  - instance: source-database/trades-db-to-amps\n    kind: compose\n    host: dev-other-01.example.com\n"))
-        val findings = lint().filter { it.check == 11 }
+        val findings = lint().filter { it.check == 11 && it.severity == Severity.ERROR }
         assertEquals(1, findings.size, findings.text())
         assertEquals(Severity.ERROR, findings[0].severity)
         assertTrue(findings[0].message.contains("host 'dev-other-01.example.com' is not a box of the pool " +
@@ -650,8 +650,70 @@ class ConfigLinterTest {
         val warning = findings.single { it.severity == Severity.WARN }
         assertTrue(warning.message.contains("pool: flow 'cash' has no compose target"), findings.text())
         val errors = findings.filter { it.severity == Severity.ERROR }.map { "${it.path}: ${it.message}" }
-        assertEquals(2, errors.size, findings.text())
+        assertEquals(4, errors.size, findings.text())
         assertTrue(errors.any { it.contains("targets[1]: namespace 'Cash_NS' is not a DNS label") }, findings.text())
         assertTrue(errors.any { it.contains("known_hosts: line 1: expected") }, findings.text())
+        // A malformed line pins nothing.
+        assertTrue(errors.any { it.contains("box dev-cash-01.example.com of flow 'cash' has no line") }, findings.text())
+        assertTrue(errors.any { it.contains("box dev-cash-02.example.com of flow 'cash' has no line") }, findings.text())
+    }
+
+    // --- pinned host keys (ADR-0028): every box of a pool has a line in config/<env>/known_hosts ---------------------
+
+    private val hostKey = "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIOMqqnkVzrm0SdG6UOoqKLsabgH5C9okWi0dh2l9GKJl"
+
+    private fun pinnedBoxErrors(knownHosts: String?): List<String> {
+        validInstance("us-dev", "trades-db-to-amps")
+        write("us-dev/cash/workflows-config.yml", flowTargets(cashPool,
+            "  - instance: source-database/trades-db-to-amps\n    kind: compose\n"))
+        val file = File(config, "us-dev/known_hosts")
+        if (knownHosts == null) file.delete() else write("us-dev/known_hosts", knownHosts)
+        return lint().filter { it.check == 11 && it.severity == Severity.ERROR }.map { it.message }
+    }
+
+    @Test
+    fun `check 11 requires a pinned host key for every box of a pool`() {
+        assertEquals(emptyList<String>(), pinnedBoxErrors(
+            "# the reviewed ssh-keyscan lines\ndev-cash-01.example.com,10.0.0.1 $hostKey\ndev-cash-02.example.com $hostKey\n"))
+        val missing = pinnedBoxErrors("dev-cash-01.example.com $hostKey\n")
+        assertEquals(1, missing.size, missing.joinToString("\n"))
+        assertTrue(missing.single().contains("box dev-cash-02.example.com of flow 'cash' has no line: the ssh transport"), missing.single())
+        // A revoked key pins nothing; a hashed name cannot be reviewed.
+        val revoked = pinnedBoxErrors("dev-cash-01.example.com $hostKey\n@revoked dev-cash-02.example.com $hostKey\n")
+        assertTrue(revoked.single().contains("box dev-cash-02.example.com"), revoked.joinToString("\n"))
+        val hashed = pinnedBoxErrors("dev-cash-01.example.com $hostKey\n|1|c2FsdA==|aGFzaA== $hostKey\n")
+        assertTrue(hashed.any { it.contains("line 2: a hashed host name (ssh-keyscan -H) cannot be reviewed") }, hashed.joinToString("\n"))
+        assertTrue(hashed.any { it.contains("box dev-cash-02.example.com") }, hashed.joinToString("\n"))
+        val marker = pinnedBoxErrors("@trusted dev-cash-01.example.com $hostKey\n")
+        assertTrue(marker.any { it.contains("line 1: unknown marker '@trusted'") }, marker.joinToString("\n"))
+    }
+
+    @Test
+    fun `check 11 lets a cert-authority line cover the boxes its patterns match`() {
+        assertEquals(emptyList<String>(), pinnedBoxErrors("@cert-authority *.example.com $hostKey\n"))
+        val excluded = pinnedBoxErrors("@cert-authority *.example.com,!dev-cash-02.example.com $hostKey\n")
+        assertTrue(excluded.single().contains("box dev-cash-02.example.com"), excluded.joinToString("\n"))
+        val narrow = pinnedBoxErrors("@cert-authority dev-cash-0?.example.com $hostKey\n")
+        assertEquals(emptyList<String>(), narrow)
+    }
+
+    @Test
+    fun `check 11 warns, and does not fail, while the pool's env has no known_hosts`() {
+        assertEquals(emptyList<String>(), pinnedBoxErrors(null))
+        val warning = lint().single { it.check == 11 && it.severity == Severity.WARN }
+        assertEquals("config/us-dev/known_hosts", warning.path)
+        assertTrue(warning.message.contains("missing: the boxes of flow 'cash' have no pinned host key"), warning.message)
+    }
+
+    @Test
+    fun `host patterns match as OpenSSH matches them`() {
+        assertTrue(ConfigRules.matchesHostPatterns("dev-cash-01.example.com", "DEV-CASH-01.Example.com"))
+        assertTrue(ConfigRules.matchesHostPatterns("dev-cash-01.example.com", "other.example.com,dev-cash-0?.example.com"))
+        assertTrue(ConfigRules.matchesHostPatterns("10.0.0.2", "10.0.0.*"))
+        assertTrue(ConfigRules.matchesHostPatterns("dev-cash-01.example.com", "[dev-cash-01.example.com]:22"))
+        assertFalse(ConfigRules.matchesHostPatterns("dev-cash-01.example.com", "[dev-cash-01.example.com]:2222"))
+        assertFalse(ConfigRules.matchesHostPatterns("dev-cash-01.example.com", "*.example.com,!dev-cash-01.example.com"))
+        assertFalse(ConfigRules.matchesHostPatterns("dev-cash-01.example.com", "dev-cash-01"))
+        assertFalse(ConfigRules.matchesHostPatterns("dev-cash-01xexample.com", "dev-cash-01.example.com"))
     }
 }

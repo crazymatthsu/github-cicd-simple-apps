@@ -46,7 +46,7 @@ config/<env>/<flow>/<AppName>/<AppInstance>/        one instance
 | `_docker-compose.<layer>.yml` | compose structure for the flow, the app or the instance | relative paths, secrets |
 | `_helm-values.<layer>.yaml` (Helm, [ADR-0019](../docs/adr/0019-kubernetes-and-helm-are-provisional.md)) | `app`: `resources`, `env: {TZ}`; `instance`: `image.tag` (= `IMAGE_TAG`), `identity` (= the directory path), `env: {APP_ENV, APP_FLOW, APP_NAME, APP_INSTANCE, JAVA_OPTS, LOG_LEVEL_ROOT}` | `IMAGE_*`, `*_HOST_PORT`, `MEM_LIMIT`, `LOGS_DIR`, `DATA_DIR`, `SPRING_*`, `CONNECTOR_*_PASSWORD`, secrets |
 | `<flow>/workflows-config.yml` (every flow of a `*-dev` env; [ADR-0027](../docs/adr/0027-continuous-deployment-to-dev-and-the-deployment-record.md)) | `env` and `flow` (= the path); `pool: {hosts, user, keep}` — the flow's bare-metal boxes, SSH user (default `deploy`; the versions live under `/apps/<user>/versions/<project>/`, [ADR-0018](../docs/adr/0018-on-prem-host-layout-versioned-bundles.md)) and the versions kept per box (default 5, [ADR-0018](../docs/adr/0018-on-prem-host-layout-versioned-bundles.md)); `defaults`; `targets`: one entry per instance directory of the flow — `instance: <AppName>/<AppInstance>`, `kind: compose \| helm`, `host` (compose: the box; with a pool optional — one of `pool.hosts` — the deploy resolves it and records it in the GitHub Deployment, [ADR-0027](../docs/adr/0027-continuous-deployment-to-dev-and-the-deployment-record.md)), `user`, `cluster`, `namespace` (default: the flow) | secrets; an env-level `config/<env>/workflows-config.yml` (config-lint check 11 rejects it); a box in two flows' pools (a box serves one `<env>/<flow>`, [ADR-0018](../docs/adr/0018-on-prem-host-layout-versioned-bundles.md)); `pool.root` (the layout is fixed, [ADR-0018](../docs/adr/0018-on-prem-host-layout-versioned-bundles.md)) |
-| `known_hosts` (in `config/<env>/`) | the reviewed `ssh-keyscan` lines of every box; the ssh transport of `scripts/pool-deploy.sh` and the pool guard trust no other host key | private keys: the deploy key is the Environment `us-dev` secret `DEV_DEPLOY_SSH_KEY` |
+| `known_hosts` (in `config/<env>/`) | the reviewed `ssh-keyscan` lines of every box (see [Pinned host keys](#pinned-host-keys-configenvknown_hosts)); the ssh transport of `scripts/pool-deploy.sh` and the pool guard trust no other host key | private keys: the deploy key is the Environment `us-dev` secret `DEV_DEPLOY_SSH_KEY` |
 
 A file of another level, an old name (`compose.env`, `values.yaml`, `application.yml`, `app-common/`, `_common/`) or
 any other file is a config-lint error (checks 1 and 3), with the name it should have.
@@ -106,6 +106,39 @@ and rolls back; deploy-dev runs `deploy` for every flow with a pool ([ADR-0027](
   the pool, and `--dry-run` prints the peer commands.
 - **Secrets** never enter the bundle: every box of a pool holds the secret environment of every instance of its
   flow ([ADR-0013](../docs/adr/0013-secrets.md)). Two instances on one box need distinct `*_HOST_PORT` values in their `_docker-compose.instance.env`.
+
+### Pinned host keys: `config/<env>/known_hosts`
+
+The ssh transport of `scripts/pool-deploy.sh` and the pool guard check every box's host key against this file and
+accept no other ([ADR-0028](../docs/adr/0028-host-pool-deployment.md)). It holds public keys only, so it is not a
+secret, and it changes only through a reviewed pull request: no script writes it.
+
+- **One line per box**, as `ssh-keyscan` prints it, naming the box exactly as `pool.hosts` does; its IP may follow,
+  comma-separated. Hashed names (`ssh-keyscan -H`) cannot be reviewed and are rejected.
+- **Adding a box:** scan it from a trusted network, and compare its fingerprint with the one the box's admin reads on
+  the box before you commit the line:
+
+  ```bash
+  ssh-keyscan -t ed25519 dev-cash-03.us-dev.example.com
+  ssh-keyscan -t ed25519 dev-cash-03.us-dev.example.com | ssh-keygen -lf -
+  ```
+
+  On the box: `ssh-keygen -lf /etc/ssh/ssh_host_ed25519_key.pub` must print the same fingerprint.
+- **A rebuilt box:** an OS upgrade keeps the host keys (`/etc/ssh/ssh_host_*_key`). A reinstall, a replacement under
+  the same name or a key rotation changes them: replace the box's line. Until then, deploys to that box fail, as they
+  should.
+- **Never scan at deploy time** (`ssh-keyscan >> known_hosts`, `StrictHostKeyChecking=accept-new`). That trusts
+  whatever answers, and on an ephemeral runner every run is a first contact, so a spoofed or reused address would
+  receive the deploy.
+- **Many boxes, or frequent rebuilds:** sign the boxes' host keys with an SSH host CA when they are provisioned, and
+  pin the CA instead. One line covers every box its patterns match, and a rebuilt box needs no change here:
+
+  ```
+  @cert-authority *.us-dev.example.com ssh-ed25519 AAAA...
+  ```
+
+config-lint check 11 fails a pull request when a box of a pool has no matching line; a `@cert-authority` pattern
+counts, a `@revoked` line does not. While the file is missing, because no box exists yet, it only warns.
 
 `./gradlew configLint` checks the tree ([ADR-0014](../docs/adr/0014-config-lint-enforces-the-config-contract.md), including `helm lint` / `helm template` per instance when Helm 4 is
 installed); `scripts/run-compose.sh <env> <flow> <AppName> <AppInstance> validate` checks one instance;
