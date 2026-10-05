@@ -94,6 +94,7 @@ jobs:
       - name: Script tests
         run: |
           set -euo pipefail
+          shopt -s nullglob # a repository without script tests runs none, instead of bash on the literal glob
           for test in scripts/test/*-test.sh; do
             echo "::group::$test"
             bash "$test"
