@@ -26,6 +26,8 @@ Collect all of these before writing a file. Ask once, in one message, for the on
 | kinds | `[compose]`, or `[compose, helm]` when the repository deploys with Helm (ADR-0019) | `[compose]` |
 | apps_dir | the directory of the apps | `apps` |
 | dev_envs | `<region>-dev` entries, or `[]` until a dev env has boxes and a GitHub Environment (ADR-0035) | `[]` |
+| property_prefixes | the apps' property roots, dotted lower-case, at least one: the summary shows them and no env layer may set their `UPPER_CASE_` forms (ADR-0042) | `[<last segment of group>]` |
+| secret_properties | the project's secret property names, dotted lower-case; `spring.datasource.username/password` and secret-looking names are built in (ADR-0042) | `[]` |
 | first app | `<AppName>` (at most 20 characters), its flow, its first instance name (at most 32) | required |
 | target | the directory to create | `../<name>` |
 | tag | the release of this template to copy | the latest `vX.Y.Z` tag |
