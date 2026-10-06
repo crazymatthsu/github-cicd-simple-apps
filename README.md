@@ -53,7 +53,9 @@ scripts/run-compose.sh --help
 `pr-gate` is the one required check) → `main.yml` (build all, integration tests when a project has them, publish,
 kind deploy, deploy-dev) → `release-please.yml` / `release.yml` (release PR, tag, promote the tested digests, SBOMs,
 GitHub Release). The details are in ADR-0021 to ADR-0029, ADR-0034 and ADR-0044, and the repository settings the
-pipeline needs are in [ADR-0020](docs/adr/0020-branching-protection-and-merge-rules.md).
+pipeline needs are in [ADR-0020](docs/adr/0020-branching-protection-and-merge-rules.md). Where each job runs, and
+which of the two base images the Gradle build, the unit tests and the integration tests use, is drawn in
+[`docs/ci-build-environment.md`](docs/ci-build-environment.md).
 
 ## Shared tooling
 
