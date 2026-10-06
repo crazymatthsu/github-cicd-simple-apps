@@ -1,0 +1,11 @@
+# Helm values layer 2 (ADR-0019) — __APP_NAME__ in __ENV__ / __FLOW__, shared by every instance: sizing and the
+# time zone (the compose env layers say MEM_LIMIT=768m and TZ=UTC for compose). Layer 1 is the chart
+# (apps/__APP_NAME__/helm/__APP_NAME__/values.yaml), layer 3 <AppInstance>/_helm-values.instance.yaml.
+resources:
+  requests:
+    cpu: 250m
+    memory: 768Mi
+  limits:
+    memory: 768Mi
+env:
+  TZ: UTC

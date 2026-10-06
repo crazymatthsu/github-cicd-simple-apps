@@ -2,7 +2,7 @@
 
 | | |
 |---|---|
-| Status | Accepted. Supersedes in part rule 4 of ADR-0001 (rule 5) |
+| Status | Accepted. Supersedes in part rule 4 of ADR-0001 (rule 5). Rule 2 superseded in part by [ADR-0040](0040-actuator-contract-and-runtime-module-carry-generic-names.md) |
 | Date | 2026-10-06 |
 | Applies to | every repository built from this one; the reading of every ADR's *Applies to* row |
 | Enforced by | review; the tools of ADR-0033 to ADR-0038, which skip a stage rather than fail when its subject is absent |
@@ -40,6 +40,10 @@ The *Applies to* row already carries the information. What was missing is the ru
 2. **No subject, no deviation.** A repository without the subject MUST NOT record a deviation ADR for it, and no
    file lists which ADRs are dormant: `platform.yml` and the tree are the record. The subjects a new repository
    usually starts without, and the switch that each one is:
+
+   > **Superseded in part by [ADR-0040](0040-actuator-contract-and-runtime-module-carry-generic-names.md) rule 1.**
+   > The framework's switch is an app depending on `framework/app-runtime`, whose names are now the generic ones that
+   > ADR-0037 reads first.
 
    | Subject | The switch | Dormant until then |
    |---|---|---|

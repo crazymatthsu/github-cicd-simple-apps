@@ -52,14 +52,13 @@ ARG APP_VERSION=0.0.0-dev
 ARG GIT_SHA=unknown
 ARG BUILD_URL=local
 ARG CREATED=unknown
-# buildImage also passes every label with --label, including the per-app title, com.example.app and the source
-# repository; these make a hand-built image self-describing too (ADR-0009).
+# buildImage passes every label with --label: these OCI labels, the per-app title, the source repository and the
+# project's own <group>.app, .git-sha, .build-url and .version-kind, whose prefix is the group of platform.yml
+# (ADR-0041). The OCI labels alone are set here too, so a hand-built image is self-describing (ADR-0009).
 LABEL org.opencontainers.image.version="${APP_VERSION}" \
       org.opencontainers.image.revision="${GIT_SHA}" \
       org.opencontainers.image.created="${CREATED}" \
-      org.opencontainers.image.base.name="${BASE_IMAGE}" \
-      com.example.git-sha="${GIT_SHA}" \
-      com.example.build-url="${BUILD_URL}"
+      org.opencontainers.image.base.name="${BASE_IMAGE}"
 ENV TZ=UTC \
     JAVA_OPTS="" \
     JAVA_TOOL_OPTIONS_DEFAULTS="-XX:MaxRAMPercentage=75.0 -XX:+ExitOnOutOfMemoryError -XX:+UseG1GC -Djava.io.tmpdir=/tmp -Djava.security.egd=file:/dev/./urandom"

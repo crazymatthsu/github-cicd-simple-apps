@@ -4,7 +4,7 @@ The Kubernetes test tier of the provisional Helm path ([ADR-0019](../../docs/adr
 [kind](https://kind.sigs.k8s.io/) cluster runs one Helm release per AppInstance, waits for readiness,
 runs `helm test` and a smoke comparison of two instances, and is then deleted. It is a deployment test
 of the chart and the config tree, not an integration test. The apps become ready without a reachable
-database or Deephaven, because readiness is `readinessState` plus the connector indicator. The same
+database or Deephaven, because readiness is `readinessState` plus the `app` indicator. The same
 cluster type is the `deploy-dev` target `cluster: kind-ci` (`config/us-dev/cash/workflows-config.yml`, one inventory per flow) until a dev
 cluster exists.
 
@@ -63,7 +63,9 @@ What `up` does:
    `.state/<cluster>.kubeconfig`, never to `~/.kube/config`. In CI, `KIND_CLUSTER_NAME` and `KUBECONFIG`
    are appended to `$GITHUB_ENV` before the cluster is created. Later steps, including teardown after a
    half-finished `up`, therefore always target the same cluster.
-2. Labels every node `com.example.ci.run=<run>` and `com.example.ci.attempt=<attempt>`.
+2. Labels every node `<domain>/ci.run=<run>` and `<domain>/ci.attempt=<attempt>`. The domain is `projects[0].group`
+   of `platform.yml` reversed: `com.acme.payments` labels `payments.acme.com/ci.run`
+   ([ADR-0041](../../docs/adr/0041-every-label-prefix-derives-from-the-group.md)).
 3. Waits for `deployment/coredns`, because the smoke test needs service DNS.
 
 An existing cluster of the same name is reused, so running `up` twice on a laptop is harmless.

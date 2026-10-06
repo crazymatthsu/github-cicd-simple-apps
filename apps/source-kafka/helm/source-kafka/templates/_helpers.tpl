@@ -51,7 +51,10 @@ app.kubernetes.io/instance: {{ .Release.Name }}
 app.kubernetes.io/component: connector
 {{- end -}}
 
-{{/* Labels every object carries besides its component (ADR-0003). */}}
+{{/*
+Labels every object carries besides its component (ADR-0003). The identity labels are <labelDomain>/<name>: the
+deployer passes the domain, projects[0].group of platform.yml reversed (ADR-0041).
+*/}}
 {{- define "connector.commonLabels" -}}
 app.kubernetes.io/name: {{ .Chart.Name }}
 app.kubernetes.io/instance: {{ .Release.Name }}
@@ -59,10 +62,11 @@ app.kubernetes.io/managed-by: {{ .Release.Service }}
 app.kubernetes.io/part-of: github-cicd-simple-apps
 app.kubernetes.io/version: {{ splitList "@" (toString .Values.image.tag) | first | trunc 63 | trimAll "-_." | quote }}
 helm.sh/chart: {{ printf "%s-%s" .Chart.Name .Chart.Version | replace "+" "_" | trunc 63 | trimSuffix "-" }}
-platform.example.com/env: {{ .Values.identity.env | quote }}
-platform.example.com/flow: {{ .Values.identity.flow | quote }}
-platform.example.com/app: {{ .Values.identity.app | quote }}
-platform.example.com/instance: {{ .Values.identity.instance | quote }}
+{{- $domain := required "labelDomain is required: the deployer passes --set-string labelDomain=<domain>, projects[0].group of platform.yml reversed (ADR-0041)" .Values.labelDomain }}
+{{ $domain }}/env: {{ .Values.identity.env | quote }}
+{{ $domain }}/flow: {{ .Values.identity.flow | quote }}
+{{ $domain }}/app: {{ .Values.identity.app | quote }}
+{{ $domain }}/instance: {{ .Values.identity.instance | quote }}
 {{- end -}}
 
 {{- define "connector.labels" -}}

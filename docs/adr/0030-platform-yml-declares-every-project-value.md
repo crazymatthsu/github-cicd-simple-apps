@@ -2,7 +2,7 @@
 
 | | |
 |---|---|
-| Status | Accepted. Supersedes rule 5 of ADR-0002, and in part rule 3 of ADR-0004, rules 5 and 6 of ADR-0005, rule 6 of ADR-0006, rule 3 of ADR-0007, rule 5 of ADR-0017, rule 2 of ADR-0018 and rule 2 of ADR-0019 (rule 7). Rules 1 and 3 superseded in part by [ADR-0035](0035-dev-envs-and-reference-app-are-optional.md) |
+| Status | Accepted. Supersedes rule 5 of ADR-0002, and in part rule 3 of ADR-0004, rules 5 and 6 of ADR-0005, rule 6 of ADR-0006, rule 3 of ADR-0007, rule 5 of ADR-0017, rule 2 of ADR-0018 and rule 2 of ADR-0019 (rule 7). Rules 1 and 3 superseded in part by [ADR-0035](0035-dev-envs-and-reference-app-are-optional.md). Rules 1, 2 and 4 superseded in part by [ADR-0041](0041-every-label-prefix-derives-from-the-group.md) and [ADR-0042](0042-property-roots-and-secret-properties-in-platform-yml.md) |
 | Date | 2026-10-05 |
 | Applies to | every repository built from this one; every part of the shared tooling that needs a project value |
 | Enforced by | the `buildlogic.platform` settings plugin (validates the file on every Gradle run; `PlatformManifestTest`); config-lint checks 1, 10 and 11 (`ConfigLinterTest`); `ConnectorIdentity` (the app refuses to start; `ConnectorIdentityTest`); the argument checks of `run-compose.sh`, `pool-deploy.sh` and `helm-deploy-instance.sh` (`scripts/test/env-vocabulary-test.sh`, `scripts/test/pool-deploy-test.sh`); the `platform-manifest` action; the guard of `_deploy-dev.yml` |
@@ -40,7 +40,13 @@ the job container of the build, may have neither: they have bash and awk. A runn
 1. **The schema.** `platform.yml`, at the repository root, holds these keys:
 
    > **Superseded in part by [ADR-0035](0035-dev-envs-and-reference-app-are-optional.md) rule 7.** `dev_envs` may be
-   > `[]`, and `projects[0].reference_app` may be left out.
+   > `[]`, and `projects[0].reference_app` may be left out. **Superseded in part by
+   > [ADR-0042](0042-property-roots-and-secret-properties-in-platform-yml.md) rule 1.** The schema gains
+   > `property_prefixes` and `secret_properties`, the last two rows of the table.
+
+   > **Superseded in part by [ADR-0041](0041-every-label-prefix-derives-from-the-group.md) rule 6.**
+   > `projects[0].group` is also the prefix of every label, so it is lower-case words of letters and digits joined by
+   > dots, each starting with a letter and at most 63 characters long.
 
    | Key | Meaning | Rules | This repository |
    |---|---|---|---|
@@ -49,7 +55,7 @@ the job container of the build, may have neither: they have bash and awk. A runn
    | `registry` | the `<registry>` of every image: `<registry>/<project>/<AppName>`, and the base images `<registry>/base/<name>` ([ADR-0010](0010-image-tags-digests-promotion-retention.md)) | lower-case host, optional port, path | `ghcr.io/crazymatthsu` |
    | `projects` | the one project of the repository ([ADR-0002](0002-one-repository-one-project-one-release-line.md)) | exactly one entry | |
    | `projects[0].name` | the project: the repository name, `rootProject.name`, the image path, the host directory | lower-case kebab-case | `github-cicd-simple-apps` |
-   | `projects[0].group` | the Gradle (Maven) group of every module | a Java package name | `com.example.connectors` |
+   | `projects[0].group` | the Gradle (Maven) group of every module, and the prefix of every label ([ADR-0041](0041-every-label-prefix-derives-from-the-group.md)) | a Java package name | `com.example.connectors` |
    | `projects[0].apps_dir` | the directory of the apps ([ADR-0006](0006-apps-and-framework-modules.md)) | one directory name | `apps` |
    | `projects[0].kinds` | the runtimes a deploy target may name (`kind` in `workflows-config.yml`) | `compose`, `helm` or both | `[compose, helm]` |
    | `projects[0].reference_app` | the app of the system test, the kind deployment test and the nightly teardown drill | an app under `apps_dir` | `source-database` |
@@ -57,13 +63,25 @@ the job container of the build, may have neither: they have bash and awk. A runn
    | `regions` | the regions of the identity vocabulary ([ADR-0003](0003-identity-tuple-names-every-instance.md)) | two lower-case letters each | `[us, jp]` |
    | `stages` | the stages; every stage but `dev` is promoted | one word of lower-case letters and digits each; MUST include `dev` | `[dev, qa, uat, prod, parallel]` |
    | `flows` | the business flows | lower-case kebab-case | `[cash, deriv, swap]` |
+   | `property_prefixes` | the apps' own property roots: the start-up summary shows every property below them, and no env layer sets them in environment-variable form (added by [ADR-0042](0042-property-roots-and-secret-properties-in-platform-yml.md)) | dotted lower-case property names; not empty | `[connector]` |
+   | `secret_properties` | the project's secret properties, each with every key below it: no YAML layer holds them, and every output masks them; Spring's datasource credentials are built in (added by [ADR-0042](0042-property-roots-and-secret-properties-in-platform-yml.md)) | dotted lower-case property names; may be `[]` | `[connector.amps.username, connector.amps.password, connector.kafka.sasl, connector.deephaven.token, connector.tls.keystore.password]` |
 
    The last column is this repository's own `platform.yml`: an example, not a requirement. A repository built from
    this one sets its own values, and no shared tool expects these. Values that the tree can derive stay derived ([ADR-0002](0002-one-repository-one-project-one-release-line.md)
    rule 6). A new project value MUST be added to this schema by an ADR before any tool uses it.
-2. **Lines that need no YAML parser.** `dev_envs`, `regions`, `stages` and `flows` MUST each be a one-line list of
-   unquoted words at the top level, like `flows: [cash, deriv, swap]`. `registry` MUST be an unquoted value on one
-   top-level line. Scripts read these lines with awk where no yq is installed.
+2. **Lines that need no YAML parser.** `dev_envs`, `regions`, `stages` and `flows`, and since
+   [ADR-0042](0042-property-roots-and-secret-properties-in-platform-yml.md) `property_prefixes` and
+   `secret_properties`, MUST each be a one-line list of unquoted words at the top level, like
+   `flows: [cash, deriv, swap]`. `registry` MUST be an unquoted value on one top-level line. Scripts read these
+   lines with awk where no yq is installed.
+
+   > **Superseded in part by [ADR-0042](0042-property-roots-and-secret-properties-in-platform-yml.md) rule 1.**
+   > `property_prefixes` and `secret_properties` are one-line lists at the top level too, and their words are dotted
+   > property names.
+   >
+   > **Superseded in part by [ADR-0041](0041-every-label-prefix-derives-from-the-group.md) rule 6.**
+   > `projects[0].group` is read with awk too: an unquoted value on a line of its own, the first `group:` line.
+
 3. **Validated on every build.** `settings.gradle.kts` applies the `buildlogic.platform` settings plugin first. On
    every Gradle run it parses the file and fails the build with every problem listed. It also:
 
@@ -78,6 +96,14 @@ the job container of the build, may have neither: they have bash and awk. A runn
 
    `settings.gradle.kts` holds no project value.
 4. **Every tool reads the values; none restates them.**
+
+   > **Superseded in part by [ADR-0042](0042-property-roots-and-secret-properties-in-platform-yml.md) rule 5.**
+   > Config-lint checks 4, 5 and 9, `run-compose.sh` with awk, and the framework's `ConfigurationSummary` and
+   > `SecretMasker`, from `identity.properties`, also read `property_prefixes` and `secret_properties`.
+   >
+   > **Superseded in part by [ADR-0041](0041-every-label-prefix-derives-from-the-group.md) rule 6.** `run-compose.sh`,
+   > `helm-deploy-instance.sh`, `test-infra/compose/stack.sh` and `test-infra/kind/kind.sh` also read `group`, with
+   > awk, and config-lint check 6 renders with it: every label key starts with it.
 
    | Reader | Values | How |
    |---|---|---|

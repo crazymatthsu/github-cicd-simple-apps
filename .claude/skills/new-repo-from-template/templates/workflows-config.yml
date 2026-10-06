@@ -1,0 +1,20 @@
+# Deploy-dev inventory of __ENV__/__FLOW__ (ADR-0027): one file per flow, owned with the flow directory; one target
+# per instance directory of the flow, checked by configLint (check 11). A target's instance is
+# <AppName>/<AppInstance>, relative to this flow; kind, cluster, namespace, host and user come from the target,
+# else from defaults.
+#   pool     the bare-metal boxes of this flow (ADR-0028): every box receives the flow's host bundle as one version
+#            directory per deploy under /apps/<user>/versions/<project>/ (ADR-0018); scripts/pool-deploy.sh syncs,
+#            deploys and rolls back. Until the boxes exist, deploy-dev's runner plays every box (transport local).
+#   compose  run-compose.sh pull / start / health on a box of the pool; `host` pins the box (ADR-0028).
+#   helm     helm upgrade --install into `cluster` (ADR-0019); only when platform.yml kinds includes helm.
+# Layout: yq v4's own (one space before a trailing comment), so a yq edit changes one line.
+env: __ENV__
+flow: __FLOW__
+pool: # the boxes of __ENV__/__FLOW__
+  hosts: # non-empty, unique, lower-case DNS names (or IPv4)
+    - __BOX_1__
+  user: deploy # the forced-command deploy user: the versions live under /apps/deploy/versions/<project>/ (ADR-0018)
+  keep: 5 # version directories kept per box, never fewer than current and the one before it (ADR-0018)
+defaults:
+  kind: compose
+targets: [] # add-app adds `- instance: <AppName>/<AppInstance>` with `kind: compose` here

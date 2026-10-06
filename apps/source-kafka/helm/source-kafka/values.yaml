@@ -17,10 +17,12 @@ serviceAccount:
   annotations: {}                     # e.g. eks.amazonaws.com/role-arn (IRSA, the EKS design)
   automountToken: false               # the connector never calls the Kubernetes API
 identity:                             # the instance values set all four (the config-tree path, ADR-0003):
-  env: ""                             # rendered as platform.example.com/* labels, checked by the helm test;
+  env: ""                             # rendered as <labelDomain>/* labels, checked by the helm test;
   flow: ""                            # APP_ENV / APP_FLOW / APP_NAME / APP_INSTANCE in env must equal it
   app: ""                             # and app must be this chart's name
   instance: ""
+labelDomain: ""                       # the domain of the identity labels <labelDomain>/{env,flow,app,instance}: set by
+                                      # the deployer, projects[0].group of platform.yml reversed (ADR-0041)
 env: {}                               # map -> container env (sorted by name); the instance values set APP_ENV,
                                       # APP_FLOW, APP_NAME, APP_INSTANCE, JAVA_OPTS, LOG_LEVEL_ROOT, the app layer TZ
 appConfig: {}                         # flow | common | instance -> /config/<layer>/application.yml (--set-file)

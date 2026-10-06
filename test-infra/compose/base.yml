@@ -6,10 +6,12 @@
 #
 # Teardown (ADR-0024): every service, named volume and network carries the run labels, so
 # `stack.sh down` can prune by label and `stack.sh leak-check` can prove nothing is left. YAML anchors
-# do not cross files, so each stack file repeats this anchor. Keep the copies identical.
+# do not cross files, so each stack file repeats this anchor. Keep the copies identical. The keys start
+# with LABEL_PREFIX, projects[0].group of platform.yml, which stack.sh exports (ADR-0041); compose
+# interpolates values, never mapping keys, so the labels are a list of "key=value".
 x-ci-labels: &ci-labels
-  com.example.ci.run: "${CI_RUN_ID:-local}"
-  com.example.ci.attempt: "${CI_RUN_ATTEMPT:-0}"
+  - "${LABEL_PREFIX:?run through test-infra/compose/stack.sh}.ci.run=${CI_RUN_ID:-local}"
+  - "${LABEL_PREFIX}.ci.attempt=${CI_RUN_ATTEMPT:-0}"
 
 networks:
   default:

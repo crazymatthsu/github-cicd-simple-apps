@@ -19,7 +19,7 @@ The four-argument form is how run-compose.sh health calls it.
 Checks one running instance through its actuator:
   1. GET <base-url>/actuator/health/readiness answers 200 with status UP (polled for SMOKE_TIMEOUT seconds).
   2. GET <base-url>/actuator/info carries the identity APP_ENV / APP_FLOW / APP_NAME / APP_INSTANCE: its
-     app section, else its connector section (the framework's name, ADR-0037), has env, flow, app and instance
+     app section, else its connector section (images built before ADR-0040), has env, flow, app and instance
      set (never the "none" marker), app is the subproject, and each part equals the arguments, else the APP_*
      variable of that name when set. When both sections are present, they must agree. When neither is, the app
      does not publish its identity: check 2 is skipped with a warning, and check 1 alone decides.
@@ -159,7 +159,8 @@ section_identity() {
   fi
   [[ -n $found ]] && printf '%s' "$found"
 }
-# The generic app section first, then the framework's connector section (ADR-0037); both present must agree.
+# The app section first, then the connector section of an image built before ADR-0040 (ADR-0037); both present
+# must agree.
 section='' identity='' problems=''
 for name in app connector; do
   found=$(section_identity "$name") || continue

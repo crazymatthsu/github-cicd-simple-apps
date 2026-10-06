@@ -60,7 +60,8 @@ fun interface ManifestValidator {
 
 /**
  * What config-lint checks names and envs against: the identity vocabulary and the runtimes of platform.yml
- * (ADR-0003, ADR-0030), and the envs the checked tree may hold (ADR-0004).
+ * (ADR-0003, ADR-0030), the envs the checked tree may hold (ADR-0004), and the apps' own configuration roots and
+ * secret properties (ADR-0042).
  */
 data class LintScope(
     val regions: Set<String>,
@@ -69,7 +70,22 @@ data class LintScope(
     val kinds: Set<String>,
     /** The envs the tree may hold besides `local` (platform.yml `dev_envs`); null: every env of the vocabulary. */
     val envs: Set<String>?,
+    /** The apps' own property roots (platform.yml `property_prefixes`): no env layer sets them (checks 4 and 5). */
+    val propertyPrefixes: List<String>,
+    /** The project's secret properties (platform.yml `secret_properties`): no YAML layer holds them (check 9). */
+    val secretProperties: List<String>,
 ) {
+    /**
+     * The variable prefixes that no env layer and no Helm `env:` map may carry (ADR-0012): Spring's own roots, then the
+     * environment-variable form of each of the apps' roots (ADR-0042).
+     */
+    val forbiddenPrefixes: List<String>
+        get() = (ConfigRules.SPRING_ENV_PREFIXES + propertyPrefixes.map { ConfigRules.envPrefix(it) }).distinct()
+
+    /** Check 9: Spring's datasource credentials, built in, and the secret properties of platform.yml (ADR-0042). */
+    fun isSecretProperty(key: String): Boolean =
+        ConfigRules.isSecretProperty(key, ConfigRules.BUILT_IN_SECRET_PROPERTIES + secretProperties)
+
     /** `local`, or `<region>-<stage>` with a region and a stage of the vocabulary. */
     fun isEnv(env: String): Boolean =
         env == LOCAL || (env.substringBefore('-', "") in regions && env.substringAfter('-', "") in stages)
@@ -116,11 +132,18 @@ object ConfigRules {
         "JAVA_OPTS", "TZ", "LOG_LEVEL_ROOT", "LOGS_DIR", "DATA_DIR", "MEM_LIMIT",
     )
     val HOST_PORT = Regex("^[A-Z][A-Z0-9_]*_HOST_PORT$")
-    val FORBIDDEN_PREFIXES = listOf("SPRING_", "LOGGING_", "MANAGEMENT_", "CONNECTOR_")
+    /**
+     * ADR-0012: Spring's own property roots in environment-variable form, which no env layer may set. The apps' own
+     * roots come from platform.yml `property_prefixes` ([LintScope.forbiddenPrefixes], ADR-0042).
+     */
+    val SPRING_ENV_PREFIXES = listOf("SPRING_", "LOGGING_", "MANAGEMENT_")
 
-    /** Variables `run-compose.sh` sets itself; no env layer may define them (ADR-0012). */
+    /** A property root as Spring's relaxed binding reads it from the environment: `.` to `_`, no `-`, upper case. */
+    fun envPrefix(property: String): String = property.replace("-", "").replace('.', '_').uppercase() + "_"
+
+    /** Variables `run-compose.sh` sets itself; no env layer may define them (ADR-0012, ADR-0041). */
     val SCRIPT_VARIABLES = setOf("COMPOSE_ENV_FILE", "FLOW_APP_YML", "APP_APP_YML", "INSTANCE_APP_YML", "PROJECT",
-        "INSTANCE_LOGS_DIR", "INSTANCE_DATA_DIR")
+        "INSTANCE_LOGS_DIR", "INSTANCE_DATA_DIR", "LABEL_PREFIX")
     /**
      * The env-layer variables that name the flow's host directories (ADR-0018); each instance mounts
      * `<dir>/<AppName>/<AppInstance>`, which `run-compose.sh` passes to the template as `INSTANCE_<name>`.
@@ -139,12 +162,11 @@ object ConfigRules {
     /** The script's exit code for "no usable Helm 4" (helm-deploy-instance.sh). */
     const val EXIT_TOOL = 5
 
-    /** ADR-0013: secret properties; none of them may appear in any YAML layer. */
-    val SECRET_PROPERTIES = listOf(
-        "spring.datasource.username", "spring.datasource.password",
-        "connector.amps.username", "connector.amps.password",
-        "connector.kafka.sasl", "connector.deephaven.token", "connector.tls.keystore.password",
-    )
+    /**
+     * ADR-0013: secret properties, which no YAML layer may hold. Spring's datasource credentials are built in; the
+     * project's own are platform.yml `secret_properties` ([LintScope.secretProperties], ADR-0042).
+     */
+    val BUILT_IN_SECRET_PROPERTIES = listOf("spring.datasource.username", "spring.datasource.password")
 
     val DOCKER_TAG = Regex("^[A-Za-z0-9_][A-Za-z0-9_.-]{0,127}$")
     val RELEASE_TAG = Regex("""^\d+\.\d+\.\d+(@sha256:[0-9a-f]{64})?$""")
@@ -211,9 +233,10 @@ object ConfigRules {
 
     fun normalise(key: String): String = key.lowercase().replace("-", "").replace("_", "")
 
-    fun isSecretProperty(key: String): Boolean {
+    /** Whether [key] is one of [secretProperties] or a key below one, in any relaxed form. */
+    fun isSecretProperty(key: String, secretProperties: Collection<String>): Boolean {
         val k = normalise(key)
-        return SECRET_PROPERTIES.any { s -> val n = normalise(s); k == n || k.startsWith("$n.") }
+        return secretProperties.any { s -> val n = normalise(s); k == n || k.startsWith("$n.") }
     }
 }
 
@@ -243,6 +266,11 @@ class ConfigLinter(
     private val validator: ManifestValidator? = null,
     /** Where check 12 keeps `<env>/<flow>/<AppName>/<AppInstance>.yaml`; null: temporary files. */
     private val renderDir: File? = null,
+    /**
+     * `LABEL_PREFIX` for check 6, as `run-compose.sh` derives it: `projects[0].group` of platform.yml (ADR-0041). Null:
+     * the template's required variable gets the placeholder, like any other.
+     */
+    private val labelPrefix: String? = null,
 ) {
     private val findings = mutableListOf<Finding>()
     private val yaml = Yaml(SafeConstructor(LoaderOptions()))
@@ -251,6 +279,8 @@ class ConfigLinter(
      * check 12 renders nothing; a values file that exists is still checked (checks 3, 4, 10).
      */
     private val helmEnabled = scope.helmEnabled
+    /** Spring's roots and the apps' own in environment-variable form (checks 4 and 5, ADR-0012, ADR-0042). */
+    private val forbiddenPrefixes = scope.forbiddenPrefixes
     private var helmSkipped = false
     private var unvalidated = 0
 
@@ -509,9 +539,9 @@ class ConfigLinter(
         }
         for (doc in documents) {
             for (key in flatten(doc)) {
-                if (ConfigRules.isSecretProperty(key)) {
-                    error(9, file, "'$key' is a secret property (ADR-0013): it arrives from the environment or " +
-                        "/secrets/, never from the config tree")
+                if (scope.isSecretProperty(key)) {
+                    error(9, file, "'$key' is a secret property (ADR-0013, ADR-0042): it arrives from the " +
+                        "environment or /secrets/, never from the config tree")
                 }
             }
         }
@@ -575,9 +605,9 @@ class ConfigLinter(
         for ((key, value) in vars) {
             val port = ConfigRules.HOST_PORT.matches(key)
             when {
-                ConfigRules.FORBIDDEN_PREFIXES.any { key.startsWith(it) } ->
-                    error(5, file, "$key is forbidden in an env layer (SPRING_/LOGGING_/MANAGEMENT_/CONNECTOR_ belong " +
-                        "in YAML; secrets are passed through from the shell, ADR-0012)")
+                forbiddenPrefixes.any { key.startsWith(it) } ->
+                    error(5, file, "$key is forbidden in an env layer (${forbiddenPrefixes.joinToString("/")} belong " +
+                        "in YAML; secrets are passed through from the shell, ADR-0012, ADR-0042)")
                 key in ConfigRules.SCRIPT_VARIABLES ->
                     error(5, file, "$key is set by run-compose.sh and must not appear in an env layer")
                 key !in ConfigRules.COMPOSE_ENV_ALLOWED && !port ->
@@ -643,9 +673,9 @@ class ConfigLinter(
         for ((k, v) in env) {
             val key = k.toString()
             when {
-                ConfigRules.FORBIDDEN_PREFIXES.any { key.startsWith(it) } ->
-                    error(4, file, "env.$key is forbidden: SPRING_/LOGGING_/MANAGEMENT_/CONNECTOR_ settings belong in " +
-                        "YAML, secrets in the Secret mounted at /secrets/ (ADR-0011, ADR-0013)")
+                forbiddenPrefixes.any { key.startsWith(it) } ->
+                    error(4, file, "env.$key is forbidden: ${forbiddenPrefixes.joinToString("/")} settings belong in " +
+                        "YAML, secrets in the Secret mounted at /secrets/ (ADR-0011, ADR-0013, ADR-0042)")
                 key !in ConfigRules.VALUES_ENV_ALLOWED ->
                     error(4, file, "env.$key is not an app-facing variable (ADR-0019; allowed: " +
                         "${ConfigRules.VALUES_ENV_ALLOWED.sorted().joinToString()})")
@@ -756,6 +786,7 @@ class ConfigLinter(
             "INSTANCE_APP_YML" to File(dir, ConfigRules.application(ConfigRules.Layer.INSTANCE)).absolutePath,
             "PROJECT" to "$env-$flow-$app-$instance",
         )
+        labelPrefix?.let { environment["LABEL_PREFIX"] = it }
         File(flowDir, ConfigRules.application(ConfigRules.Layer.FLOW)).takeIf { it.isFile }
             ?.let { environment["FLOW_APP_YML"] = it.absolutePath }
         // The instance's host directories, as run-compose.sh derives them (ADR-0018).

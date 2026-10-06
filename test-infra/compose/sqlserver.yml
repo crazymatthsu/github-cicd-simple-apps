@@ -4,8 +4,8 @@
 # about 2 GB, and needs 30-60 s to start, so it is pre-pulled (stack.sh pull) and its health check gates
 # everything that needs it. Port 1433 is published only by local-ports.yml.
 x-ci-labels: &ci-labels
-  com.example.ci.run: "${CI_RUN_ID:-local}"
-  com.example.ci.attempt: "${CI_RUN_ATTEMPT:-0}"
+  - "${LABEL_PREFIX:?run through test-infra/compose/stack.sh}.ci.run=${CI_RUN_ID:-local}"
+  - "${LABEL_PREFIX}.ci.attempt=${CI_RUN_ATTEMPT:-0}"
 
 services:
   sqlserver:

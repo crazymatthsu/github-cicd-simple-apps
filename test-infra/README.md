@@ -35,7 +35,7 @@ test-infra/
 | `:source-database` | `deephaven`, `sqlserver` |
 | `:source-kafka` | `deephaven`, `kafka` |
 | `:source-amps` | `deephaven` (AMPS has no public image; stub sink) |
-| `:connectors-framework` | `deephaven` |
+| `:app-runtime` | `deephaven` |
 
 | Service | Image (`versions.env`) | Readiness | Memory (limit) |
 |---|---|---|---|
@@ -47,8 +47,10 @@ test-infra/
 
 Services reach each other by service name on the project network: Deephaven at `deephaven:10000`,
 SQL Server at `sqlserver:1433`, Kafka at `kafka:9092`. Nothing is published in CI. Every service,
-named volume and network carries `com.example.ci.run` / `com.example.ci.attempt` (the `x-ci-labels`
-anchor, repeated in each file because anchors do not cross files). Image-declared volumes are
+named volume and network carries `<group>.ci.run` / `<group>.ci.attempt` (the `x-ci-labels`
+anchor, repeated in each file because anchors do not cross files). `<group>` is `projects[0].group` of
+`platform.yml`, which `stack.sh` exports as `LABEL_PREFIX`
+([ADR-0041](../docs/adr/0041-every-label-prefix-derives-from-the-group.md)). Image-declared volumes are
 replaced by labelled named volumes (Deephaven) or tmpfs (Kafka), so no unlabelled anonymous volume
 can escape the leak check. A system IT sets `DEEPHAVEN_IMAGE` to the platform's `deephaven-server` image (`DEEPHAVEN_SERVER_IMAGE` in `versions.env`)
 ([ADR-0025](../docs/adr/0025-integration-tests-on-compose-stacks.md)).
@@ -98,7 +100,9 @@ What `up` does:
    `local-ports.yml` filtered to the stack's services. It exports `COMPOSE_FILE`,
    `COMPOSE_PROJECT_NAME` and `COMPOSE_ENV_FILES`: one file, `compose/.state/<project>.compose.env`, which is
    `versions.env` plus the instance's combined env when the app joins (podman-compose keeps only the last of
-   several env files).
+   several env files). It also exports `LABEL_PREFIX`, `projects[0].group` of `platform.yml`, with which compose
+   writes every label key ([ADR-0041](../docs/adr/0041-every-label-prefix-derives-from-the-group.md)); a missing or
+   malformed group stops it with exit 4.
 2. Project name: `COMPOSE_PROJECT_NAME` if set, else `ci-<CI_RUN_ID>-<CI_RUN_ATTEMPT>` in CI
    (`CI_RUN_ID` defaults to `GITHUB_RUN_ID`), else `local-<AppName>`.
 3. Sets `IT_TABLE_PREFIX=it_<sha7>_`, `IT_RUNNER_UID/GID` (the caller's), `IT_WORKSPACE` and `IT_GRADLE_HOME`.

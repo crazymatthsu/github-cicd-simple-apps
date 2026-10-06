@@ -2,7 +2,7 @@
 
 | | |
 |---|---|
-| Status | Accepted |
+| Status | Accepted. Rule 3 superseded in part by [ADR-0040](0040-actuator-contract-and-runtime-module-carry-generic-names.md). Rules 3 and 4 superseded in part by [ADR-0042](0042-property-roots-and-secret-properties-in-platform-yml.md) |
 | Date | 2026-10-04 |
 | Applies to | every app, every env, every pipeline |
 | Enforced by | config-lint check 9 (secret keys in YAML layers, secret-looking values anywhere in the tree); `run-compose.sh` (refuses `start`, `restart`, `validate` and `app-config --offline` while a required secret is unset); `SecretMaskerTest`, `ConfigurationSummaryTest` and the actuator contract test (masking); the chart's values schema (secret-bearing `env` names) |
@@ -67,6 +67,14 @@ flowchart TD
      them uses them. The deploy key goes into that step's `ssh-agent`, and its temporary file is removed at once.
    - **Integration tests.** Throwaway credentials are generated per build (`IT_SA_PASSWORD`) and never committed.
 3. **Masked wherever configuration is printed.**
+
+   > **Superseded in part by [ADR-0040](0040-actuator-contract-and-runtime-module-carry-generic-names.md) rule 1.**
+   > The running instance serves the masked summary at `/actuator/appconfig`.
+   >
+   > **Superseded in part by [ADR-0042](0042-property-roots-and-secret-properties-in-platform-yml.md) rule 4.** The
+   > known secret properties are Spring's datasource credentials and those of `platform.yml` `secret_properties`, each
+   > with every key below it, and `run-compose.sh` masks all of them by key name, not three usernames.
+
    - The app's own outputs — the start-up summary, `/actuator/connectorconfig` (which `run-compose.sh app-config`
      shows) and `--print-config` — mask:
      - values whose key is a known secret property, or whose key has a secret-looking segment (`password`,
@@ -78,6 +86,11 @@ flowchart TD
 
    `/actuator/env` is never exposed ([ADR-0015](0015-actuator-health-and-metrics-contract.md)).
 4. **Detected before merge.** Config-lint check 9 fails on:
+
+   > **Superseded in part by [ADR-0042](0042-property-roots-and-secret-properties-in-platform-yml.md) rule 4.** The
+   > secret property keys are Spring's datasource credentials and those of `platform.yml` `secret_properties`, each
+   > with every key below it.
+
    - a secret property key in any YAML layer;
    - a secret-looking value anywhere in the tree: private keys, cloud access keys, GitHub and Slack tokens, a
      literal value assigned to a password-like key, a password inside a JDBC URL.

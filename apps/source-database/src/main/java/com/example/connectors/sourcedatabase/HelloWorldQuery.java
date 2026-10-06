@@ -12,7 +12,7 @@ import org.springframework.core.env.Environment;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.stereotype.Component;
 
-import com.example.connectors.framework.ConnectorApplication;
+import com.example.connectors.framework.PlatformApplication;
 import com.example.connectors.framework.ConnectorIdentity;
 import com.example.connectors.framework.ConnectorMdc;
 import com.example.connectors.framework.ConnectorProperties;
@@ -48,7 +48,7 @@ public class HelloWorldQuery implements ApplicationRunner {
 
     @Override
     public void run(ApplicationArguments args) {
-        if (environment.getProperty(ConnectorApplication.PRINT_CONFIG_PROPERTY, Boolean.class, false)) {
+        if (environment.getProperty(PlatformApplication.PRINT_CONFIG_PROPERTY, Boolean.class, false)) {
             return; // --print-config: resolve configuration only, never connect
         }
         Thread.ofPlatform().name("hello-world-query").daemon().start(ConnectorMdc.wrap(identity, this::execute));

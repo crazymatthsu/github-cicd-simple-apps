@@ -4,8 +4,8 @@
 # DEEPHAVEN_IMAGE to the platform's own Deephaven server image (DEEPHAVEN_SERVER_IMAGE in versions.env, ADR-0025).
 # Port 10000 is never published here; only local-ports.yml publishes it, on localhost.
 x-ci-labels: &ci-labels
-  com.example.ci.run: "${CI_RUN_ID:-local}"
-  com.example.ci.attempt: "${CI_RUN_ATTEMPT:-0}"
+  - "${LABEL_PREFIX:?run through test-infra/compose/stack.sh}.ci.run=${CI_RUN_ID:-local}"
+  - "${LABEL_PREFIX}.ci.attempt=${CI_RUN_ATTEMPT:-0}"
 
 services:
   deephaven:

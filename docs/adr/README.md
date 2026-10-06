@@ -64,31 +64,35 @@ flowchart LR
 |---|---|---|
 | **Foundations** | | |
 | [0001](0001-adrs-are-the-repository-contract.md) | Decisions are numbered ADRs with MUST/SHOULD rules and an "Enforced by" line. ADR-0001 to ADR-0999 are the shared contract; a repository's own decisions start at ADR-1000. | Accepted; rule 4 superseded in part by ADR-0039 |
-| [0039](0039-an-adr-applies-where-its-subject-exists.md) | A contract ADR applies where the subject its *Applies to* row names exists. A repository without the subject (no Helm, no integration test, no dev env, no pool) deviates from nothing and records nothing; the ADR applies from the first subject. | Accepted |
+| [0039](0039-an-adr-applies-where-its-subject-exists.md) | A contract ADR applies where the subject its *Applies to* row names exists. A repository without the subject (no Helm, no integration test, no dev env, no pool) deviates from nothing and records nothing; the ADR applies from the first subject. | Accepted; rule 2 superseded in part by ADR-0040 |
+| [0043](0043-coding-agent-instructions-are-shared-tooling.md) | `CLAUDE.md` and the skills `new-repo-from-template`, `add-app` and `add-instance` are shared tooling: the contract in one screen and the executable form of the three checklists, free of project values; a test keeps their templates equal to the reference app's files. | Accepted |
 | [0002](0002-one-repository-one-project-one-release-line.md) | A repository is one project of Spring Boot apps and libraries, released together as `vX.Y.Z`. `platform.yml` declares only what the tree cannot derive. | Accepted; rule 5 superseded by ADR-0030 |
-| [0003](0003-identity-tuple-names-every-instance.md) | `<env>/<flow>/<AppName>/<AppInstance>` is the configuration path and the source of every name. | Accepted |
+| [0003](0003-identity-tuple-names-every-instance.md) | `<env>/<flow>/<AppName>/<AppInstance>` is the configuration path and the source of every name. | Accepted; rule 3 superseded in part by ADR-0041 |
 | [0004](0004-environments-and-runtimes.md) | Only local and dev are configured and deployed here. qa, uat, prod and parallel are configured and deployed from a separate configuration repository, promoted by pull request. On-prem compose runs every env until EKS. | Accepted; rule 3 superseded in part by ADR-0030 |
-| [0005](0005-repository-layout-and-shared-tooling.md) | One skeleton for every repository. Shared tooling is copied unchanged, project files are the project's own, and changes to the tooling are made here first. | Accepted; rules 5 and 6 superseded in part by ADR-0030 |
-| [0006](0006-apps-and-framework-modules.md) | `apps/<AppName>/` holds an app's code and only the infrastructure that differs between apps. `framework/<name>/` holds shared libraries, never deployed. | Accepted; rule 6 superseded in part by ADR-0030 |
-| [0030](0030-platform-yml-declares-every-project-value.md) | `platform.yml` declares every project value: registry, project, group, apps directory, runtimes, reference app, dev envs, regions, stages and flows. The build validates it on every run, and every tool reads it; none hard-codes a value. | Accepted; rules 1 and 3 superseded in part by ADR-0035 |
+| [0005](0005-repository-layout-and-shared-tooling.md) | One skeleton for every repository. Shared tooling is copied unchanged, project files are the project's own, and changes to the tooling are made here first. | Accepted; rules 5 and 6 superseded in part by ADR-0030, rule 5 in part by ADR-0043 |
+| [0006](0006-apps-and-framework-modules.md) | `apps/<AppName>/` holds an app's code and only the infrastructure that differs between apps. `framework/<name>/` holds shared libraries, never deployed. | Accepted; rule 6 superseded in part by ADR-0030, rules 1 and 4 in part by ADR-0040 |
+| [0030](0030-platform-yml-declares-every-project-value.md) | `platform.yml` declares every project value: registry, project, group, apps directory, runtimes, reference app, dev envs, regions, stages and flows. The build validates it on every run, and every tool reads it; none hard-codes a value. | Accepted; rules 1 and 3 superseded in part by ADR-0035, rules 1, 2 and 4 in part by ADR-0041 and ADR-0042 |
 | [0035](0035-dev-envs-and-reference-app-are-optional.md) | `dev_envs` may be `[]` and `reference_app` may be left out. No dev env skips the kind deployment test and the dev deploy; no reference app skips the system test, the kind deployment test and the teardown drill. A new repository goes green before its boxes exist. | Accepted |
 | **Build and artifacts** | | |
 | [0007](0007-gradle-build-with-convention-plugins.md) | Convention plugins in `build-logic/`, one version catalog and the Spring Boot BOM give reproducible, cached builds; a module declares only its plugins and dependencies. | Accepted; rule 3 superseded in part by ADR-0030 and ADR-0038, rule 1 in part by ADR-0033 |
 | [0008](0008-versions-derived-from-git.md) | Versions come from git tags and Conventional Commits on every build. No version file exists. | Accepted |
-| [0009](0009-one-shared-image-definition.md) | One Dockerfile and a three-file build context for every app; images are non-root and layered, and Gradle builds them with docker or podman. | Accepted; rules 3 and 6 superseded in part by ADR-0033 |
+| [0009](0009-one-shared-image-definition.md) | One Dockerfile and a three-file build context for every app; images are non-root and layered, and Gradle builds them with docker or podman. | Accepted; rules 3 and 6 superseded in part by ADR-0033, rule 4 in part by ADR-0041 |
 | [0010](0010-image-tags-digests-promotion-retention.md) | Images are `<registry>/<project>/<AppName>` with immutable version and sha tags. They move by digest, are promoted by re-tagging, and the retention sweep keeps everything in use. | Accepted; rule 7 superseded in part by ADR-0032 |
 | [0033](0033-public-base-image-fallback.md) | A company base image that is not published falls back to a public Temurin image pinned in `.github/versions.env`: `eclipse-temurin:21-jre` for the app images, `eclipse-temurin:21-jdk` for the integration tests. The shared Dockerfile adds the user, the directories and curl that the public image lacks, and a pull-request job proves it. | Accepted |
 | **Configuration** | | |
 | [0011](0011-configuration-tree-and-spring-layers.md) | Spring layers apply jar < flow < app < instance < secrets. Layers are files named by level, only `application.<layer>.yml` reaches the container, and nothing is shared above the flow. | Accepted; rule 5 superseded in part by ADR-0036 |
-| [0012](0012-compose-template-and-generated-env.md) | One compose template plus structural overrides. The env layers merge into one generated, annotated env per instance, from allow-listed variables. | Accepted |
-| [0013](0013-secrets.md) | Secrets never enter git, the layers, the images or the bundles. They are passed through from the shell or mounted at `/secrets/`, masked wherever printed, and scanned for. | Accepted |
-| [0014](0014-config-lint-enforces-the-config-contract.md) | `./gradlew configLint` enforces the configuration rules with numbered checks, the same on a laptop and in CI. | Accepted; rule 2 superseded in part by ADR-0036 |
+| [0012](0012-compose-template-and-generated-env.md) | One compose template plus structural overrides. The env layers merge into one generated, annotated env per instance, from allow-listed variables. | Accepted; rule 3 superseded in part by ADR-0041 and ADR-0042 |
+| [0013](0013-secrets.md) | Secrets never enter git, the layers, the images or the bundles. They are passed through from the shell or mounted at `/secrets/`, masked wherever printed, and scanned for. | Accepted; rule 3 superseded in part by ADR-0040, rules 3 and 4 in part by ADR-0042 |
+| [0014](0014-config-lint-enforces-the-config-contract.md) | `./gradlew configLint` enforces the configuration rules with numbered checks, the same on a laptop and in CI. | Accepted; rule 2 superseded in part by ADR-0036 and ADR-0042 |
 | [0036](0036-helm-checks-only-when-kinds-include-helm.md) | config-lint requires a chart per app and the Helm values of every instance, and renders them, only when `platform.yml` `kinds` includes `helm`; a values file that exists is checked either way. | Accepted |
+| [0042](0042-property-roots-and-secret-properties-in-platform-yml.md) | `platform.yml` names the apps' property roots (`property_prefixes`) and the project's secret properties (`secret_properties`). The summary shows the roots, no env layer sets them, no YAML layer holds a secret property, and every output masks one; config-lint, `run-compose.sh` and the framework read both from there, and only Spring's names stay built in. | Accepted |
 | **Runtime operations** | | |
-| [0015](0015-actuator-health-and-metrics-contract.md) | Every app exposes `health`, `info`, `prometheus` and `connectorconfig` on port 8080. Readiness is `readinessState` plus `connector`, the identity is on every meter, and one test checks all of it. | Accepted; rules 3 and 6 superseded in part by ADR-0037 |
-| [0016](0016-logging-and-startup-configuration-summary.md) | Logs go to stdout with the identity on every line. The masked effective configuration is available at start-up, from an endpoint, and offline. | Accepted; rule 5 superseded in part by ADR-0037 |
-| [0017](0017-run-compose-operations-cli-and-runtime-posture.md) | `run-compose.sh` operates every compose-run instance of this repository — laptop, CI, dev host — with safety rules and an audit line; the shared template hardens every container. | Accepted; rule 5 superseded in part by ADR-0030, rule 1 in part by ADR-0037 |
-| [0037](0037-runtime-scripts-read-generic-actuator-names.md) | The runtime scripts read the generic names first, the `app` section of `/actuator/info` and `/actuator/appconfig`, and accept the framework's `connector` and `connectorconfig`. An app that publishes neither passes on readiness, with a warning. | Accepted |
+| [0015](0015-actuator-health-and-metrics-contract.md) | Every app exposes `health`, `info`, `prometheus` and its configuration summary `appconfig` on port 8080. Readiness is `readinessState` plus the `app` indicator, the identity is on every meter, and one test checks all of it. | Accepted; rules 3 and 6 superseded in part by ADR-0037, rules 1, 3, 4, 6 and 9 in part by ADR-0040 |
+| [0016](0016-logging-and-startup-configuration-summary.md) | Logs go to stdout with the identity on every line. The masked effective configuration is available at start-up, from an endpoint, and offline. | Accepted; rule 5 superseded in part by ADR-0037 and ADR-0040, rule 4 in part by ADR-0042 |
+| [0017](0017-run-compose-operations-cli-and-runtime-posture.md) | `run-compose.sh` operates every compose-run instance of this repository — laptop, CI, dev host — with safety rules and an audit line; the shared template hardens every container. | Accepted; rule 5 superseded in part by ADR-0030, rule 1 in part by ADR-0037, rule 7 in part by ADR-0041 |
+| [0037](0037-runtime-scripts-read-generic-actuator-names.md) | The runtime scripts read the generic names first, the `app` section of `/actuator/info` and `/actuator/appconfig`, and accept `connector` and `connectorconfig`, the names of images built before ADR-0040. An app that publishes neither passes on readiness, with a warning. | Accepted; rules 1, 3 and 7 superseded in part by ADR-0040 |
+| [0040](0040-actuator-contract-and-runtime-module-carry-generic-names.md) | The framework and its actuator contract carry generic names: the module `framework/app-runtime`, `PlatformApplication`, `AbstractPlatformApplicationTest`, the endpoint `appconfig`, the readiness indicator `app` and the identity in the `app` section of `/actuator/info` only. The runtime scripts still accept the old `connector` and `connectorconfig`. | Accepted |
+| [0041](0041-every-label-prefix-derives-from-the-group.md) | Every label key the tooling sets or filters by starts with `projects[0].group` of `platform.yml`: the group on images and compose resources (`<group>.env`), the group reversed on Kubernetes objects and kind nodes (`<domain>/env`). No tool names a label domain; the group is lower-case words. | Accepted |
 | [0018](0018-on-prem-host-layout-versioned-bundles.md) | Hosts keep `/apps/<user>/versions/<project>/<version>/` per deploy, with `current` the live one. Activation is atomic, and rollback points `current` back. | Accepted; rule 2 superseded in part by ADR-0030 |
 | [0019](0019-kubernetes-and-helm-are-provisional.md) | Charts, Helm values, the Helm deploy script, check 12 and the kind tier are kept working, not extended, until the EKS design. | Accepted; rule 2 superseded in part by ADR-0030 and ADR-0036, rule 5 in part by ADR-0036 |
 | **Source control** | | |
@@ -97,7 +101,7 @@ flowchart LR
 | [0021](0021-ci-layering.md) | Thin trigger workflows call reusable stage workflows, then composite actions, then scripts and Gradle tasks that run on a laptop. Least privilege, and JSON between stages. | Accepted |
 | [0022](0022-pull-request-pipeline.md) | Affected projects come from the changed paths, classified by `affected-map.yml` and the projects' own directories: a fast tier on push, a full tier on pull requests and the merge queue. `pr-gate` is the only required check. | Accepted; rule 2 superseded in part by ADR-0031, rule 1 in part by ADR-0033 |
 | [0023](0023-main-pipeline-build-once-test-publish.md) | Build once, run the component and system tests on those digests, then publish, then deploy dev. | Accepted; rule 2 superseded in part by ADR-0034 |
-| [0024](0024-ephemeral-ci-environments.md) | Each job gets its own labelled stack or cluster, torn down in `always()` steps; a leak check and a nightly drill prove the teardown. | Accepted; rule 5 superseded in part by ADR-0035 |
+| [0024](0024-ephemeral-ci-environments.md) | Each job gets its own labelled stack or cluster, torn down in `always()` steps; a leak check and a nightly drill prove the teardown. | Accepted; rule 5 superseded in part by ADR-0035, rule 2 in part by ADR-0041 |
 | [0031](0031-ci-derives-the-projects-from-the-build-files.md) | CI derives the projects — which build an image, which have integration tests, which directory selects each — from the build files, with the build's own rules; the affected map keeps only path classes. | Accepted |
 | [0032](0032-registry-credentials.md) | Two optional secrets, `REGISTRY_USER` and `REGISTRY_TOKEN`, log every job in to the registry of `platform.yml`; without them, `GITHUB_TOKEN` on GHCR. The retention sweep is GHCR-only, and the boxes of a pool hold their own read credentials. | Accepted |
 | [0034](0034-main-runs-the-test-stages-the-repository-has.md) | `main` runs the integration tests when a project has them and the system test when `versions.env` declares the system image; publish follows the stages that ran and passed, never a failed or cancelled one. | Accepted; rule 5 superseded in part by ADR-0035 |
@@ -137,15 +141,17 @@ flowchart LR
 
 ### Add an app to this repository ([ADR-0006](0006-apps-and-framework-modules.md))
 
+The skill `add-app` (`.claude/skills/add-app/`) executes this checklist with the file templates it carries ([ADR-0043](0043-coding-agent-instructions-are-shared-tooling.md)).
+
 1. `apps/<AppName>/build.gradle.kts`: apply `buildlogic.spring-boot-app`, `buildlogic.docker-image` and
-   `buildlogic.integration-test`. Depend on `project(":connectors-framework")` and, for tests, on its test fixtures.
+   `buildlogic.integration-test`. Depend on `project(":app-runtime")` and, for tests, on its test fixtures.
 2. `src/main/resources/application.yml`:
    - `spring.application.name: <AppName>`;
    - the import list of [ADR-0011](0011-configuration-tree-and-spring-layers.md);
    - the `server`, `management` and `logging` blocks, copied from an existing app
      ([ADR-0015](0015-actuator-health-and-metrics-contract.md), [ADR-0016](0016-logging-and-startup-configuration-summary.md)).
-3. The main class calls `ConnectorApplication.run(<Main>.class, args)`. One unit test extends
-   `AbstractConnectorApplicationTest`.
+3. The main class calls `PlatformApplication.run(<Main>.class, args)`. One unit test extends
+   `AbstractPlatformApplicationTest` ([ADR-0040](0040-actuator-contract-and-runtime-module-carry-generic-names.md)).
 4. Configuration in `local`:
    - `config/local/<flow>/<AppName>/application.app.yml`, and `_helm-values.app.yaml` when `kinds` includes `helm`;
    - one instance directory with `application.instance.yml`, `_docker-compose.instance.env`, and
@@ -173,6 +179,8 @@ flowchart LR
 
 ### Add an instance ([ADR-0003](0003-identity-tuple-names-every-instance.md), [ADR-0011](0011-configuration-tree-and-spring-layers.md))
 
+The skill `add-instance` executes this checklist ([ADR-0043](0043-coding-agent-instructions-are-shared-tooling.md)).
+
 1. Create `config/<env>/<flow>/<AppName>/<AppInstance>/` with these files:
    - `application.instance.yml`;
    - `_docker-compose.instance.env`: the identity restating the path, `IMAGE_TAG`, and an `ACTUATOR_HOST_PORT` that
@@ -184,16 +192,25 @@ flowchart LR
 
 ### Create a repository from this one ([ADR-0005](0005-repository-layout-and-shared-tooling.md))
 
+The skill `new-repo-from-template` executes this checklist, with a `platform.yml` template and the flow files ([ADR-0043](0043-coding-agent-instructions-are-shared-tooling.md)).
+
 1. Copy this repository at a release tag: `git clone --branch vX.Y.Z --depth 1 <this repository> <new-name>`, then
    delete `.git` and run `git init`, so the new repository starts its own history and release line (step 4).
    GitHub's "Use this template" copies the default branch, not a release: prefer the tag. Keep the shared tooling
    unchanged.
 2. Set the project values ([ADR-0030](0030-platform-yml-declares-every-project-value.md)):
    - in `platform.yml`: `registry`; `projects[0]` — `name` (the repository name, which the build checks in CI),
-     `group`, `apps_dir`, `kinds` and `reference_app`; `dev_envs`; `regions`, `stages` and `flows`.
+     `group` (lower-case words: it also starts every label key,
+     [ADR-0041](0041-every-label-prefix-derives-from-the-group.md)), `apps_dir`, `kinds` and `reference_app`;
+     `dev_envs`; `regions`, `stages` and `flows`.
      `dev_envs` may be `[]` until the first dev env exists, and `reference_app` may be left out: the first pull
      request then goes green before any box, SSH key or GitHub Environment exists, and setting them later turns the
      deploy and the reference scenario on ([ADR-0035](0035-dev-envs-and-reference-app-are-optional.md));
+   - in `platform.yml` too, the names of the apps' own configuration
+     ([ADR-0042](0042-property-roots-and-secret-properties-in-platform-yml.md)): `property_prefixes`, the apps'
+     property roots, which the start-up summary shows and no env layer may set; and `secret_properties`, the
+     project's secret properties, which no YAML layer may hold and every output masks. `secret_properties` may be
+     `[]`: Spring's datasource credentials and the secret-looking names are built in;
    - `component` in `release-please-config.json`: the project name. The tags stay `vX.Y.Z`, because
      `include-component-in-tag` is false ([ADR-0029](0029-release-and-promotion.md));
    - the package rules of `renovate.json` that name this repository's images: `ghcr.io/crazymatthsu/base/**`
@@ -241,7 +258,7 @@ would have run, and the ADRs of the right column apply from the moment the switc
 | `DEEPHAVEN_SERVER_IMAGE` in `test-infra/compose/versions.env` | no system test | [ADR-0034](0034-main-runs-the-test-stages-the-repository-has.md) |
 | the company base images `<registry>/base/jre21` and `ci-build` | the images build on the public Temurin fallbacks of `.github/versions.env`, with a notice; the Gradle job runs on the runner with `setup-java` | [ADR-0033](0033-public-base-image-fallback.md) |
 | the secrets `REGISTRY_USER` and `REGISTRY_TOKEN` | every login uses `GITHUB_TOKEN`, which GHCR needs | [ADR-0032](0032-registry-credentials.md) |
-| the connector framework (an app not built on it) | `health` passes on readiness alone; `app-config` reads `appconfig`, else `connectorconfig` | [ADR-0037](0037-runtime-scripts-read-generic-actuator-names.md) |
+| the framework `framework/app-runtime` (an app not built on it) | `health` passes on readiness alone; `app-config` reads `appconfig`, else `connectorconfig` | [ADR-0037](0037-runtime-scripts-read-generic-actuator-names.md), [ADR-0040](0040-actuator-contract-and-runtime-module-carry-generic-names.md) |
 | a dependency stack | nothing: a stack exists only for the projects that declare it in `stacks.yml` | [ADR-0038](0038-stacks-publish-their-test-environment.md) |
 | host pools (no boxes for a dev flow) | the dev deploy of that flow is a validated dry run (known gap G19) | [ADR-0028](0028-host-pool-deployment.md) |
 | `framework/` | the modules are the directories of `apps_dir` and `framework/` that hold a build file; an absent directory holds none | [ADR-0006](0006-apps-and-framework-modules.md) |
@@ -256,7 +273,7 @@ that opens a gap adds a row.
 | G4 | `release.yml`'s bump job commits to `config/us-qa` in this repository, and names the apps `source-*`; it must open the pull request in the configuration repository. | [0029](0029-release-and-promotion.md) |
 | G6 | `us-dev/cash/source-database/positions-db-to-deephaven` is a `kind: helm` target on the throwaway `kind-ci` cluster, so it runs nowhere after the deploy job. | [0004](0004-environments-and-runtimes.md), [0019](0019-kubernetes-and-helm-are-provisional.md) |
 | G10 | `test-infra/compose/stacks.yml` is maintained by hand. A project without an entry fails when its stack starts, and an entry for a removed project goes unnoticed. | [0025](0025-integration-tests-on-compose-stacks.md) |
-| G11 | The framework mixes the generic operational contract with the connector domain (open decision O5). The `server`, `management` and `logging` blocks are copied into every app, and the secret-property list exists twice (config-lint, `SecretMasker`). The runtime scripts no longer require the framework: they read the generic `app` and `appconfig` names first and accept the framework's. | [0006](0006-apps-and-framework-modules.md), [0013](0013-secrets.md), [0015](0015-actuator-health-and-metrics-contract.md), [0016](0016-logging-and-startup-configuration-summary.md), [0037](0037-runtime-scripts-read-generic-actuator-names.md) |
+| G11 | The framework still mixes the generic operational contract with the connector domain (open decision O5): its actuator names, contract test and module name are generic since ADR-0040, and the secret properties and the summary's roots are `platform.yml` keys since ADR-0042, read by config-lint, `run-compose.sh` and the framework. But `ConnectorIdentity`, `ConnectorProperties`, the `connector.*` properties and the package are not generic, the `server`, `management` and `logging` blocks are copied into every app, and this repository's names remain in the apps' charts, whose `values.schema.json` rejects the connector variables by name, and in the test fixture `AbstractPlatformApplicationTest`, which expects a `connector.*` property in the summary. The runtime scripts do not require the framework: they read the generic `app` and `appconfig` names first and accept `connector` and `connectorconfig` from images built before ADR-0040. | [0006](0006-apps-and-framework-modules.md), [0013](0013-secrets.md), [0015](0015-actuator-health-and-metrics-contract.md), [0016](0016-logging-and-startup-configuration-summary.md), [0037](0037-runtime-scripts-read-generic-actuator-names.md), [0040](0040-actuator-contract-and-runtime-module-carry-generic-names.md), [0042](0042-property-roots-and-secret-properties-in-platform-yml.md) |
 | G13 | The base images and the system test's server image are built outside this repository, and the bootstrap path of `setup-build-env` has no `docker/base/<name>/Dockerfile` to build here. A missing base image no longer fails the build: CI falls back to the public Temurin images, which lack the company CA bundle. | [0009](0009-one-shared-image-definition.md), [0033](0033-public-base-image-fallback.md) |
 | G14 | The build job pushes `main` before any test, so a failed run leaves `main` on an untested build. The build should push with `-PpushConvenienceTags=false` and leave `main` to publish. | [0010](0010-image-tags-digests-promotion-retention.md), [0023](0023-main-pipeline-build-once-test-publish.md) |
 | G15 | Merge commits are allowed: 12 of 27 commits are merges, and `CHANGELOG.md` lists each change twice. The rulesets should allow squash merges only. | [0020](0020-branching-protection-and-merge-rules.md) |
@@ -279,5 +296,5 @@ Questions that no ADR answers yet. Each one becomes an ADR when it is decided.
 | O2 | How secrets are provisioned and rotated on the boxes of the promoted envs. | [0013](0013-secrets.md) |
 | O3 | How repositories built from this one receive updates to the shared tooling: copying per release, a sync job, or extracting it into versioned reusable workflows, actions and a published Gradle plugin. | [0005](0005-repository-layout-and-shared-tooling.md) |
 | O4 | The EKS design, superseding ADR-0019: chart structure, values layering, secrets, the kind tier, and how each env moves from compose. | [0019](0019-kubernetes-and-helm-are-provisional.md) |
-| O5 | Splitting the framework into a generic app-runtime module (identity, actuator contract, masking, summary) and domain modules. | [0006](0006-apps-and-framework-modules.md), [0015](0015-actuator-health-and-metrics-contract.md) |
+| O5 | Splitting the framework into a generic runtime module (identity, actuator contract, masking, summary) and domain modules, and the names that stay in the connector domain until then: `ConnectorIdentity`, `ConnectorProperties` and the `connector.*` properties, `ConnectorMdc`, `ConnectorStartupReporter`, the summary prefixes and the package `com.example.connectors.framework`. The actuator names, the contract test, the `main` helper and the module name are decided ([ADR-0040](0040-actuator-contract-and-runtime-module-carry-generic-names.md)). | [0006](0006-apps-and-framework-modules.md), [0015](0015-actuator-health-and-metrics-contract.md), [0040](0040-actuator-contract-and-runtime-module-carry-generic-names.md) |
 | O6 | The dev deploy policy per flow (every merge, or a schedule), and manual deploy and rollback dispatches. | [0027](0027-continuous-deployment-to-dev-and-the-deployment-record.md) |

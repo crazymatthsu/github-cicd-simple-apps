@@ -18,8 +18,8 @@ import org.springframework.context.ConfigurableApplicationContext;
 import org.springframework.core.env.ConfigurableEnvironment;
 
 import com.example.connectors.framework.ConfigurationSummary;
-import com.example.connectors.framework.ConnectorApplication;
 import com.example.connectors.framework.ConnectorIdentity;
+import com.example.connectors.framework.PlatformApplication;
 import com.example.connectors.framework.SecretMasker;
 
 import static org.assertj.core.api.Assertions.assertThat;
@@ -68,7 +68,7 @@ class ConfigLayeringTest {
 
         try (ConfigurableApplicationContext context = new SpringApplicationBuilder(SourceDatabaseApplication.class)
                 .web(WebApplicationType.NONE)
-                .properties(ConnectorApplication.PRINT_CONFIG_PROPERTY + "=true")
+                .properties(PlatformApplication.PRINT_CONFIG_PROPERTY + "=true")
                 .run("--spring.config.import=" + rewritten, "--APP_ENV=us-dev", "--APP_FLOW=cash",
                         "--APP_INSTANCE=trades-db-to-amps")) {
             ConfigurableEnvironment environment = context.getEnvironment();

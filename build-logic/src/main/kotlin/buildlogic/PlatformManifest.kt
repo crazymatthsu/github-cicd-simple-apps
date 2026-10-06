@@ -27,22 +27,35 @@ data class PlatformManifest(
     val regions: List<String>,
     val stages: List<String>,
     val flows: List<String>,
+    /** The apps' own configuration roots (ADR-0042): the summary shows them, no env layer sets them. */
+    val propertyPrefixes: List<String>,
+    /** The project's secret properties (ADR-0042); may be empty, Spring's datasource names are built in. */
+    val secretProperties: List<String>,
 ) : Serializable {
     companion object {
         const val FILE = "platform.yml"
         const val DEV_STAGE = "dev"
         val KINDS = setOf("compose", "helm")
         /** The keys that scripts read without a YAML parser: each a one-line flow sequence at the top level. */
-        val LINE_LISTS = listOf("dev_envs", "regions", "stages", "flows")
+        val LINE_LISTS = listOf("dev_envs", "regions", "stages", "flows", "property_prefixes", "secret_properties")
 
         private const val serialVersionUID = 1L
         private val TOKEN = Regex("^[a-z0-9]([a-z0-9-]*[a-z0-9])?$")
         private val REGION = Regex("^[a-z]{2}$")
         /** One word: an env is `<region>-<stage>`, and the charts' schemas check that shape. */
         private val STAGE = Regex("^[a-z0-9]+$")
-        private val GROUP = Regex("^[A-Za-z_][A-Za-z0-9_]*(\\.[A-Za-z_][A-Za-z0-9_]*)*$")
+        /**
+         * A Java package name of lower-case words: the group also prefixes every label (ADR-0041), as
+         * `<group>.<name>` on an image or a compose resource and, reversed, as the domain of a Kubernetes label key.
+         */
+        private val GROUP = Regex("^[a-z][a-z0-9]{0,62}(\\.[a-z][a-z0-9]{0,62})*$")
         private val REGISTRY = Regex("^[a-z0-9.-]+(:[0-9]+)?(/[a-z0-9._-]+)*$")
         private val DIRECTORY = Regex("^[a-z0-9][a-z0-9._-]*$")
+        /**
+         * A Spring property name in canonical form (ADR-0042): dotted lower-case kebab-case segments, the first one
+         * starting with a letter, so that its environment-variable form is a valid variable name.
+         */
+        private val PROPERTY = Regex("^[a-z]([a-z0-9-]*[a-z0-9])?(\\.[a-z0-9]([a-z0-9-]*[a-z0-9])?)*$")
 
         /** Parses and validates [text]; every problem is reported at once. */
         fun parse(text: String): PlatformManifest {
@@ -91,7 +104,11 @@ data class PlatformManifest(
                 emptyMap<String, Any>()
             }
             val name = string(project, "name", "projects[0].", TOKEN)
-            val group = string(project, "group", "projects[0].", GROUP)
+            val group = string(project, "group", "projects[0].")
+            if (group.isNotEmpty() && (!GROUP.matches(group) || group.length > 253)) {
+                problems += "projects[0].group '$group' is not valid: lower-case words of letters and digits, each starting " +
+                    "with a letter, joined by dots (e.g. com.acme.payments); every label prefix derives from it (ADR-0041)"
+            }
             val appsDir = string(project, "apps_dir", "projects[0].", DIRECTORY)
             val kinds = list(project, "kinds", "projects[0].", TOKEN)
             (kinds - KINDS).forEach { problems += "projects[0].kinds: '$it' is not a runtime (${KINDS.sorted().joinToString()})" }
@@ -105,10 +122,15 @@ data class PlatformManifest(
             val devEnvs = list(root, "dev_envs", "", Regex("^[a-z]{2}-$DEV_STAGE$"), mayBeEmpty = true)
             devEnvs.filter { it.substringBefore('-') !in regions }
                 .forEach { problems += "dev_envs: '$it' is not in a region of `regions`" }
+            // ADR-0042: the apps' own configuration roots, and the project's secret properties. [] is valid for the
+            // secrets: Spring's datasource names and the secret-looking segments are built into the tools.
+            val propertyPrefixes = list(root, "property_prefixes", "", PROPERTY)
+            val secretProperties = list(root, "secret_properties", "", PROPERTY, mayBeEmpty = true)
             // Scripts read these keys with awk, not a YAML parser (run-compose.sh runs on hosts without yq): one line
-            // at the top level, unquoted words (`[]` too: whether a list may be empty is checked above).
+            // at the top level, unquoted words, dotted ones for the property names (`[]` too: whether a list may be
+            // empty, and which words it may hold, is checked above).
             for (key in LINE_LISTS) {
-                val line = Regex("^$key:[ \\t]*\\[[ \\t]*([a-z0-9-]+([ \\t]*,[ \\t]*[a-z0-9-]+)*)?[ \\t]*\\][ \\t]*(#.*)?$")
+                val line = Regex("^$key:[ \\t]*\\[[ \\t]*([a-z0-9.-]+([ \\t]*,[ \\t]*[a-z0-9.-]+)*)?[ \\t]*\\][ \\t]*(#.*)?$")
                 if (text.lineSequence().none { line.matches(it) }) {
                     problems += "$key must be a one-line list of unquoted words at the top level, e.g. `$key: [a, b]` " +
                         "(scripts read it without a YAML parser)"
@@ -119,11 +141,18 @@ data class PlatformManifest(
                 problems += "registry must be an unquoted value on one top-level line, e.g. `registry: ghcr.io/acme` " +
                     "(read without a YAML parser)"
             }
+            // The scripts read the group without a YAML parser too (ADR-0041): the first `group:` line, unquoted.
+            val groupKey = Regex("^[ \\t]*(-[ \\t]+)?group:")
+            val groupLine = text.lineSequence().firstOrNull { groupKey.containsMatchIn(it) }
+            if (group.isNotEmpty() && groupLine?.replace(groupKey, "")?.substringBefore('#')?.trim() != group) {
+                problems += "projects[0].group must be an unquoted value on a line of its own, the first `group:` line, " +
+                    "e.g. `    group: com.acme.payments` (read without a YAML parser)"
+            }
             if (problems.isNotEmpty()) {
                 throw IllegalArgumentException("$FILE is not valid (ADR-0030):\n" + problems.joinToString("\n") { "  - $it" })
             }
             return PlatformManifest(platform, kind, registry, name, group, appsDir, kinds, referenceApp, devEnvs, regions,
-                stages, flows)
+                stages, flows, propertyPrefixes, secretProperties)
         }
     }
 
@@ -148,6 +177,8 @@ fun PlatformManifest.asProperties(): Map<String, String> = linkedMapOf(
     "regions" to regions.joinToString(","),
     "stages" to stages.joinToString(","),
     "flows" to flows.joinToString(","),
+    "propertyPrefixes" to propertyPrefixes.joinToString(","),
+    "secretProperties" to secretProperties.joinToString(","),
 )
 
 /** Hands the manifest to every project before its build script runs (an isolated action: plain data only). */

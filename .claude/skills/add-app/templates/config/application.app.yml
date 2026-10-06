@@ -1,0 +1,2 @@
+# Layer 3 — __APP_NAME__ in __ENV__ / __FLOW__ (ADR-0011): what every instance of the app shares in this flow.
+# Endpoints and names only; never a secret (ADR-0013). Empty until the app has properties of its own.

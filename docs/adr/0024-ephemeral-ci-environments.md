@@ -2,7 +2,7 @@
 
 | | |
 |---|---|
-| Status | Accepted. Rule 5 superseded in part by [ADR-0035](0035-dev-envs-and-reference-app-are-optional.md) |
+| Status | Accepted. Rule 5 superseded in part by [ADR-0035](0035-dev-envs-and-reference-app-are-optional.md), rule 2 in part by [ADR-0041](0041-every-label-prefix-derives-from-the-group.md) |
 | Date | 2026-10-04 |
 | Applies to | every compose stack and kind cluster a workflow creates |
 | Enforced by | the `leak-check` steps of `compose-stack` and `kind-cluster` (fail the job when anything of the run remains); the nightly teardown drill |
@@ -29,6 +29,11 @@ cancelled run is a leak that the next run trips over.
    and `com.example.ci.attempt`. Some images declare volumes; those are replaced by labelled named volumes or
    `tmpfs`, so no anonymous volume escapes the labels. The app template carries the same labels
    ([ADR-0017](0017-run-compose-operations-cli-and-runtime-posture.md)).
+
+   > **Superseded in part by [ADR-0041](0041-every-label-prefix-derives-from-the-group.md) rule 6.** The run labels
+   > are `<group>.ci.run` and `<group>.ci.attempt`, the group being `projects[0].group` of `platform.yml`; the kind
+   > nodes carry `<domain>/ci.run` and `<domain>/ci.attempt`, the domain being the group reversed.
+
 3. **Teardown always runs.** It is an `always()` step, so it runs on success, failure and cancellation:
    - `stack.sh down` and `kind.sh down` remove the environment, then prune by label;
    - `leak-check` fails the job when anything carrying the run's labels remains.

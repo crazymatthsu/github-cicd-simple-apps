@@ -1,10 +1,10 @@
 #!/usr/bin/env bash
 # helm-smoke-diff.sh — prove that two deployed AppInstances differ (ADR-0019): their
 # identity tuples in /actuator/info, and at least one value of their masked effective configuration summary
-# (e.g. connector.source.table, connector.sink.type). It reads the generic names first and accepts the framework's
-# (ADR-0037): the app section of /actuator/info, else connector; /actuator/appconfig, else connectorconfig. The
-# endpoints are read inside the pods, so nothing is port-forwarded. Portable bash (3.2+); run with --help for the
-# usage.
+# (e.g. connector.source.table, connector.sink.type). It reads the generic names first and accepts the old ones of
+# images built before ADR-0040 (ADR-0037): the app section of /actuator/info, else connector; /actuator/appconfig,
+# else connectorconfig. The endpoints are read inside the pods, so nothing is port-forwarded. Portable bash (3.2+);
+# run with --help for the usage.
 set -euo pipefail
 
 readonly EXIT_DIFFER=0 EXIT_SAME=1 EXIT_USAGE=2
@@ -13,12 +13,12 @@ usage() {
     cat <<'EOF'
 Usage: helm-smoke-diff.sh -n <namespace> [--kubeconfig <file>] <release-a> <release-b>
 
-Reads /actuator/info and the masked configuration summary (/actuator/appconfig, else /actuator/connectorconfig)
-of both releases with
+Reads /actuator/info and the masked configuration summary (/actuator/appconfig, else /actuator/connectorconfig
+of an image built before ADR-0040) of both releases with
   kubectl -n <namespace> exec deploy/<release> -- curl -fsS localhost:8080/actuator/...
 and prints a two-column summary: identity, completeness, config layers and every property of the masked
 configuration summary, "*" marking the rows that differ. The identity is the tuple of the app section of
-/actuator/info, else of its connector section (ADR-0037).
+/actuator/info, else of the connector section of an image built before ADR-0040 (ADR-0037).
 
 Passes when the identity tuples differ and at least one configuration value differs. A check that neither
 release can answer (no identity section, no summary endpoint) is skipped with a warning; a check that only one
@@ -94,7 +94,8 @@ for side in a b; do
     release="$REL_A"
     [ "$side" = a ] || release="$REL_B"
     fetch "$release" info "$TMP/info-$side.json" || unreachable=1
-    # The configuration summary: the generic endpoint, else the framework's (ADR-0037). An app may have neither.
+    # The configuration summary: appconfig, else the connectorconfig of an image built before ADR-0040 (ADR-0037).
+    # An app may have neither.
     for endpoint in appconfig connectorconfig; do
         if fetch "$release" "$endpoint" "$TMP/try-$side.json" quiet; then
             mv "$TMP/try-$side.json" "$TMP/config-$side.json"
@@ -106,7 +107,8 @@ for side in a b; do
 done
 [ "$unreachable" -eq 0 ] || die "$EXIT_SAME" "cannot compare: an instance did not answer (is it deployed and ready?)"
 
-# The identity section of /actuator/info: the first of app and connector that carries a tuple (ADR-0037).
+# The identity section of /actuator/info: the first of app and connector (images built before ADR-0040) that
+# carries a tuple (ADR-0037).
 readonly IDENTITY='(first((.app, .connector) | objects | select(has("tuple"))) // {})'
 # One "<key>\t<value>" row per summary entry: identity, completeness and layers, then every property.
 rows() {

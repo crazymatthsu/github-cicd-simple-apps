@@ -3,6 +3,7 @@
 | Document | What |
 |---|---|
 | [`adr/`](adr/README.md) | **The repository contract**: the ADRs; checklists for adding an app, adding an instance or creating a repository from this one; known gaps; open decisions |
+| [`../CLAUDE.md`](../CLAUDE.md), `../.claude/skills/` | the contract in one screen for a coding agent, and the skills that execute the three checklists ([ADR-0043](adr/0043-coding-agent-instructions-are-shared-tooling.md)) |
 | [`../config/README.md`](../config/README.md) | the configuration tree in practice: files per level, host pools, the deploy inventory |
 | [`../test-infra/README.md`](../test-infra/README.md) | the compose stacks and how the integration tests run, on a laptop and in CI |
 | [`../test-infra/kind/README.md`](../test-infra/kind/README.md) | the kind tier of the provisional Helm path |

@@ -2,7 +2,7 @@
 
 | | |
 |---|---|
-| Status | Accepted. Supersedes in part rules 3 and 6 of ADR-0015, rule 5 of ADR-0016 and rule 1 of ADR-0017 (rules 2 to 5 and 7) |
+| Status | Accepted. Supersedes in part rules 3 and 6 of ADR-0015, rule 5 of ADR-0016 and rule 1 of ADR-0017 (rules 2 to 5 and 7). Rules 1, 3 and 7 superseded in part by [ADR-0040](0040-actuator-contract-and-runtime-module-carry-generic-names.md) |
 | Date | 2026-10-06 |
 | Applies to | every app; `scripts/smoke.sh`, `scripts/helm-smoke-diff.sh` and `run-compose.sh app-config`; the framework's `ConnectorInfoContributor` |
 | Enforced by | `scripts/test/smoke-test.sh` and `scripts/test/pool-deploy-test.sh` in the `lint` job; `AbstractConnectorApplicationTest` (each app's unit test: the `app` section equals the `connector` section); review |
@@ -36,6 +36,10 @@ decision must not presume the answer.
 1. **Two names, the generic one first.** The shared runtime scripts MUST read the generic name first and MUST accept
    the framework's:
 
+   > **Superseded in part by [ADR-0040](0040-actuator-contract-and-runtime-module-carry-generic-names.md) rule 6.**
+   > The framework now uses the generic names. The *Framework name* column names those of images built before
+   > ADR-0040, which the scripts still accept.
+
    | What | Generic name | Framework name |
    |---|---|---|
    | the identity section of `/actuator/info` | `app` | `connector` |
@@ -47,6 +51,11 @@ decision must not presume the answer.
    section. When an app publishes both sections, they MUST carry identical values.
 3. **The framework publishes both names.** Its info contributor puts one map under `app` and under `connector`. It
    keeps `connectorconfig`, the `connector` health indicator and `--print-config`, and adds no `appconfig` endpoint.
+
+   > **Superseded in part by [ADR-0040](0040-actuator-contract-and-runtime-module-carry-generic-names.md) rule 4.**
+   > The framework publishes the generic names only: the `app` section, `appconfig` and the `app` health indicator.
+   > `--print-config` stays.
+
 4. **Smoke test, check 2.** `scripts/smoke.sh` reads the `app` section, else the `connector` section. With jq it
    compares `env`, `flow`, `app` and `instance`; without jq, the section's `tuple`. A wrong or unset part fails, as
    before, and so do two sections that disagree. When neither section is present, check 2 is skipped with a warning
@@ -61,6 +70,9 @@ decision must not presume the answer.
    answers fails. Its exit codes do not change.
 7. **Exposed endpoints.** An app exposes `health`, `info` and `prometheus`, plus the endpoint of its configuration
    summary when it has one: `appconfig`, or `connectorconfig` on the framework. No other endpoint is exposed.
+
+   > **Superseded in part by [ADR-0040](0040-actuator-contract-and-runtime-module-carry-generic-names.md) rule 2.** No
+   > app exposes `connectorconfig`: an app on the framework exposes `appconfig`.
 
 ## Alternatives considered
 

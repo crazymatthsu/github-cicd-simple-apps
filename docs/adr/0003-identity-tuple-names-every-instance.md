@@ -2,7 +2,7 @@
 
 | | |
 |---|---|
-| Status | Accepted |
+| Status | Accepted. Rule 3 superseded in part by [ADR-0041](0041-every-label-prefix-derives-from-the-group.md) |
 | Date | 2026-10-04 |
 | Applies to | every app, every instance, every tool that names one |
 | Enforced by | config-lint checks 1 and 4; `run-compose.sh` and `pool-deploy.sh` argument validation; `ConnectorIdentity` (the app refuses to start); `scripts/smoke.sh` (identity in `/actuator/info`) |
@@ -43,6 +43,10 @@ without a lookup table. And every tool must derive the same names from the same 
    values). The restated values MUST equal the path. The deployer passes them to the container as environment
    variables.
 3. **Every name is derived from the tuple, the same way in every tool:**
+
+   > **Superseded in part by [ADR-0041](0041-every-label-prefix-derives-from-the-group.md) rule 6.** The container
+   > labels are `<group>.env`, `.flow`, `.app` and `.instance`, the group being `projects[0].group` of
+   > `platform.yml`; Kubernetes objects carry `<domain>/env` and the rest, the domain being the group reversed.
 
    | Where | Name |
    |---|---|

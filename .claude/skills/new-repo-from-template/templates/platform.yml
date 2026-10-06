@@ -1,0 +1,32 @@
+# platform.yml — the manifest of this repository (ADR-0002, ADR-0030): every project value the shared tooling needs and
+# the tree cannot derive. The shared tooling reads these values from here and hard-codes none of them; everything else is
+# derived, never declared twice: apps from the subprojects applying buildlogic.docker-image (ADR-0006), libraries from
+# framework/*, envs / flows / instances from the config/ directories, deploy targets and boxes from each flow's
+# workflows-config.yml, versions from git tags.
+#
+# Readers: Gradle through the buildlogic.platform settings plugin, the workflows through .github/actions/platform-manifest,
+# scripts/pool-deploy.sh with yq, and scripts/run-compose.sh without a YAML parser — so dev_envs, regions, stages,
+# flows, property_prefixes and secret_properties stay one-line lists.
+platform: v1                        # the major version of the contract this repository follows (ADR-0001)
+kind: app                           # builds, publishes and deploys its local and dev envs (ADR-0004)
+registry: __REGISTRY__              # images are <registry>/<project>/<AppName>; base images <registry>/base/<name>
+projects:
+  - name: __NAME__                  # = the repository name = rootProject.name: tags vX.Y.Z and the image path (ADR-0002)
+    group: __GROUP__                # the Gradle (Maven) group of every module
+    apps_dir: __APPS_DIR__          # apps live in <apps_dir>/<AppName>/ (ADR-0006)
+    kinds: __KINDS__                # the runtimes a deploy target may name (workflows-config.yml `kind`): [compose] or [compose, helm]
+    # reference_app: <AppName>      # the app of the system test, the kind deployment test and the nightly teardown drill;
+                                    # left out until the repository has that scenario (ADR-0035)
+dev_envs: __DEV_ENVS__              # the envs this repository configures and deploys, <region>-dev each, or [] until the
+                                    # first dev env has boxes and a GitHub Environment (ADR-0035); the promoted envs live
+                                    # in the configuration repository (ADR-0004)
+# The identity vocabulary (ADR-0003): an env is `local` or <region>-<stage>; every stage but dev is promoted (ADR-0004).
+regions: __REGIONS__
+stages: __STAGES__
+flows: __FLOWS__
+# The apps' own configuration (ADR-0042). property_prefixes: their property roots, which the start-up summary shows
+# besides spring.datasource, and whose environment-variable forms no env layer may set (ADR-0012, ADR-0016).
+# secret_properties: the properties, and every key below them, that no YAML layer may hold and every output masks
+# (ADR-0013); spring.datasource.username / .password and the secret-looking names (password, token, ...) are built in.
+property_prefixes: __PROPERTY_PREFIXES__
+secret_properties: __SECRET_PROPERTIES__

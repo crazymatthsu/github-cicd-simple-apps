@@ -55,6 +55,19 @@ abstract class ConfigLintTask : DefaultTask() {
     @get:Input
     abstract val devEnvs: ListProperty<String>
 
+    /** The apps' property roots (platform.yml `property_prefixes`): forbidden in env form, checks 4 and 5 (ADR-0042). */
+    @get:Input
+    abstract val propertyPrefixes: ListProperty<String>
+
+    /** The project's secret properties (platform.yml `secret_properties`): check 9 (ADR-0013, ADR-0042). */
+    @get:Input
+    abstract val secretProperties: ListProperty<String>
+
+    /** `projects[0].group` of platform.yml, which starts every label key: check 6 renders with it (ADR-0041). */
+    @get:Input
+    @get:Optional
+    abstract val labelPrefix: Property<String>
+
     /** The one compose template, `docker/docker-compose.yml` (ADR-0012). */
     @get:InputFile
     @get:Optional
@@ -195,6 +208,8 @@ abstract class ConfigLintTask : DefaultTask() {
             flows = flows.get().toSet(),
             kinds = kinds.get().toSet(),
             envs = devEnvs.get().toSet(),
+            propertyPrefixes = propertyPrefixes.get(),
+            secretProperties = secretProperties.get(),
         )
         val linter = ConfigLinter(
             configRoot = configRoot,
@@ -209,6 +224,7 @@ abstract class ConfigLintTask : DefaultTask() {
             helm = helmRunner,
             validator = validator,
             renderDir = rendered,
+            labelPrefix = labelPrefix.orNull,
         )
         val findings = linter.lint()
         val errors = findings.count { it.severity == Severity.ERROR }

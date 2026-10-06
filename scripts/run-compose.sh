@@ -17,7 +17,9 @@ readonly COMMANDS="start stop down restart config app-config printenv compose-en
 readonly COMPOSE_ENV_ALLOWED="IMAGE_REPO IMAGE_TAG APP_ENV APP_FLOW APP_NAME APP_INSTANCE JAVA_OPTS TZ LOG_LEVEL_ROOT LOGS_DIR DATA_DIR MEM_LIMIT"
 # Only the instance layer may set these (plus *_HOST_PORT): the image tag, the identity and the published ports.
 readonly INSTANCE_ONLY="IMAGE_TAG APP_ENV APP_FLOW APP_NAME APP_INSTANCE"
-readonly SCRIPT_VARIABLES="COMPOSE_ENV_FILE FLOW_APP_YML APP_APP_YML INSTANCE_APP_YML PROJECT INSTANCE_LOGS_DIR INSTANCE_DATA_DIR"
+readonly SCRIPT_VARIABLES="COMPOSE_ENV_FILE FLOW_APP_YML APP_APP_YML INSTANCE_APP_YML PROJECT INSTANCE_LOGS_DIR INSTANCE_DATA_DIR LABEL_PREFIX"
+# projects[0].group of platform.yml: lower-case words joined by dots, the start of every label key (ADR-0041).
+readonly GROUP_PATTERN='^[a-z][a-z0-9]{0,62}(\.[a-z][a-z0-9]{0,62})*$'
 # The compose service of every app (docker/docker-compose.yml); other containers reach it as its AppName.
 readonly SERVICE=app
 readonly IMAGE_TAG_PATTERN='^[A-Za-z0-9_][A-Za-z0-9_.-]{0,127}(@sha256:[0-9a-f]{64})?$'
@@ -41,8 +43,9 @@ Commands (ADR-0017):
   down [--volumes]      down --remove-orphans; --volumes adds -v (on *-dev hosts also needs --force)
   restart               stop, then start (picks up env layer, image and mount changes)
   config                the rendered compose configuration, secrets masked
-  app-config [--offline]  the app's masked configuration summary: /actuator/appconfig, else the framework's
-                        /actuator/connectorconfig (ADR-0037); --offline: run the image with --print-config
+  app-config [--offline]  the app's masked configuration summary: /actuator/appconfig, else the
+                        /actuator/connectorconfig of an image built before ADR-0040 (ADR-0037); --offline: run
+                        the image with --print-config
   printenv              the resolved environment (paths, identity, engine, the combined env), secrets masked
   compose-env           write the combined env (below) and print its path
   health                container running and /actuator/health/readiness UP; 1 otherwise
@@ -106,7 +109,9 @@ Root: the nearest ancestor of this script holding a .platform-bundle marker (a h
 scripts/pool-deploy.sh as one version directory /apps/<user>/versions/<project>/<version>/, ADR-0018), else
 the git checkout, else the script's parent directory. The root's platform.yml (a host bundle carries a copy)
 declares the regions, stages and flows names are checked against, and the dev_envs this script operates
-(ADR-0030).
+(ADR-0030); its property_prefixes, whose environment-variable forms no env layer may set besides SPRING_*,
+LOGGING_* and MANAGEMENT_*, and its secret_properties, masked with Spring's datasource credentials (ADR-0042); its
+projects[0].group starts every label key, exported to the template as LABEL_PREFIX (ADR-0041).
 Pool guard (ADR-0028): on a box whose .platform-bundle lists more than one pool host (POOL_HOSTS), start and
 restart of an instance of that bundle's env and flow (never local) first ask every other box of the pool
   $POOL_SSH $POOL_SSH_OPTS <POOL_USER>@<box> -- <POOL_ROOT>/current/scripts/run-compose.sh
@@ -140,10 +145,16 @@ json_str() {
 # Relative to the repository root, for readable output.
 rel() { case "$1" in "$REPO_ROOT"/*) printf '%s' "${1#"$REPO_ROOT"/}" ;; *) printf '%s' "$1" ;; esac; }
 
-# Values of secret-looking names (ADR-0013: *PASSWORD*, *SECRET*, *TOKEN*, *KEY*; plus the usernames paired with
-# secret passwords) -> ***.
+# Values of secret-looking names (ADR-0013: *PASSWORD*, *SECRET*, *TOKEN*, *CREDENTIAL*, *KEY*) and of the secret
+# properties with every key below them, usernames included: Spring's datasource credentials and the secret_properties
+# of platform.yml (ADR-0042), in dotted or environment-variable form -> ***.
 mask_stream() {
-    awk '
+    awk -v names="spring.datasource.username spring.datasource.password ${SECRET_PROPERTIES:-}" '
+    BEGIN {
+        # One form for every name: lower case, "_" for ".", no "-" (Spring relaxed binding).
+        n = split(names, secret, " ")
+        for (i = 1; i <= n; i++) { gsub(/[.]/, "_", secret[i]); gsub(/-/, "", secret[i]) }
+    }
     {
         line = $0
         if (match(line, /^[[:space:]]*-?[[:space:]]*"?[A-Za-z0-9_.-]+"?[[:space:]]*[:=]/)) {
@@ -152,8 +163,12 @@ mask_stream() {
             gsub(/^[[:space:]]*-?[[:space:]]*"?/, "", key)
             gsub(/"?[[:space:]]*[:=]$/, "", key)
             lk = tolower(key)
-            if (lk ~ /(password|passwd|secret|token|credential|key)/ ||
-                lk ~ /^(spring_datasource_username|connector_amps_username|connector_kafka_sasl_username)$/) {
+            hit = (lk ~ /(password|passwd|secret|token|credential|key)/)
+            nk = lk
+            gsub(/[.]/, "_", nk)
+            gsub(/-/, "", nk)
+            for (i = 1; !hit && i <= n; i++) if (nk == secret[i] || index(nk, secret[i] "_") == 1) hit = 1
+            if (hit) {
                 rest = substr(line, RLENGTH + 1)
                 if (rest ~ /[^[:space:]]/) {
                     print prefix (prefix ~ /=$/ ? "***" : " ***")
@@ -375,20 +390,53 @@ platform_list() { # <key>
     }
     END { if (bad) exit 2; if (!found) exit 1 }' "$PLATFORM_FILE"
 }
-read_platform_list() { # <key> <variable> [empty-ok]: only dev_envs may be [] (ADR-0035)
+read_platform_list() { # <key> <variable> [empty-ok]: only dev_envs and secret_properties may be [] (ADR-0035, ADR-0042)
     local words
     if ! words="$(platform_list "$1")" || { [ -z "$words" ] && [ "${3:-}" != empty-ok ]; }; then
         die "$EXIT_CONFIG" "$(rel "$PLATFORM_FILE"): $1 must be a one-line list at the top level, e.g. '$1: [a, b]' (ADR-0030)"
     fi
     printf -v "$2" '%s' "$words"
 }
+# projects[0].group, read without a YAML parser: the value of the first `group:` line, which the build checks is the
+# group, unquoted (ADR-0041).
+platform_group() {
+    awk '/^[ \t]*(-[ \t]+)?group:/ {
+        sub(/^[ \t]*(-[ \t]+)?group:/, ""); sub(/#.*$/, ""); gsub(/^[ \t]+|[ \t]+$/, ""); print; exit
+    }' "$PLATFORM_FILE"
+}
 [ -f "$PLATFORM_FILE" ] ||
     die "$EXIT_CONFIG" "platform.yml not found in $REPO_ROOT: it declares the regions, stages, flows and dev envs (ADR-0030)"
-REGIONS="" STAGES="" FLOWS="" DEV_ENVS=""
+REGIONS="" STAGES="" FLOWS="" DEV_ENVS="" PROPERTY_PREFIXES="" SECRET_PROPERTIES=""
 read_platform_list regions REGIONS
 read_platform_list stages STAGES
 read_platform_list flows FLOWS
 read_platform_list dev_envs DEV_ENVS empty-ok # [] (ADR-0035): local only
+# The apps' own property roots and the project's secret properties (ADR-0042); [] masks Spring's names only.
+read_platform_list property_prefixes PROPERTY_PREFIXES
+read_platform_list secret_properties SECRET_PROPERTIES empty-ok
+
+# The variable prefixes no env layer may set (ADR-0012): Spring's own roots, then each of the apps' own roots in
+# environment-variable form, as Spring's relaxed binding reads it: "_" for ".", no "-", upper case (ADR-0042).
+env_form() { # <property name>
+    local name="${1//-/}"
+    printf '%s' "${name//./_}" | tr '[:lower:]' '[:upper:]'
+}
+FORBIDDEN_PREFIXES="SPRING_ LOGGING_ MANAGEMENT_"
+for prefix in $PROPERTY_PREFIXES; do FORBIDDEN_PREFIXES="$FORBIDDEN_PREFIXES $(env_form "$prefix")_"; done
+readonly FORBIDDEN_PREFIXES
+has_forbidden_prefix() { # <variable>
+    local prefix
+    for prefix in $FORBIDDEN_PREFIXES; do
+        case "$1" in "$prefix"*) return 0 ;; esac
+    done
+    return 1
+}
+
+# Every label key the template sets starts with the group: <group>.env, <group>.ci.run, ... (ADR-0041).
+LABEL_PREFIX="$(platform_group)"
+[[ $LABEL_PREFIX =~ $GROUP_PATTERN ]] ||
+    die "$EXIT_CONFIG" "$(rel "$PLATFORM_FILE"): projects[0].group '$LABEL_PREFIX' must be lower-case words of letters and digits" \
+        "joined by dots, unquoted on a line of its own: every label key starts with it (ADR-0041)"
 
 # --- validation: usage (2), safety (3) --------------------------------------------------------------------
 
@@ -509,8 +557,12 @@ check_env_layer() { # <file> <instance: 1|0>
             problems="$problems\n  $(rel "$1"): not KEY=VALUE: $line"
             continue
         fi
+        if has_forbidden_prefix "$key"; then
+            problems="$problems\n  $(rel "$1"): $key is forbidden: ${FORBIDDEN_PREFIXES// /*, }* belong in YAML"
+            problems="$problems or a shell pass-through (ADR-0012, ADR-0042)"
+            continue
+        fi
         case "$key" in
-            SPRING_* | LOGGING_* | MANAGEMENT_* | CONNECTOR_*) problems="$problems\n  $(rel "$1"): $key is forbidden (YAML or shell pass-through, ADR-0012)" ;;
             *_HOST_PORT) [ "$2" -eq 1 ] || problems="$problems\n  $(rel "$1"): $key belongs in the instance layer only (_docker-compose.instance.env)" ;;
             *)
                 if contains_word "$key" "$SCRIPT_VARIABLES"; then
@@ -643,7 +695,7 @@ if [ "$COMMAND" = record-tag ]; then
     esac
 fi
 export APP_ENV="$ENV_NAME" APP_FLOW="$FLOW" APP_NAME="$APP" APP_INSTANCE="$INSTANCE"
-export COMPOSE_ENV_FILE="$ENV_FILE" APP_APP_YML INSTANCE_APP_YML PROJECT
+export COMPOSE_ENV_FILE="$ENV_FILE" APP_APP_YML INSTANCE_APP_YML PROJECT LABEL_PREFIX
 if [ -f "$FLOW_APP_YML" ]; then export FLOW_APP_YML; else unset FLOW_APP_YML; fi
 # The instance's host directories (ADR-0018): LOGS_DIR and DATA_DIR of the env layers name the flow's directories,
 # and each instance mounts its own <dir>/<AppName>/<AppInstance>, so two instances on a box never share a file.
@@ -882,6 +934,7 @@ show_plan() {
         "env layers" "$(rel_list "${ENV_LAYERS[@]}")" "combined env" "$(rel "$ENV_FILE")" \
         "spring layers" "$(rel_list ${FLOW_APP_YML:+"$FLOW_APP_YML"} "$APP_APP_YML" "$INSTANCE_APP_YML")" "project" "$PROJECT" \
         "identity" "APP_ENV=$APP_ENV APP_FLOW=$APP_FLOW APP_NAME=$APP_NAME APP_INSTANCE=$APP_INSTANCE" \
+        "labels" "$LABEL_PREFIX.{env,flow,app,instance,ci.run,ci.attempt} (LABEL_PREFIX, projects[0].group)" \
         "image" "$IMAGE_REF" "engine" "$ENGINE (${COMPOSE[*]})" "deps network" "${DEPS_NETWORK:--}" \
         "logs, data" "${INSTANCE_LOGS_DIR:-volume logs}, ${INSTANCE_DATA_DIR:-volume data}"
     if [ -n "$BUNDLE_ROOT" ]; then
@@ -1057,14 +1110,14 @@ cmd_version() {
             "$(json_str "$(image_label "$image_id" org.opencontainers.image.revision)")" \
             "$(json_str "$(image_label "$image_id" org.opencontainers.image.source)")" \
             "$(json_str "$(image_label "$image_id" org.opencontainers.image.created)")" \
-            "$(json_str "$(image_label "$image_id" com.example.build-url)")"
+            "$(json_str "$(image_label "$image_id" "$LABEL_PREFIX.build-url")")"
     else
         printf 'image     %s\ndigest    %s\nversion   %s\nrevision  %s\nsource    %s\ncreated   %s\nbuild-url %s\n' \
             "$image" "$digest" "$(image_label "$image_id" org.opencontainers.image.version)" \
             "$(image_label "$image_id" org.opencontainers.image.revision)" \
             "$(image_label "$image_id" org.opencontainers.image.source)" \
             "$(image_label "$image_id" org.opencontainers.image.created)" \
-            "$(image_label "$image_id" com.example.build-url)"
+            "$(image_label "$image_id" "$LABEL_PREFIX.build-url")"
     fi
 }
 
@@ -1077,6 +1130,7 @@ cmd_printenv() {
         printf 'INSTANCE_LOGS_DIR=%s\nINSTANCE_DATA_DIR=%s\n' "${INSTANCE_LOGS_DIR:-}" "${INSTANCE_DATA_DIR:-}"
         printf 'APP_ENV=%s\nAPP_FLOW=%s\nAPP_NAME=%s\nAPP_INSTANCE=%s\nDEPS_NETWORK=%s\nSELINUX_LABEL_SHARED=%s\n' \
             "$APP_ENV" "$APP_FLOW" "$APP_NAME" "$APP_INSTANCE" "${DEPS_NETWORK:-}" "$SELINUX_LABEL_SHARED"
+        printf 'LABEL_PREFIX=%s\n' "$LABEL_PREFIX"
         printf '\n# ---- the combined env (%s) ----\n' "$(rel "$ENV_FILE")"
         cat "$ENV_FILE"
         printf '\n# ---- passed through from this shell ----\n'
@@ -1154,8 +1208,8 @@ cmd_record_tag() {
 }
 
 # The masked configuration summary (ADR-0016) from the running instance: the generic endpoint appconfig, else the
-# framework's connectorconfig (ADR-0037). --offline runs the image with --print-config, which only an app on the
-# framework understands.
+# connectorconfig of an image built before ADR-0040 (ADR-0037). --offline runs the image with --print-config, which
+# only an app on the framework understands.
 cmd_app_config() {
     local rc base endpoint body
     if [ "$OFFLINE" -eq 1 ]; then

@@ -1,9 +1,10 @@
 #!/usr/bin/env bash
-# smoke-test.sh — check 2 of scripts/smoke.sh, the identity in /actuator/info (ADR-0015, ADR-0037): the generic app
-# section is read first and the framework's connector section is accepted; two sections that disagree fail; an info
-# document with neither skips the check with a warning and exits 0; a wrong identity fails. A stub curl answers
-# readiness UP and the info document of each case. The jq-less path (a section's "tuple") runs with a PATH that holds
-# only the tools smoke.sh needs, so no jq. Plain bash 3.2+; the lint job runs it with the other scripts/test/*-test.sh.
+# smoke-test.sh — check 2 of scripts/smoke.sh, the identity in /actuator/info (ADR-0015, ADR-0037, ADR-0040): the
+# app section is read first, and the connector section of an image built before ADR-0040 is accepted; two sections
+# that disagree fail; an info document with neither skips the check with a warning and exits 0; a wrong identity
+# fails. A stub curl answers readiness UP and the info document of each case. The jq-less path (a section's "tuple")
+# runs with a PATH that holds only the tools smoke.sh needs, so no jq. Plain bash 3.2+; the lint job runs it with the
+# other scripts/test/*-test.sh.
 # Exit codes: 0 every case passed · 1 a case failed · 2 a missing tool.
 set -euo pipefail
 
@@ -56,9 +57,13 @@ BUILD='"build":{"version":"1.2.3","name":"demo-app"},"java":{"version":"21","ven
 for mode in jq no-jq; do
     path="$WITH_JQ"
     [ "$mode" = jq ] || path="$NO_JQ"
+    # The app section alone: an image built from ADR-0040 on.
     expect "$mode: app section" "$path" 0 "identity $TUPLE (http://stub.test:8080/actuator/info, app section)" \
-        "{$BUILD,\"app\":{$ID}}"
-    expect "$mode: connector section" "$path" 0 "connector section)" "{$BUILD,\"connector\":{$ID,\"complete\":true}}"
+        "{$BUILD,\"app\":{$ID,\"complete\":true}}"
+    # The connector section alone (an image built before ADR-0037) and both sections (ADR-0037 to ADR-0040): the old
+    # names stay accepted.
+    expect "$mode: connector section of an older image" "$path" 0 "connector section)" \
+        "{$BUILD,\"connector\":{$ID,\"complete\":true}}"
     expect "$mode: both, consistent" "$path" 0 "app section)" "{\"connector\":{$ID},$BUILD,\"app\":{$ID}}"
     expect "$mode: both, disagreeing" "$path" 1 "the connector section says" "{\"connector\":{$OTHER},\"app\":{$ID}}"
     expect "$mode: neither" "$path" 0 "check 2 is skipped" "{$BUILD}"
@@ -67,8 +72,8 @@ for mode in jq no-jq; do
     expect "$mode: wrong app name" "$path" 1 "app is 'other-app', expected 'demo-app'" "{$BUILD,\"app\":{$OTHER}}"
 done
 # The fields alone (no tuple): jq reads them, the jq-less path finds no identity.
-expect "jq: connector fields without a tuple" "$WITH_JQ" 0 "connector section)" "{\"connector\":{$FIELDS}}"
-expect "no-jq: connector fields without a tuple" "$NO_JQ" 0 "check 2 is skipped" "{\"connector\":{$FIELDS}}"
+expect "jq: app fields without a tuple" "$WITH_JQ" 0 "app section)" "{\"app\":{$FIELDS}}"
+expect "no-jq: app fields without a tuple" "$NO_JQ" 0 "check 2 is skipped" "{\"app\":{$FIELDS}}"
 expect "jq: unset instance" "$WITH_JQ" 1 "identity 'eu-dev/alpha/demo-app/none': instance is not set" \
     "{\"app\":{${FIELDS/inst-one/none}}}"
 expect "jq: not a JSON object" "$WITH_JQ" 1 "did not answer a JSON object" "<html>Whitelabel Error Page</html>"

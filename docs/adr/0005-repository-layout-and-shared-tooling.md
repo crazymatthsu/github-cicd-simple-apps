@@ -2,7 +2,7 @@
 
 | | |
 |---|---|
-| Status | Accepted. Rules 5 and 6 superseded in part by [ADR-0030](0030-platform-yml-declares-every-project-value.md) |
+| Status | Accepted. Rules 5 and 6 superseded in part by [ADR-0030](0030-platform-yml-declares-every-project-value.md). Rule 5 superseded in part by [ADR-0043](0043-coding-agent-instructions-are-shared-tooling.md) |
 | Date | 2026-10-04 |
 | Applies to | every repository built from this one |
 | Enforced by | review (CODEOWNERS: the shared tooling is owned by the platform maintainers); config-lint for `config/`; settings discovery for `apps/` and `framework/` |
@@ -85,6 +85,9 @@ repository forks the tooling, and every fix has to be found and repeated in each
    > `settings.gradle.kts` holds no project value and is shared tooling, copied unchanged. Since
    > [ADR-0031](0031-ci-derives-the-projects-from-the-build-files.md), `.github/affected-map.yml` holds only the path
    > classes and rarely needs an edit.
+   >
+   > **Superseded in part by [ADR-0043](0043-coding-agent-instructions-are-shared-tooling.md) rule 6.** The shared tooling
+   > class also holds `CLAUDE.md` and `.claude/skills/**`, the operating instructions for a coding agent.
 
    - **Shared tooling.** A repository built from this one copies these files unchanged, and they MUST NOT be edited
      there:

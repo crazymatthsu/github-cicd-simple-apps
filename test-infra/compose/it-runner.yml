@@ -6,8 +6,8 @@
 # (COMPOSE_FILE, COMPOSE_PROJECT_NAME, COMPOSE_ENV_FILES and the IT_* values come from $GITHUB_ENV,
 # written by `stack.sh up`.) The `tools` profile keeps `up --wait` from ever starting it.
 x-ci-labels: &ci-labels
-  com.example.ci.run: "${CI_RUN_ID:-local}"
-  com.example.ci.attempt: "${CI_RUN_ATTEMPT:-0}"
+  - "${LABEL_PREFIX:?run through test-infra/compose/stack.sh}.ci.run=${CI_RUN_ID:-local}"
+  - "${LABEL_PREFIX}.ci.attempt=${CI_RUN_ATTEMPT:-0}"
 
 services:
   it-runner:

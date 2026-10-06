@@ -7,11 +7,11 @@ plugins {
 }
 
 dependencies {
-    implementation(project(":connectors-framework"))
+    implementation(project(":app-runtime"))
     implementation(libs.spring.boot.starter.webmvc)
     implementation(libs.bundles.observability)
 
     testImplementation(libs.spring.boot.starter.test)
-    testImplementation(testFixtures(project(":connectors-framework")))
-    integrationTestImplementation(testFixtures(project(":connectors-framework")))
+    testImplementation(testFixtures(project(":app-runtime")))
+    integrationTestImplementation(testFixtures(project(":app-runtime")))
 }

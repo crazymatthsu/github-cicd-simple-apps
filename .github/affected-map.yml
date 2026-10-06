@@ -16,7 +16,17 @@ schema: 1
 # Nothing to build or test: when every changed path is here, the run is "docs-only" (ADR-0022).
 docs:
   - "docs/**"
-  - "**/*.md"
+  # Markdown by location, not "**/*.md": a skill's SKILL.md under .claude/ is shared tooling (ADR-0043), checked by
+  # the lint job, and an unlisted location counts as shared, which is the safe side.
+  - "*.md"
+  - "apps/**/*.md"
+  - "config/**/*.md"
+  - "framework/**/*.md"
+  - "test-infra/**/*.md"
+  - "build-logic/**/*.md"
+  - "scripts/**/*.md"
+  - "gradle/**/*.md"
+  - ".github/**/*.md"
   - "LICENSE"
   - ".gitignore"
   - ".gitattributes"
@@ -24,8 +34,6 @@ docs:
   - "renovate.json"
   - "release-please-config.json"
   - ".release-please-manifest.json"
-  # Claude Code skills and settings: guidance for the assistant, never part of a build or an image.
-  - ".claude/**"
 
 # Config tree: config-lint only — no Gradle build, no image (ADR-0022).
 # On main a config-only merge still runs the whole pipeline and deploy-dev (ADR-0027).
@@ -35,6 +43,7 @@ config:
 # Shared inputs: any change here means "everything" (full=true, ADR-0022).
 shared:
   - "framework/**"
+  - ".claude/**"                     # the skills and their templates: shared tooling, checked by the lint job (ADR-0043)
   - "build-logic/**"
   - "gradle/**"
   - "gradlew"

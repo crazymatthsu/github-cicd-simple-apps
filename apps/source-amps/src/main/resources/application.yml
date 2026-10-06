@@ -25,8 +25,8 @@ management:
   endpoints:
     web:
       exposure:
-        # connectorconfig: the masked configuration summary for `run-compose.sh ... app-config` (ADR-0016).
-        include: health,info,prometheus,connectorconfig
+        # appconfig: the masked configuration summary for `run-compose.sh ... app-config` (ADR-0016, ADR-0040).
+        include: health,info,prometheus,appconfig
   endpoint:
     health:
       show-details: always
@@ -34,8 +34,8 @@ management:
         enabled: true
       group:
         readiness:
-          # The framework's `connector` indicator gates readiness (ADR-0015).
-          include: readinessState,connector
+          # The framework's `app` indicator gates readiness (ADR-0015, ADR-0040).
+          include: readinessState,app
   info:
     java:
       enabled: true
