@@ -2,7 +2,7 @@ package buildlogic
 
 import org.gradle.api.services.BuildService
 import org.gradle.api.services.BuildServiceParameters
-import java.security.SecureRandom
+import java.io.File
 
 /**
  * Serialises every task that drives `test-infra/compose/stack.sh` within one build: a laptop has one set of
@@ -11,19 +11,35 @@ import java.security.SecureRandom
 abstract class ComposeStackLock : BuildService<BuildServiceParameters.None>
 
 /**
- * The throwaway SQL Server `sa` password of a Gradle-managed test stack (ADR-0013, ADR-0025): generated once per
- * build at execution time (never stored in the configuration cache) and handed to both `composeUp` (SQL
- * Server's MSSQL_SA_PASSWORD) and the host-JVM `integrationTest` (SPRING_DATASOURCE_PASSWORD). An
- * `IT_SA_PASSWORD` set in the environment wins.
+ * The KEY=value files `stack.sh up` writes under `test-infra/compose/.state/` (ADR-0025, ADR-0038): the state file
+ * `<project>.env` (what `up` recorded: the app image, the actuator port) and `<project>.host.env` (what the project's
+ * stacks publish to a test JVM on the host, from their `env` and `local_env` entries in stacks.yml, generated
+ * secrets included). The plugin passes the second on to the tests unchanged, without knowing what it holds.
  */
-abstract class IntegrationTestSecrets : BuildService<BuildServiceParameters.None> {
-    val saPassword: String by lazy {
-        System.getenv("IT_SA_PASSWORD")?.takeIf { it.isNotBlank() } ?: generate()
+object StackEnv {
+    private val key = Regex("[A-Za-z_][A-Za-z0-9_]*")
+
+    /** The variables of [lines]: `#` comments and lines that are not KEY=value are skipped; the last value wins. */
+    fun parse(lines: List<String>): Map<String, String> {
+        val env = LinkedHashMap<String, String>()
+        for (raw in lines) {
+            val line = raw.trim()
+            val name = line.substringBefore('=', "")
+            if (line.startsWith("#") || !key.matches(name)) continue
+            env[name] = unquote(line.substringAfter('='))
+        }
+        return env
     }
 
-    private fun generate(): String {
-        val bytes = ByteArray(16).also { SecureRandom().nextBytes(it) }
-        // Upper case, lower case, digits and a symbol: the SQL Server password policy (same shape as stack.sh).
-        return "It-" + bytes.joinToString("") { "%02x".format(it) } + "-Aa1"
-    }
+    /** [parse] of a file, or nothing when it does not exist. */
+    fun read(file: File): Map<String, String> = if (file.isFile) parse(file.readLines()) else emptyMap()
+
+    // The state file is written with bash's %q, which quotes nothing in the values read here; a value in matching
+    // quotes loses them.
+    private fun unquote(value: String): String =
+        if (value.length >= 2 && value.first() == value.last() && value.first() in "'\"") {
+            value.substring(1, value.length - 1)
+        } else {
+            value
+        }
 }

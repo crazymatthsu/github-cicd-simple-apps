@@ -72,7 +72,7 @@ flowchart LR
 | [0030](0030-platform-yml-declares-every-project-value.md) | `platform.yml` declares every project value: registry, project, group, apps directory, runtimes, reference app, dev envs, regions, stages and flows. The build validates it on every run, and every tool reads it; none hard-codes a value. | Accepted; rules 1 and 3 superseded in part by ADR-0035 |
 | [0035](0035-dev-envs-and-reference-app-are-optional.md) | `dev_envs` may be `[]` and `reference_app` may be left out. No dev env skips the kind deployment test and the dev deploy; no reference app skips the system test, the kind deployment test and the teardown drill. A new repository goes green before its boxes exist. | Accepted |
 | **Build and artifacts** | | |
-| [0007](0007-gradle-build-with-convention-plugins.md) | Convention plugins in `build-logic/`, one version catalog and the Spring Boot BOM give reproducible, cached builds; a module declares only its plugins and dependencies. | Accepted; rule 3 superseded in part by ADR-0030, rule 1 in part by ADR-0033 |
+| [0007](0007-gradle-build-with-convention-plugins.md) | Convention plugins in `build-logic/`, one version catalog and the Spring Boot BOM give reproducible, cached builds; a module declares only its plugins and dependencies. | Accepted; rule 3 superseded in part by ADR-0030 and ADR-0038, rule 1 in part by ADR-0033 |
 | [0008](0008-versions-derived-from-git.md) | Versions come from git tags and Conventional Commits on every build. No version file exists. | Accepted |
 | [0009](0009-one-shared-image-definition.md) | One Dockerfile and a three-file build context for every app; images are non-root and layered, and Gradle builds them with docker or podman. | Accepted; rules 3 and 6 superseded in part by ADR-0033 |
 | [0010](0010-image-tags-digests-promotion-retention.md) | Images are `<registry>/<project>/<AppName>` with immutable version and sha tags. They move by digest, are promoted by re-tagging, and the retention sweep keeps everything in use. | Accepted; rule 7 superseded in part by ADR-0032 |
@@ -101,8 +101,9 @@ flowchart LR
 | [0032](0032-registry-credentials.md) | Two optional secrets, `REGISTRY_USER` and `REGISTRY_TOKEN`, log every job in to the registry of `platform.yml`; without them, `GITHUB_TOKEN` on GHCR. The retention sweep is GHCR-only, and the boxes of a pool hold their own read credentials. | Accepted |
 | [0034](0034-main-runs-the-test-stages-the-repository-has.md) | `main` runs the integration tests when a project has them and the system test when `versions.env` declares the system image; publish follows the stages that ran and passed, never a failed or cancelled one. | Accepted; rule 5 superseded in part by ADR-0035 |
 | **Testing** | | |
-| [0025](0025-integration-tests-on-compose-stacks.md) | One `stack.sh` serves laptops and CI. Stacks are declared per project, the app under test runs as deployed, and tests run at a component and a system level. | Accepted; rule 4 superseded in part by ADR-0033, rule 6 in part by ADR-0034 |
+| [0025](0025-integration-tests-on-compose-stacks.md) | One `stack.sh` serves laptops and CI. Stacks are declared per project, the app under test runs as deployed, and tests run at a component and a system level. | Accepted; rules 2, 5 and 7 superseded in part by ADR-0038, rule 4 in part by ADR-0033, rule 6 in part by ADR-0034 |
 | [0026](0026-integration-test-data-and-comparison.md) | Test cases are `test-infra/testdata/<AppName>/<case>/`: a manifest, inputs, and canonical JSON Lines, compared by shared comparators with explicit tolerances. | Accepted |
+| [0038](0038-stacks-publish-their-test-environment.md) | Each stack declares in `stacks.yml` its seed and the variables it publishes to the tests, generated secrets included; `stack.sh` writes them for the it-runner and the host JVM. The shared tooling names no dependency, and an app declares its own test clients. | Accepted |
 | **CD and release** | | |
 | [0027](0027-continuous-deployment-to-dev-and-the-deployment-record.md) | Every tested `main` commit deploys dev from a per-flow inventory. The configuration tree declares intent; a GitHub Deployment records what happened, with nothing written back to git. | Accepted; rule 1 superseded in part by ADR-0035 |
 | [0028](0028-host-pool-deployment.md) | Placement is pinned, else discovered, else assigned. Instances start from a new version, and every box activates it only when all are healthy; otherwise everything returns to `current`. | Accepted |
@@ -151,8 +152,10 @@ flowchart LR
      restating the path, and a free `ACTUATOR_HOST_PORT`.
 5. In each dev env: the same files (the Helm values when `kinds` includes `helm`), with `IMAGE_TAG=main`, plus a
    target in the flow's `workflows-config.yml`.
-6. Declare its dependency stacks in `test-infra/compose/stacks.yml` (known gap G10). CI finds the app itself,
-   from its build file ([ADR-0031](0031-ci-derives-the-projects-from-the-build-files.md)).
+6. Declare its dependency stacks in `test-infra/compose/stacks.yml` (known gap G10), and for a new stack what it
+   publishes to the tests ([ADR-0038](0038-stacks-publish-their-test-environment.md)). The test clients of its
+   integration tests go in its own build file. CI finds the app itself, from its build file
+   ([ADR-0031](0031-ci-derives-the-projects-from-the-build-files.md)).
 7. Integration tests in `src/integrationTest/java`, and a test case in `test-infra/testdata/<AppName>/<case>/`
    ([ADR-0025](0025-integration-tests-on-compose-stacks.md), [ADR-0026](0026-integration-test-data-and-comparison.md)).
 8. When `kinds` includes `helm`, a chart: copy `apps/<other>/helm/<other>/` to `apps/<AppName>/helm/<AppName>/` and
@@ -225,7 +228,6 @@ that opens a gap adds a row.
 | G6 | `us-dev/cash/source-database/positions-db-to-deephaven` is a `kind: helm` target on the throwaway `kind-ci` cluster, so it runs nowhere after the deploy job. | [0004](0004-environments-and-runtimes.md), [0019](0019-kubernetes-and-helm-are-provisional.md) |
 | G10 | `test-infra/compose/stacks.yml` is maintained by hand. A project without an entry fails when its stack starts, and an entry for a removed project goes unnoticed. | [0025](0025-integration-tests-on-compose-stacks.md) |
 | G11 | The framework mixes the generic operational contract with the connector domain (open decision O5). The `server`, `management` and `logging` blocks are copied into every app, and the secret-property list exists twice (config-lint, `SecretMasker`). The runtime scripts no longer require the framework: they read the generic `app` and `appconfig` names first and accept the framework's. | [0006](0006-apps-and-framework-modules.md), [0013](0013-secrets.md), [0015](0015-actuator-health-and-metrics-contract.md), [0016](0016-logging-and-startup-configuration-summary.md), [0037](0037-runtime-scripts-read-generic-actuator-names.md) |
-| G12 | `buildlogic.integration-test` and `it-runner.yml` hard-wire the Deephaven client and the Deephaven and SQL Server endpoints. | [0007](0007-gradle-build-with-convention-plugins.md), [0025](0025-integration-tests-on-compose-stacks.md) |
 | G13 | The base images and the system test's server image are built outside this repository, and the bootstrap path of `setup-build-env` has no `docker/base/<name>/Dockerfile` to build here. A missing base image no longer fails the build: CI falls back to the public Temurin images, which lack the company CA bundle. | [0009](0009-one-shared-image-definition.md), [0033](0033-public-base-image-fallback.md) |
 | G14 | The build job pushes `main` before any test, so a failed run leaves `main` on an untested build. The build should push with `-PpushConvenienceTags=false` and leave `main` to publish. | [0010](0010-image-tags-digests-promotion-retention.md), [0023](0023-main-pipeline-build-once-test-publish.md) |
 | G15 | Merge commits are allowed: 12 of 27 commits are merges, and `CHANGELOG.md` lists each change twice. The rulesets should allow squash merges only. | [0020](0020-branching-protection-and-merge-rules.md) |
