@@ -1,0 +1,2 @@
+# Layer 4 — __ENV__/__FLOW__/__APP_NAME__/__INSTANCE__ (ADR-0011): what only this instance sets. Endpoints and names
+# only; never a secret (ADR-0013). Empty until the instance has properties of its own.

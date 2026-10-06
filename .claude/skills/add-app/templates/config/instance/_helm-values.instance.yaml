@@ -1,0 +1,18 @@
+# Helm values layer 3 (ADR-0019) of __ENV__/__FLOW__/__APP_NAME__/__INSTANCE__.
+# image.tag equals IMAGE_TAG in the sibling _docker-compose.instance.env (config-lint check 4; in *-dev both declare `main`, ADR-0027);
+# identity and the APP_* variables restate the directory path (config-lint check 4); app-facing variables
+# only, never secrets (ADR-0013).
+image:
+  tag: "__IMAGE_TAG__"
+identity:
+  env: __ENV__
+  flow: __FLOW__
+  app: __APP_NAME__
+  instance: __INSTANCE__
+env:
+  APP_ENV: __ENV__
+  APP_FLOW: __FLOW__
+  APP_NAME: __APP_NAME__
+  APP_INSTANCE: __INSTANCE__
+  JAVA_OPTS: "-XX:MaxRAMPercentage=60"
+  LOG_LEVEL_ROOT: INFO

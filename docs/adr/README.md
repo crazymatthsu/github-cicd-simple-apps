@@ -65,10 +65,11 @@ flowchart LR
 | **Foundations** | | |
 | [0001](0001-adrs-are-the-repository-contract.md) | Decisions are numbered ADRs with MUST/SHOULD rules and an "Enforced by" line. ADR-0001 to ADR-0999 are the shared contract; a repository's own decisions start at ADR-1000. | Accepted; rule 4 superseded in part by ADR-0039 |
 | [0039](0039-an-adr-applies-where-its-subject-exists.md) | A contract ADR applies where the subject its *Applies to* row names exists. A repository without the subject (no Helm, no integration test, no dev env, no pool) deviates from nothing and records nothing; the ADR applies from the first subject. | Accepted; rule 2 superseded in part by ADR-0040 |
+| [0043](0043-coding-agent-instructions-are-shared-tooling.md) | `CLAUDE.md` and the skills `new-repo-from-template`, `add-app` and `add-instance` are shared tooling: the contract in one screen and the executable form of the three checklists, free of project values; a test keeps their templates equal to the reference app's files. | Accepted |
 | [0002](0002-one-repository-one-project-one-release-line.md) | A repository is one project of Spring Boot apps and libraries, released together as `vX.Y.Z`. `platform.yml` declares only what the tree cannot derive. | Accepted; rule 5 superseded by ADR-0030 |
 | [0003](0003-identity-tuple-names-every-instance.md) | `<env>/<flow>/<AppName>/<AppInstance>` is the configuration path and the source of every name. | Accepted |
 | [0004](0004-environments-and-runtimes.md) | Only local and dev are configured and deployed here. qa, uat, prod and parallel are configured and deployed from a separate configuration repository, promoted by pull request. On-prem compose runs every env until EKS. | Accepted; rule 3 superseded in part by ADR-0030 |
-| [0005](0005-repository-layout-and-shared-tooling.md) | One skeleton for every repository. Shared tooling is copied unchanged, project files are the project's own, and changes to the tooling are made here first. | Accepted; rules 5 and 6 superseded in part by ADR-0030 |
+| [0005](0005-repository-layout-and-shared-tooling.md) | One skeleton for every repository. Shared tooling is copied unchanged, project files are the project's own, and changes to the tooling are made here first. | Accepted; rules 5 and 6 superseded in part by ADR-0030, rule 5 in part by ADR-0043 |
 | [0006](0006-apps-and-framework-modules.md) | `apps/<AppName>/` holds an app's code and only the infrastructure that differs between apps. `framework/<name>/` holds shared libraries, never deployed. | Accepted; rule 6 superseded in part by ADR-0030, rules 1 and 4 in part by ADR-0040 |
 | [0030](0030-platform-yml-declares-every-project-value.md) | `platform.yml` declares every project value: registry, project, group, apps directory, runtimes, reference app, dev envs, regions, stages and flows. The build validates it on every run, and every tool reads it; none hard-codes a value. | Accepted; rules 1 and 3 superseded in part by ADR-0035 |
 | [0035](0035-dev-envs-and-reference-app-are-optional.md) | `dev_envs` may be `[]` and `reference_app` may be left out. No dev env skips the kind deployment test and the dev deploy; no reference app skips the system test, the kind deployment test and the teardown drill. A new repository goes green before its boxes exist. | Accepted |
@@ -138,6 +139,8 @@ flowchart LR
 
 ### Add an app to this repository ([ADR-0006](0006-apps-and-framework-modules.md))
 
+The skill `add-app` (`.claude/skills/add-app/`) executes this checklist with the file templates it carries ([ADR-0043](0043-coding-agent-instructions-are-shared-tooling.md)).
+
 1. `apps/<AppName>/build.gradle.kts`: apply `buildlogic.spring-boot-app`, `buildlogic.docker-image` and
    `buildlogic.integration-test`. Depend on `project(":app-runtime")` and, for tests, on its test fixtures.
 2. `src/main/resources/application.yml`:
@@ -174,6 +177,8 @@ flowchart LR
 
 ### Add an instance ([ADR-0003](0003-identity-tuple-names-every-instance.md), [ADR-0011](0011-configuration-tree-and-spring-layers.md))
 
+The skill `add-instance` executes this checklist ([ADR-0043](0043-coding-agent-instructions-are-shared-tooling.md)).
+
 1. Create `config/<env>/<flow>/<AppName>/<AppInstance>/` with these files:
    - `application.instance.yml`;
    - `_docker-compose.instance.env`: the identity restating the path, `IMAGE_TAG`, and an `ACTUATOR_HOST_PORT` that
@@ -184,6 +189,8 @@ flowchart LR
 3. Verify: `./gradlew configLint`, then `scripts/run-compose.sh <env> <flow> <AppName> <AppInstance> start --dry-run`.
 
 ### Create a repository from this one ([ADR-0005](0005-repository-layout-and-shared-tooling.md))
+
+The skill `new-repo-from-template` executes this checklist, with a `platform.yml` template and the flow files ([ADR-0043](0043-coding-agent-instructions-are-shared-tooling.md)).
 
 1. Copy this repository at a release tag: `git clone --branch vX.Y.Z --depth 1 <this repository> <new-name>`, then
    delete `.git` and run `git init`, so the new repository starts its own history and release line (step 4).

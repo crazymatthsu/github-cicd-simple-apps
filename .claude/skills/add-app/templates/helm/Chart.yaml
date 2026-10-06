@@ -1,0 +1,16 @@
+# The Helm chart of __APP_NAME__ (ADR-0019): one release per AppInstance, named
+# <AppName>-<AppInstance>, in the namespace of its flow (ADR-0003). Every app's chart is a copy that differs only
+# in this file's name / description and image.repository.
+apiVersion: v2
+name: __APP_NAME__
+description: >-
+  __APP_NAME__: __APP_SUMMARY__. One release per AppInstance of the config tree, deployed by
+  scripts/helm-deploy-instance.sh (ADR-0019) or, if the EKS design adopts it, Argo CD.
+type: application
+# Chart semver: bump when templates, values or the schema change. The running image is image.tag (the
+# instance values or --set-string image.tag=<tag>), never appVersion.
+version: 0.1.2
+appVersion: "0.1.0"
+home: __REPOSITORY_URL__
+sources:
+  - __REPOSITORY_URL__/tree/main/apps/__APP_NAME__
