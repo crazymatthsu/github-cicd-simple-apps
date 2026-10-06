@@ -22,8 +22,8 @@ data class PlatformManifest(
     val group: String,
     val appsDir: String,
     val kinds: List<String>,
-    val referenceApp: String,
-    val devEnvs: List<String>,
+    val referenceApp: String, // "" without reference_app: no reference scenario (ADR-0035)
+    val devEnvs: List<String>, // empty for dev_envs: []: no env is deployed (ADR-0035)
     val regions: List<String>,
     val stages: List<String>,
     val flows: List<String>,
@@ -64,10 +64,10 @@ data class PlatformManifest(
                 return value
             }
 
-            fun list(map: Map<*, *>, key: String, where: String, pattern: Regex): List<String> {
+            fun list(map: Map<*, *>, key: String, where: String, pattern: Regex, mayBeEmpty: Boolean = false): List<String> {
                 val value = map[key]
-                if (value !is List<*> || value.isEmpty()) {
-                    problems += "$where$key is required (a non-empty list)"
+                if (value !is List<*> || (value.isEmpty() && !mayBeEmpty)) {
+                    problems += "$where$key is required (a ${if (mayBeEmpty) "" else "non-empty "}list)"
                     return emptyList()
                 }
                 val items = value.map { it?.toString().orEmpty() }
@@ -95,18 +95,20 @@ data class PlatformManifest(
             val appsDir = string(project, "apps_dir", "projects[0].", DIRECTORY)
             val kinds = list(project, "kinds", "projects[0].", TOKEN)
             (kinds - KINDS).forEach { problems += "projects[0].kinds: '$it' is not a runtime (${KINDS.sorted().joinToString()})" }
-            val referenceApp = string(project, "reference_app", "projects[0].", TOKEN)
+            // Optional (ADR-0035): without the key there is no reference scenario; a key that is present names an app.
+            val referenceApp = if (project.containsKey("reference_app")) string(project, "reference_app", "projects[0].", TOKEN) else ""
             val regions = list(root, "regions", "", REGION)
             val stages = list(root, "stages", "", STAGE)
             if (stages.isNotEmpty() && DEV_STAGE !in stages) problems += "stages must include `$DEV_STAGE`"
             val flows = list(root, "flows", "", TOKEN)
-            val devEnvs = list(root, "dev_envs", "", Regex("^[a-z]{2}-$DEV_STAGE$"))
+            // [] is valid (ADR-0035): the repository deploys no env yet.
+            val devEnvs = list(root, "dev_envs", "", Regex("^[a-z]{2}-$DEV_STAGE$"), mayBeEmpty = true)
             devEnvs.filter { it.substringBefore('-') !in regions }
                 .forEach { problems += "dev_envs: '$it' is not in a region of `regions`" }
             // Scripts read these keys with awk, not a YAML parser (run-compose.sh runs on hosts without yq): one line
-            // at the top level, unquoted words.
+            // at the top level, unquoted words (`[]` too: whether a list may be empty is checked above).
             for (key in LINE_LISTS) {
-                val line = Regex("^$key:[ \\t]*\\[[ \\t]*[a-z0-9-]+([ \\t]*,[ \\t]*[a-z0-9-]+)*[ \\t]*\\][ \\t]*(#.*)?$")
+                val line = Regex("^$key:[ \\t]*\\[[ \\t]*([a-z0-9-]+([ \\t]*,[ \\t]*[a-z0-9-]+)*)?[ \\t]*\\][ \\t]*(#.*)?$")
                 if (text.lineSequence().none { line.matches(it) }) {
                     problems += "$key must be a one-line list of unquoted words at the top level, e.g. `$key: [a, b]` " +
                         "(scripts read it without a YAML parser)"
@@ -124,6 +126,14 @@ data class PlatformManifest(
                 stages, flows)
         }
     }
+
+    /**
+     * Why `reference_app` does not fit the modules found ([modules]: name to parent directory), or null. No reference
+     * app is valid (ADR-0035); one that is declared must be an app under `apps_dir` (ADR-0030).
+     */
+    fun referenceAppProblem(modules: Map<String, String>): String? =
+        if (referenceApp.isEmpty() || modules[referenceApp] == appsDir) null
+        else "$FILE: reference_app '$referenceApp' is not an app under $appsDir/ (ADR-0030)"
 }
 
 /** What every project receives as `buildlogic.platform.<key>` extra properties (lists comma-separated). */
@@ -182,10 +192,7 @@ object PlatformSettings {
                     settings.project(":${dir.name}").projectDir = dir
                 }
         }
-        if (modules[manifest.referenceApp] != manifest.appsDir) {
-            throw GradleException("${PlatformManifest.FILE}: reference_app '${manifest.referenceApp}' is not an app under " +
-                "${manifest.appsDir}/ (ADR-0030)")
-        }
+        manifest.referenceAppProblem(modules)?.let { throw GradleException(it) }
         settings.gradle.lifecycle.beforeProject(ApplyPlatform(manifest.asProperties()))
     }
 }

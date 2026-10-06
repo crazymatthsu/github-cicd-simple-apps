@@ -107,11 +107,12 @@ jobs:
       retention-days: 14
 
   system-test:
-    # Only when versions.env declares the system image (ADR-0034). The if names no status function, so the implicit
-    # success() over the needs still applies: a failed or skipped integration-test skips this job too. That is
-    # intended (the system test runs the reference app's integration tests); do not add always() or !failure().
+    # Only when versions.env declares the system image (ADR-0034) and platform.yml a reference app (ADR-0035). The if
+    # names no status function, so the implicit success() over the needs still applies: a failed or skipped
+    # integration-test skips this job too. That is intended (the system test runs the reference app's integration
+    # tests); do not add always() or !failure().
     needs: [platform, build, integration-test]
-    if: needs.platform.outputs.system-image != ''
+    if: needs.platform.outputs.system-image != '' && needs.platform.outputs.reference-app != ''
     uses: ./.github/workflows/_integration-test.yml
     secrets:
       REGISTRY_USER: ${{ secrets.REGISTRY_USER }}
@@ -162,9 +163,9 @@ jobs:
     # (ADR-0019); the cluster is deleted and leak-checked in always() steps (ADR-0024).
     # The if requires what the needs require (publish passed, so platform and build did), without the implicit
     # success(): GitHub applies a skip to every later job of the chain unless its if says otherwise, and a test stage
-    # skipped by design (ADR-0034) must not skip the deploys.
+    # skipped by design (ADR-0034) must not skip the deploys. Skipped without a dev env or a reference app (ADR-0035).
     needs: [platform, build, publish]
-    if: ${{ !cancelled() && needs.publish.result == 'success' }}
+    if: ${{ !cancelled() && needs.publish.result == 'success' && needs.platform.outputs.dev-envs != '[]' && needs.platform.outputs.reference-app != '' }}
     strategy:
       fail-fast: false
       matrix:
@@ -185,9 +186,10 @@ jobs:
 
   deploy-dev:
     # Every dev env of platform.yml (ADR-0004, ADR-0027), each in its own Environment. The if names kind-deploy for
-    # the reason given there (ADR-0034); kind-deploy passed means publish, platform and build did.
+    # the reason given there (ADR-0034); kind-deploy passed means publish, platform and build did. Without a
+    # reference app no kind deploy runs, so publish is named instead; without a dev env the job is skipped (ADR-0035).
     needs: [platform, build, publish, kind-deploy]
-    if: ${{ !cancelled() && needs.kind-deploy.result == 'success' && github.ref == 'refs/heads/main' }}
+    if: ${{ !cancelled() && !failure() && (needs.kind-deploy.result == 'success' || needs.platform.outputs.reference-app == '') && github.ref == 'refs/heads/main' && needs.publish.result == 'success' && needs.platform.outputs.dev-envs != '[]' }}
     strategy:
       fail-fast: false
       matrix:

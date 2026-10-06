@@ -68,7 +68,9 @@ and the compose template's call.
    is affected, which every change to `.github/`, `docker/` or `build-logic/` causes. `scripts/ci/public-base-smoke.sh`
    builds the reference app's image on `BASE_IMAGE_FALLBACK`, on the runner. It starts the image with a `local`
    identity under the compose template's posture, and requires readiness `UP`, the identity, user `10001` and a
-   working curl. `pr-gate` needs the job; like every job, it passes when skipped.
+   working curl. `pr-gate` needs the job; like every job, it passes when skipped. Without a `reference_app`
+   ([ADR-0035](0035-dev-envs-and-reference-app-are-optional.md)) the job is skipped: there is no app to prove it
+   with.
 6. **Renovate.** The hints let Renovate propose updates of the fallbacks, as `ci(deps)`: in this repository they
    change no released artifact. The tags float within Java 21, so the only update Renovate can find is a new Java
    major. That is a decision of its own ([ADR-0007](0007-gradle-build-with-convention-plugins.md) rule 8), so it

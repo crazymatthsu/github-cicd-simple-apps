@@ -173,6 +173,7 @@ jobs:
     if: >-
       (github.event_name == 'pull_request' || github.event_name == 'merge_group')
       && needs.detect-affected.outputs.deploy-test == 'true'
+      && needs.detect-affected.outputs.dev-envs != '[]' && needs.detect-affected.outputs.reference-app != ''
       && contains(needs.build.outputs.images, format(':{0}"', needs.detect-affected.outputs.reference-app))
     strategy:
       fail-fast: false
@@ -195,12 +196,14 @@ jobs:
     # A repository built from this one may lack the company base images: setup-build-env then builds its images on
     # the public fallback of .github/versions.env (ADR-0033). Here the company images exist, so only this job uses
     # it: on every shared change, the reference app's image is built on the fallback, on the runner host, and must
-    # start as user 10001 and report ready. It pushes nothing, so it runs for fork pull requests too.
+    # start as user 10001 and report ready. It pushes nothing, so it runs for fork pull requests too. Without a
+    # reference app (ADR-0035) there is no app to prove it with, so the job is skipped.
     name: public base
     needs: detect-affected
     if: >-
       (github.event_name == 'pull_request' || github.event_name == 'merge_group')
       && needs.detect-affected.outputs.full == 'true'
+      && needs.detect-affected.outputs.reference-app != ''
     runs-on: ubuntu-latest
     timeout-minutes: 20
     steps:
@@ -233,7 +236,7 @@ jobs:
           DOCS_ONLY: ${{ needs.detect-affected.outputs.docs-only }}
           MATRIX: ${{ needs.detect-affected.outputs.matrix }}
           IMAGES: ${{ needs.build.outputs.images }}
-          DEPLOY_TEST: ${{ needs.detect-affected.outputs.deploy-test }}
+          DEPLOY_TEST: ${{ needs.detect-affected.outputs.deploy-test == 'true' && needs.detect-affected.outputs.dev-envs != '[]' && needs.detect-affected.outputs.reference-app != '' }}
           BUILD_RESULT: ${{ needs.build.result }}
           KIND_RESULT: ${{ needs.kind-deploy.result }}
           REFERENCE_APP: ${{ needs.detect-affected.outputs.reference-app }}

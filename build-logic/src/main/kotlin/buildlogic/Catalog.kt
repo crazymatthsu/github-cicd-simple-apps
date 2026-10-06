@@ -25,5 +25,6 @@ internal fun Project.platformValue(key: String): String =
         ?: throw GradleException("buildlogic.platform.$key is not set: settings.gradle.kts must apply the " +
             "buildlogic.platform settings plugin, which reads platform.yml (ADR-0030)")
 
-/** A list value of platform.yml (see [platformValue]). */
-internal fun Project.platformList(key: String): List<String> = platformValue(key).split(',').filter { it.isNotBlank() }
+/** A list value of platform.yml (see [platformValue]); empty for `dev_envs: []` (ADR-0035). */
+internal fun Project.platformList(key: String): List<String> =
+    ((findProperty("buildlogic.platform.$key") as String?) ?: platformValue(key)).split(',').filter { it.isNotBlank() }

@@ -2,7 +2,7 @@
 
 | | |
 |---|---|
-| Status | Accepted. Supersedes in part rule 2 of ADR-0023 and rule 6 of ADR-0025 (rule 6) |
+| Status | Accepted. Supersedes in part rule 2 of ADR-0023 and rule 6 of ADR-0025 (rule 6). Rule 5 superseded in part by [ADR-0035](0035-dev-envs-and-reference-app-are-optional.md) |
 | Date | 2026-10-06 |
 | Applies to | every repository built from this one; the job conditions of `main.yml`; `test-infra/compose/versions.env` |
 | Enforced by | the job conditions of `main.yml` (actionlint checks them); `_integration-test.yml` (fails a system test whose image is not pinned by digest) |

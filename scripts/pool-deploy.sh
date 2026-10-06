@@ -206,8 +206,9 @@ REGIONS="$(platform_value '.regions // [] | join(" ")')"
 STAGES="$(platform_value '.stages // [] | join(" ")')"
 FLOWS="$(platform_value '.flows // [] | join(" ")')"
 DEV_ENVS="$(platform_value '.dev_envs // [] | join(" ")')"
-if [ -z "$REGIONS" ] || [ -z "$STAGES" ] || [ -z "$FLOWS" ] || [ -z "$DEV_ENVS" ]; then
-    die "$EXIT_CONFIG" "platform.yml: regions, stages, flows and dev_envs must be non-empty lists (ADR-0030)"
+# dev_envs may be [] (ADR-0035): the pools then serve local only.
+if [ -z "$REGIONS" ] || [ -z "$STAGES" ] || [ -z "$FLOWS" ] || [ "$(platform_value '.dev_envs | tag')" != '!!seq' ]; then
+    die "$EXIT_CONFIG" "platform.yml: regions, stages and flows must be non-empty lists, and dev_envs a list (ADR-0030)"
 fi
 
 # --- validation: usage (2), safety (3) --------------------------------------------------------------------

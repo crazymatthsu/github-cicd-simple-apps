@@ -180,6 +180,17 @@ class ConfigLinterTest {
     }
 
     @Test
+    fun `with dev_envs empty the tree holds local only`() {
+        // ADR-0035: a repository that deploys no env yet; check 1 still accepts local.
+        validInstance("local", "trades-db-to-amps")
+        validInstance("us-dev", "trades-db-to-amps")
+        val findings = lint(scope = everyEnv.copy(envs = emptySet()))
+        val messages = findings.text()
+        assertEquals(listOf("config/us-dev"), findings.map { it.path }, messages)
+        assertTrue(messages.contains("env 'us-dev' is not a dev env of this repository: add it to platform.yml dev_envs []"), messages)
+    }
+
+    @Test
     fun `the regions, stages and flows of platform_yml are the vocabulary`() {
         validInstance("local", "trades-db-to-amps")
         write("local/fx/source-database/application.app.yml", "a: 1\n")

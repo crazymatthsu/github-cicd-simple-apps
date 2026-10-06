@@ -2,7 +2,7 @@
 
 | | |
 |---|---|
-| Status | Accepted |
+| Status | Accepted. Rule 1 superseded in part by [ADR-0035](0035-dev-envs-and-reference-app-are-optional.md) |
 | Date | 2026-10-04 |
 | Applies to | the dev envs of `platform.yml` (`dev_envs`); `_deploy-dev.yml`; each dev flow's `workflows-config.yml` |
 | Enforced by | `_deploy-dev.yml` (refuses any env that is not a dev env of `platform.yml`, [ADR-0030](0030-platform-yml-declares-every-project-value.md); its `contents` permission is `read` only); config-lint check 11 (inventory against the tree) |
