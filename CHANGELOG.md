@@ -1,5 +1,16 @@
 # Changelog
 
+## [1.0.0](https://github.com/crazymatthsu/github-cicd-simple-apps/compare/v0.7.0...v1.0.0) (2026-10-06)
+
+
+### ⚠ BREAKING CHANGES
+
+* **runtime:** generic names, labels from the group, secret and summary prefixes in platform.yml (ADR-0040 to ADR-0042); CLAUDE.md and the three skills (ADR-0043) ([#29](https://github.com/crazymatthsu/github-cicd-simple-apps/issues/29))
+
+### Code Refactoring
+
+* **runtime:** generic names, labels from the group, secret and summary prefixes in platform.yml (ADR-0040 to ADR-0042); CLAUDE.md and the three skills (ADR-0043) ([#29](https://github.com/crazymatthsu/github-cicd-simple-apps/issues/29)) ([3037afa](https://github.com/crazymatthsu/github-cicd-simple-apps/commit/3037afa4d33255254d02784f49f57cc936f03649))
+
 ## [0.7.0](https://github.com/crazymatthsu/github-cicd-simple-apps/compare/v0.6.0...v0.7.0) (2026-10-06)
 
 
