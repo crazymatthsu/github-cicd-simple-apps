@@ -63,7 +63,9 @@ What `up` does:
    `.state/<cluster>.kubeconfig`, never to `~/.kube/config`. In CI, `KIND_CLUSTER_NAME` and `KUBECONFIG`
    are appended to `$GITHUB_ENV` before the cluster is created. Later steps, including teardown after a
    half-finished `up`, therefore always target the same cluster.
-2. Labels every node `com.example.ci.run=<run>` and `com.example.ci.attempt=<attempt>`.
+2. Labels every node `<domain>/ci.run=<run>` and `<domain>/ci.attempt=<attempt>`. The domain is `projects[0].group`
+   of `platform.yml` reversed: `com.acme.payments` labels `payments.acme.com/ci.run`
+   ([ADR-0041](../../docs/adr/0041-every-label-prefix-derives-from-the-group.md)).
 3. Waits for `deployment/coredns`, because the smoke test needs service DNS.
 
 An existing cluster of the same name is reused, so running `up` twice on a laptop is harmless.

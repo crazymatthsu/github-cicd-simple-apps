@@ -2,7 +2,7 @@
 
 | | |
 |---|---|
-| Status | Accepted. Rule 3 superseded in part by [ADR-0042](0042-property-roots-and-secret-properties-in-platform-yml.md) |
+| Status | Accepted. Rule 3 superseded in part by [ADR-0041](0041-every-label-prefix-derives-from-the-group.md) and [ADR-0042](0042-property-roots-and-secret-properties-in-platform-yml.md) |
 | Date | 2026-10-04 |
 | Applies to | every compose-run instance (local, CI test stacks, every on-prem env) |
 | Enforced by | `run-compose.sh` (checks the env layers and identity before every command, exit 4; `validate`); config-lint checks 5 and 6 (renders the whole file chain with the combined env; relative paths rejected) |
@@ -90,6 +90,9 @@ flowchart LR
    > **Superseded in part by [ADR-0042](0042-property-roots-and-secret-properties-in-platform-yml.md) rule 3.** The
    > `never` row forbids `SPRING_*`, `LOGGING_*`, `MANAGEMENT_*` and the environment-variable form of each root in
    > `platform.yml` `property_prefixes`; `CONNECTOR_*` is this repository's.
+   >
+   > **Superseded in part by [ADR-0041](0041-every-label-prefix-derives-from-the-group.md) rule 6.** `LABEL_PREFIX`,
+   > the group of `platform.yml` that starts every label key, joins the "never" row: the scripts set it.
 
    1. `config/<env>/<flow>/_docker-compose.flow.env` (optional);
    2. `config/<env>/<flow>/<AppName>/_docker-compose.app.env` (optional);

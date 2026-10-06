@@ -136,6 +136,21 @@ class PlatformManifestTest {
     }
 
     @Test
+    fun `the group is lower-case words on a line of its own, because every label prefix derives from it`() {
+        // ADR-0041: <group>.<name> on images and compose resources, the group reversed as a Kubernetes label domain.
+        for (bad in listOf("com.Acme.payments", "com.acme.payments_v2", "com.acme.2payments", "com..acme", "com.${"a".repeat(64)}")) {
+            val messages = problems(valid.replace("group: com.acme.payments", "group: $bad"))
+            assertTrue(messages.contains("projects[0].group '$bad' is not valid: lower-case words"), messages)
+        }
+        val quoted = problems(valid.replace("group: com.acme.payments", "group: \"com.acme.payments\""))
+        assertTrue(quoted.contains("projects[0].group must be an unquoted value on a line of its own"), quoted)
+        // The scripts take the first `group:` line: the project's first key may be the group itself.
+        val first = PlatformManifest.parse(valid.replace("  - name: payments-apps   # = the repository name\n    group: com.acme.payments",
+            "  - group: com.acme.payments  # every label prefix\n    name: payments-apps"))
+        assertEquals("com.acme.payments", first.group)
+    }
+
+    @Test
     fun `a repository may deploy no env and have no reference app yet`() {
         // ADR-0035: dev_envs [] and no reference_app key; the deploy and the reference scenario are switched off.
         val manifest = PlatformManifest.parse(valid

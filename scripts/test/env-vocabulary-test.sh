@@ -1,9 +1,10 @@
 #!/usr/bin/env bash
 # env-vocabulary-test.sh — the env and flow checks of scripts/run-compose.sh and scripts/helm-deploy-instance.sh against
 # platform.yml (ADR-0003, ADR-0004, ADR-0030): an unknown region, stage or flow is a usage error (2); a promoted env, or
-# a dev env that dev_envs does not list, is refused (3); a missing or malformed platform.yml is a config error (4);
-# with dev_envs: [] only local passes (ADR-0035). The forbidden env-layer prefixes are Spring's and the env forms of
-# property_prefixes, and printenv masks the secret_properties with every key below them (ADR-0042).
+# a dev env that dev_envs does not list, is refused (3); a missing or malformed platform.yml, a list or the group that
+# starts every label key (ADR-0041), is a config error (4); with dev_envs: [] only local passes (ADR-0035). The forbidden
+# env-layer prefixes are Spring's and the env forms of property_prefixes, and printenv masks the secret_properties with
+# every key below them (ADR-0042).
 # The cases are derived from this repository's platform.yml. Plain bash 3.2+: no engine, Helm or yq, because every
 # case ends before a script needs one. The lint job runs it with the other scripts/test/*-test.sh.
 # Exit codes: 0 every case passed · 1 a case failed.
@@ -70,6 +71,18 @@ sed "s/^flows:.*/flows:\\
   - $flow/" "$REPO/platform.yml" >"$WORK/multiline/platform.yml"
 expect 4 "platform.yml not found" "$WORK/bare/scripts/run-compose.sh" local "$flow" source-x inst status
 expect 4 "flows must be a one-line list" "$WORK/multiline/scripts/run-compose.sh" local "$flow" source-x inst status
+
+# A group the scripts cannot read, quoted or not lower-case words: config errors, before any name is checked, because
+# every label key starts with it (ADR-0041).
+mkdir -p "$WORK/quoted/scripts" "$WORK/upper/scripts"
+cp "$RUN_COMPOSE" "$HELM_DEPLOY" "$WORK/quoted/scripts/"
+cp "$RUN_COMPOSE" "$HELM_DEPLOY" "$WORK/upper/scripts/"
+sed 's/^\([[:space:]-]*group:[[:space:]]*\)\([a-z0-9.]*\)/\1"\2"/' "$REPO/platform.yml" >"$WORK/quoted/platform.yml"
+sed 's/^\([[:space:]-]*group:[[:space:]]*\)\([a-z0-9.]*\)/\1Com.\2/' "$REPO/platform.yml" >"$WORK/upper/platform.yml"
+for root in quoted upper; do
+    expect 4 "projects[0].group" "$WORK/$root/scripts/run-compose.sh" no-such-env "$flow" source-x inst status
+    expect 4 "projects[0].group" "$WORK/$root/scripts/helm-deploy-instance.sh" no-such-env "$flow" source-x inst --tag t --mode lint
+done
 
 # --- helm-deploy-instance.sh: every mode checks the vocabulary; only deploy checks dev_envs -------------------------
 expect 2 "(platform.yml)" "$HELM_DEPLOY" "$region-nostage" "$flow" source-x inst --tag t --mode lint

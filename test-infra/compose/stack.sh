@@ -16,7 +16,7 @@ Commands
       it-runner.yml), plus the shared docker/docker-compose.yml and the app's overrides when APP_IMAGE is set
       (ADR-0025): pull --quiet,
       up --wait --wait-timeout 180, run each stack's seed (stacks.yml), then start the app under test.
-      Exports COMPOSE_FILE, COMPOSE_PROJECT_NAME, COMPOSE_ENV_FILES and the IT_* values to
+      Exports COMPOSE_FILE, COMPOSE_PROJECT_NAME, COMPOSE_ENV_FILES, LABEL_PREFIX and the IT_* values to
       $GITHUB_ENV in CI and records them in test-infra/compose/.state/<project>.env.
       Writes what the stacks publish to the tests (their env entries in stacks.yml, ADR-0038) to
       .state/<project>.it-runner.env (it-runner, on the stack network) and .state/<project>.host.env
@@ -39,7 +39,9 @@ Commands
 Environment
   COMPOSE_BIN              "docker compose" or "podman compose" (default: docker when present, else podman)
   COMPOSE_PROJECT_NAME     default ci-<CI_RUN_ID>-<CI_RUN_ATTEMPT> in CI, local-<AppName> elsewhere
-  CI_RUN_ID, CI_RUN_ATTEMPT  run labels (default GITHUB_RUN_ID / GITHUB_RUN_ATTEMPT, else local / 0)
+  CI_RUN_ID, CI_RUN_ATTEMPT  run labels (default GITHUB_RUN_ID / GITHUB_RUN_ATTEMPT, else local / 0); their keys
+                           are <group>.ci.run and <group>.ci.attempt, the group being projects[0].group of
+                           platform.yml, which stack.sh exports to compose as LABEL_PREFIX (ADR-0041)
   APP_IMAGE                image under test; adds docker/docker-compose.yml, the app's override and the instance's
                            config-tree overrides to the stack, with the combined env scripts/run-compose.sh writes
   APP_ENV, APP_FLOW, APP_INSTANCE
@@ -53,6 +55,7 @@ Environment
 
 Exit codes
   0 success   1 compose failure, unhealthy stack or leak found   2 usage
+  4 platform.yml missing, or without a valid projects[0].group (ADR-0041)
   5 no container engine or compose, or the engine is not reachable
 EOF
 }
@@ -63,7 +66,9 @@ REPO_ROOT=$(dirname "$TEST_INFRA_DIR")
 STATE_DIR=${STACK_STATE_DIR:-$COMPOSE_DIR/.state}
 STACKS_FILE=$COMPOSE_DIR/stacks.yml
 VERSIONS_ENV=$COMPOSE_DIR/versions.env
-LABEL_RUN=com.example.ci.run
+PLATFORM_FILE=$REPO_ROOT/platform.yml
+# projects[0].group of platform.yml: lower-case words joined by dots, the start of every label key (ADR-0041).
+GROUP_PATTERN='^[a-z][a-z0-9]{0,62}(\.[a-z][a-z0-9]{0,62})*$'
 LABEL_PROJECT=com.docker.compose.project
 WAIT_TIMEOUT=${STACK_WAIT_TIMEOUT:-180}
 DOWN_TIMEOUT=20
@@ -71,7 +76,7 @@ DOWN_TIMEOUT=20
 # Recorded in the state file and, in CI, appended to $GITHUB_ENV: every later compose call on the stack
 # (the workflow's `docker compose run --rm it-runner`, diagnostics, down) needs the same interpolation.
 STATE_VARS="COMPOSE_PROJECT_NAME COMPOSE_FILE COMPOSE_PATH_SEPARATOR COMPOSE_ENV_FILES
-  CI_RUN_ID CI_RUN_ATTEMPT IT_TABLE_PREFIX IT_RUNNER_UID IT_RUNNER_GID IT_WORKSPACE IT_GRADLE_HOME
+  CI_RUN_ID CI_RUN_ATTEMPT LABEL_PREFIX IT_TABLE_PREFIX IT_RUNNER_UID IT_RUNNER_GID IT_WORKSPACE IT_GRADLE_HOME
   IT_RUNNER_ENV_FILE STACK_PROJECT STACK_SERVICES APP_IMAGE APP_NAME APP_ENV APP_FLOW APP_INSTANCE
   COMPOSE_ENV_FILE FLOW_APP_YML APP_APP_YML INSTANCE_APP_YML PROJECT IMAGE_REPO IMAGE_TAG ACTUATOR_HOST_PORT"
 # Plus the keys of the stacks' env entries (stacks.yml, ADR-0038), and which of them are generated secrets.
@@ -162,7 +167,15 @@ compose() {
 init_run_identity() {
   CI_RUN_ID=${CI_RUN_ID:-${GITHUB_RUN_ID:-local}}
   CI_RUN_ATTEMPT=${CI_RUN_ATTEMPT:-${GITHUB_RUN_ATTEMPT:-0}}
-  export CI_RUN_ID CI_RUN_ATTEMPT
+  # The run labels are <group>.ci.run and <group>.ci.attempt (ADR-0041). The group is read without a YAML parser: the
+  # value of the first `group:` line of platform.yml, which the build checks is projects[0].group, unquoted.
+  [[ -f $PLATFORM_FILE ]] || die 4 "platform.yml not found in $REPO_ROOT: its projects[0].group starts every label key (ADR-0041)"
+  LABEL_PREFIX=$(awk '/^[ \t]*(-[ \t]+)?group:/ {
+    sub(/^[ \t]*(-[ \t]+)?group:/, ""); sub(/#.*$/, ""); gsub(/^[ \t]+|[ \t]+$/, ""); print; exit
+  }' "$PLATFORM_FILE")
+  [[ $LABEL_PREFIX =~ $GROUP_PATTERN ]] \
+    || die 4 "platform.yml: projects[0].group '$LABEL_PREFIX' must be lower-case words of letters and digits joined by dots, unquoted on a line of its own: every label key starts with it (ADR-0041)"
+  export CI_RUN_ID CI_RUN_ATTEMPT LABEL_PREFIX
 }
 
 in_ci() { [[ $CI_RUN_ID != local ]]; }
@@ -507,15 +520,17 @@ write_app_no_ports() {
 
 # Filters that identify what this run created (ADR-0024). In CI: the run label, which also covers
 # run-compose.sh stacks of the same run, plus the project label. On a laptop every stack shares the
-# run label "local", so only the project label is used; without a project, all local stacks.
+# run label "local", so only the project label is used; without a project, all local stacks. The run label's key
+# is <group>.ci.run (ADR-0041): the prefix up recorded in the state file when there is one, so teardown matches
+# what up labelled, else the group of platform.yml.
 label_filters() {
   if in_ci; then
-    printf 'label=%s=%s\n' "$LABEL_RUN" "$CI_RUN_ID"
+    printf 'label=%s.ci.run=%s\n' "$LABEL_PREFIX" "$CI_RUN_ID"
     if [[ -n ${COMPOSE_PROJECT_NAME:-} ]]; then printf 'label=%s=%s\n' "$LABEL_PROJECT" "$COMPOSE_PROJECT_NAME"; fi
   elif [[ -n ${COMPOSE_PROJECT_NAME:-} ]]; then
     printf 'label=%s=%s\n' "$LABEL_PROJECT" "$COMPOSE_PROJECT_NAME"
   else
-    printf 'label=%s=local\n' "$LABEL_RUN"
+    printf 'label=%s.ci.run=local\n' "$LABEL_PREFIX"
   fi
 }
 

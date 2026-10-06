@@ -8,7 +8,8 @@
 // `application.jar` (bootJar), so the Dockerfile is generic and an app carries no image files of its own. A
 // module-local docker/Dockerfile is a documented override, not the norm: when it exists it wins. By hand:
 // `./gradlew :<AppName>:stageDockerContext`, then `docker buildx build build/docker` from the subproject.
-// Tags come from buildlogic.git-version (ADR-0010); labels and build args from project.version and git (ADR-0009).
+// Tags come from buildlogic.git-version (ADR-0010); labels and build args from project.version and git (ADR-0009). The
+// project's own labels are <group>.<name>, the group of platform.yml (ADR-0041); the Dockerfile sets only OCI labels.
 //
 // Properties: -Pimage.registry (env IMAGE_REGISTRY, default the registry of platform.yml), -Pimage.tags=a,b,
 // -Pimage.engine=auto|docker|podman (env CONTAINER_ENGINE), -Pimage.requireEngine=true (default when CI=true),
@@ -44,6 +45,8 @@ image.registry.convention(
 )
 // The project of platform.yml (ADR-0030), also rootProject.name.
 val projectName: String = platformValue("project")
+// Every label of this project starts with projects[0].group of platform.yml: <group>.app, ... (ADR-0041).
+val labelPrefix: String = platformValue("group")
 // The company base images live in the registry of platform.yml: <registry>/base/<name> (ADR-0009).
 val defaultBaseImage: String = "${platformValue("registry").trimEnd('/')}/base/jre21:latest"
 // Images are <registry>/<project>/<AppName> (ADR-0010): the project is the release line — the parent Gradle
@@ -81,20 +84,21 @@ val imageLabels: Provider<Map<String, String>> = image.imageName.zip(
     providers.provider {
         mapOf(
             "version" to versionValue, "sha" to gitShaValue, "kind" to versionKindValue.lowercase(),
-            "source" to sourceUrlValue, "build" to buildUrlValue, "project" to projectName,
+            "source" to sourceUrlValue, "build" to buildUrlValue, "project" to projectName, "prefix" to labelPrefix,
         )
     },
 ) { imageName, facts ->
+    val prefix = facts.getValue("prefix")
     mapOf(
         "org.opencontainers.image.title" to imageName,
         "org.opencontainers.image.description" to "$imageName (${facts.getValue("project")})",
         "org.opencontainers.image.version" to facts.getValue("version"),
         "org.opencontainers.image.revision" to facts.getValue("sha"),
         "org.opencontainers.image.source" to facts.getValue("source"),
-        "com.example.app" to imageName,
-        "com.example.git-sha" to facts.getValue("sha").take(7),
-        "com.example.build-url" to facts.getValue("build"),
-        "com.example.version-kind" to facts.getValue("kind"),
+        "$prefix.app" to imageName,
+        "$prefix.git-sha" to facts.getValue("sha").take(7),
+        "$prefix.build-url" to facts.getValue("build"),
+        "$prefix.version-kind" to facts.getValue("kind"),
     )
 }
 // -Pimage.arg.<ARG>=<ref>; for the apps' BASE_IMAGE also the environment variable BASE_IMAGE (CI exports the

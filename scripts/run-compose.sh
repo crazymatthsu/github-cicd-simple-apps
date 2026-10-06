@@ -17,7 +17,9 @@ readonly COMMANDS="start stop down restart config app-config printenv compose-en
 readonly COMPOSE_ENV_ALLOWED="IMAGE_REPO IMAGE_TAG APP_ENV APP_FLOW APP_NAME APP_INSTANCE JAVA_OPTS TZ LOG_LEVEL_ROOT LOGS_DIR DATA_DIR MEM_LIMIT"
 # Only the instance layer may set these (plus *_HOST_PORT): the image tag, the identity and the published ports.
 readonly INSTANCE_ONLY="IMAGE_TAG APP_ENV APP_FLOW APP_NAME APP_INSTANCE"
-readonly SCRIPT_VARIABLES="COMPOSE_ENV_FILE FLOW_APP_YML APP_APP_YML INSTANCE_APP_YML PROJECT INSTANCE_LOGS_DIR INSTANCE_DATA_DIR"
+readonly SCRIPT_VARIABLES="COMPOSE_ENV_FILE FLOW_APP_YML APP_APP_YML INSTANCE_APP_YML PROJECT INSTANCE_LOGS_DIR INSTANCE_DATA_DIR LABEL_PREFIX"
+# projects[0].group of platform.yml: lower-case words joined by dots, the start of every label key (ADR-0041).
+readonly GROUP_PATTERN='^[a-z][a-z0-9]{0,62}(\.[a-z][a-z0-9]{0,62})*$'
 # The compose service of every app (docker/docker-compose.yml); other containers reach it as its AppName.
 readonly SERVICE=app
 readonly IMAGE_TAG_PATTERN='^[A-Za-z0-9_][A-Za-z0-9_.-]{0,127}(@sha256:[0-9a-f]{64})?$'
@@ -108,7 +110,8 @@ scripts/pool-deploy.sh as one version directory /apps/<user>/versions/<project>/
 the git checkout, else the script's parent directory. The root's platform.yml (a host bundle carries a copy)
 declares the regions, stages and flows names are checked against, and the dev_envs this script operates
 (ADR-0030); its property_prefixes, whose environment-variable forms no env layer may set besides SPRING_*,
-LOGGING_* and MANAGEMENT_*, and its secret_properties, masked with Spring's datasource credentials (ADR-0042).
+LOGGING_* and MANAGEMENT_*, and its secret_properties, masked with Spring's datasource credentials (ADR-0042); its
+projects[0].group starts every label key, exported to the template as LABEL_PREFIX (ADR-0041).
 Pool guard (ADR-0028): on a box whose .platform-bundle lists more than one pool host (POOL_HOSTS), start and
 restart of an instance of that bundle's env and flow (never local) first ask every other box of the pool
   $POOL_SSH $POOL_SSH_OPTS <POOL_USER>@<box> -- <POOL_ROOT>/current/scripts/run-compose.sh
@@ -394,6 +397,13 @@ read_platform_list() { # <key> <variable> [empty-ok]: only dev_envs and secret_p
     fi
     printf -v "$2" '%s' "$words"
 }
+# projects[0].group, read without a YAML parser: the value of the first `group:` line, which the build checks is the
+# group, unquoted (ADR-0041).
+platform_group() {
+    awk '/^[ \t]*(-[ \t]+)?group:/ {
+        sub(/^[ \t]*(-[ \t]+)?group:/, ""); sub(/#.*$/, ""); gsub(/^[ \t]+|[ \t]+$/, ""); print; exit
+    }' "$PLATFORM_FILE"
+}
 [ -f "$PLATFORM_FILE" ] ||
     die "$EXIT_CONFIG" "platform.yml not found in $REPO_ROOT: it declares the regions, stages, flows and dev envs (ADR-0030)"
 REGIONS="" STAGES="" FLOWS="" DEV_ENVS="" PROPERTY_PREFIXES="" SECRET_PROPERTIES=""
@@ -421,6 +431,12 @@ has_forbidden_prefix() { # <variable>
     done
     return 1
 }
+
+# Every label key the template sets starts with the group: <group>.env, <group>.ci.run, ... (ADR-0041).
+LABEL_PREFIX="$(platform_group)"
+[[ $LABEL_PREFIX =~ $GROUP_PATTERN ]] ||
+    die "$EXIT_CONFIG" "$(rel "$PLATFORM_FILE"): projects[0].group '$LABEL_PREFIX' must be lower-case words of letters and digits" \
+        "joined by dots, unquoted on a line of its own: every label key starts with it (ADR-0041)"
 
 # --- validation: usage (2), safety (3) --------------------------------------------------------------------
 
@@ -679,7 +695,7 @@ if [ "$COMMAND" = record-tag ]; then
     esac
 fi
 export APP_ENV="$ENV_NAME" APP_FLOW="$FLOW" APP_NAME="$APP" APP_INSTANCE="$INSTANCE"
-export COMPOSE_ENV_FILE="$ENV_FILE" APP_APP_YML INSTANCE_APP_YML PROJECT
+export COMPOSE_ENV_FILE="$ENV_FILE" APP_APP_YML INSTANCE_APP_YML PROJECT LABEL_PREFIX
 if [ -f "$FLOW_APP_YML" ]; then export FLOW_APP_YML; else unset FLOW_APP_YML; fi
 # The instance's host directories (ADR-0018): LOGS_DIR and DATA_DIR of the env layers name the flow's directories,
 # and each instance mounts its own <dir>/<AppName>/<AppInstance>, so two instances on a box never share a file.
@@ -918,6 +934,7 @@ show_plan() {
         "env layers" "$(rel_list "${ENV_LAYERS[@]}")" "combined env" "$(rel "$ENV_FILE")" \
         "spring layers" "$(rel_list ${FLOW_APP_YML:+"$FLOW_APP_YML"} "$APP_APP_YML" "$INSTANCE_APP_YML")" "project" "$PROJECT" \
         "identity" "APP_ENV=$APP_ENV APP_FLOW=$APP_FLOW APP_NAME=$APP_NAME APP_INSTANCE=$APP_INSTANCE" \
+        "labels" "$LABEL_PREFIX.{env,flow,app,instance,ci.run,ci.attempt} (LABEL_PREFIX, projects[0].group)" \
         "image" "$IMAGE_REF" "engine" "$ENGINE (${COMPOSE[*]})" "deps network" "${DEPS_NETWORK:--}" \
         "logs, data" "${INSTANCE_LOGS_DIR:-volume logs}, ${INSTANCE_DATA_DIR:-volume data}"
     if [ -n "$BUNDLE_ROOT" ]; then
@@ -1093,14 +1110,14 @@ cmd_version() {
             "$(json_str "$(image_label "$image_id" org.opencontainers.image.revision)")" \
             "$(json_str "$(image_label "$image_id" org.opencontainers.image.source)")" \
             "$(json_str "$(image_label "$image_id" org.opencontainers.image.created)")" \
-            "$(json_str "$(image_label "$image_id" com.example.build-url)")"
+            "$(json_str "$(image_label "$image_id" "$LABEL_PREFIX.build-url")")"
     else
         printf 'image     %s\ndigest    %s\nversion   %s\nrevision  %s\nsource    %s\ncreated   %s\nbuild-url %s\n' \
             "$image" "$digest" "$(image_label "$image_id" org.opencontainers.image.version)" \
             "$(image_label "$image_id" org.opencontainers.image.revision)" \
             "$(image_label "$image_id" org.opencontainers.image.source)" \
             "$(image_label "$image_id" org.opencontainers.image.created)" \
-            "$(image_label "$image_id" com.example.build-url)"
+            "$(image_label "$image_id" "$LABEL_PREFIX.build-url")"
     fi
 }
 
@@ -1113,6 +1130,7 @@ cmd_printenv() {
         printf 'INSTANCE_LOGS_DIR=%s\nINSTANCE_DATA_DIR=%s\n' "${INSTANCE_LOGS_DIR:-}" "${INSTANCE_DATA_DIR:-}"
         printf 'APP_ENV=%s\nAPP_FLOW=%s\nAPP_NAME=%s\nAPP_INSTANCE=%s\nDEPS_NETWORK=%s\nSELINUX_LABEL_SHARED=%s\n' \
             "$APP_ENV" "$APP_FLOW" "$APP_NAME" "$APP_INSTANCE" "${DEPS_NETWORK:-}" "$SELINUX_LABEL_SHARED"
+        printf 'LABEL_PREFIX=%s\n' "$LABEL_PREFIX"
         printf '\n# ---- the combined env (%s) ----\n' "$(rel "$ENV_FILE")"
         cat "$ENV_FILE"
         printf '\n# ---- passed through from this shell ----\n'

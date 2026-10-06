@@ -27,6 +27,7 @@ helm test source-database-trades-db-to-amps -n cash --logs   # the smoke test al
 | `-f config/<env>/<flow>/<AppName>/_helm-values.app.yaml` | sizing, `env.TZ` | values layer 2 |
 | `-f config/<env>/<flow>/<AppName>/<AppInstance>/_helm-values.instance.yaml` | `image.tag`, `identity`, `env.APP_*`, `JAVA_OPTS`, `LOG_LEVEL_ROOT` | values layer 3 |
 | `--set-string image.tag=<tag>` | the deployed tag (`--tag`) | wins over layer 3 |
+| `--set-string labelDomain=<domain>` | `projects[0].group` of `platform.yml` reversed ([ADR-0041](../../../../docs/adr/0041-every-label-prefix-derives-from-the-group.md)) | the identity labels' domain |
 | `--set-file appConfig.flow=config/<env>/<flow>/application.flow.yml` | only when the file exists (the cluster layer, [ADR-0011](../../../../docs/adr/0011-configuration-tree-and-spring-layers.md)) | `/config/flow/application.yml` |
 | `--set-file appConfig.common=.../<AppName>/application.app.yml` | required | `/config/common/application.yml` |
 | `--set-file appConfig.instance=.../<AppInstance>/application.instance.yml` | required | `/config/instance/application.yml` |
@@ -51,7 +52,7 @@ revision. `--help` has the details and exit codes.
 | NetworkPolicy, PodDisruptionBudget, ServiceMonitor, ExternalSecret | `<release>` | off by default (`enabled` flags); the PDB also needs `replicaCount > 1` |
 
 Every object carries `app.kubernetes.io/name`, `app.kubernetes.io/instance` (the release),
-`app.kubernetes.io/managed-by: Helm` and `platform.example.com/{env,flow,app,instance}` from `identity`.
+`app.kubernetes.io/managed-by: Helm` and `<labelDomain>/{env,flow,app,instance}` from `identity`.
 The pods of the connector add `app.kubernetes.io/component: connector` (the selector); the test Job has
 `smoke-test`, so it never joins the Service.
 
@@ -67,6 +68,7 @@ The pods of the connector add `app.kubernetes.io/component: connector` (the sele
 | `imagePullSecrets` | `[]` | `[{ name: … }]` for a private registry |
 | `serviceAccount.create`, `.name`, `.annotations`, `.automountToken` | `true`, `""`, `{}`, `false` | |
 | `identity.env`, `.flow`, `.app`, `.instance` | `""` | required, from the instance values; labels and the helm test; must equal `env.APP_*`, `app` the chart name |
+| `labelDomain` | `""` | required (schema): the domain of the identity labels, `--set-string labelDomain=<domain>` from the deployer ([ADR-0041](../../../../docs/adr/0041-every-label-prefix-derives-from-the-group.md)) |
 | `env` | `{}` | container environment as a map (rendered sorted); `SPRING_*`, `CONNECTOR_*_PASSWORD` and other secret-bearing names are rejected |
 | `appConfig.<layer>` | `{}` | `flow`, `common` (required), `instance` (required): `application.yml` contents |
 | `appFiles.<layer>.<file>` | `{}` | other layer files (`logback.xml`, `*.properties`) |

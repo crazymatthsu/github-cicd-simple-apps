@@ -44,7 +44,11 @@ data class PlatformManifest(
         private val REGION = Regex("^[a-z]{2}$")
         /** One word: an env is `<region>-<stage>`, and the charts' schemas check that shape. */
         private val STAGE = Regex("^[a-z0-9]+$")
-        private val GROUP = Regex("^[A-Za-z_][A-Za-z0-9_]*(\\.[A-Za-z_][A-Za-z0-9_]*)*$")
+        /**
+         * A Java package name of lower-case words: the group also prefixes every label (ADR-0041), as
+         * `<group>.<name>` on an image or a compose resource and, reversed, as the domain of a Kubernetes label key.
+         */
+        private val GROUP = Regex("^[a-z][a-z0-9]{0,62}(\\.[a-z][a-z0-9]{0,62})*$")
         private val REGISTRY = Regex("^[a-z0-9.-]+(:[0-9]+)?(/[a-z0-9._-]+)*$")
         private val DIRECTORY = Regex("^[a-z0-9][a-z0-9._-]*$")
         /**
@@ -100,7 +104,11 @@ data class PlatformManifest(
                 emptyMap<String, Any>()
             }
             val name = string(project, "name", "projects[0].", TOKEN)
-            val group = string(project, "group", "projects[0].", GROUP)
+            val group = string(project, "group", "projects[0].")
+            if (group.isNotEmpty() && (!GROUP.matches(group) || group.length > 253)) {
+                problems += "projects[0].group '$group' is not valid: lower-case words of letters and digits, each starting " +
+                    "with a letter, joined by dots (e.g. com.acme.payments); every label prefix derives from it (ADR-0041)"
+            }
             val appsDir = string(project, "apps_dir", "projects[0].", DIRECTORY)
             val kinds = list(project, "kinds", "projects[0].", TOKEN)
             (kinds - KINDS).forEach { problems += "projects[0].kinds: '$it' is not a runtime (${KINDS.sorted().joinToString()})" }
@@ -132,6 +140,13 @@ data class PlatformManifest(
             if (text.lineSequence().none { Regex("^registry:[ \\t]+[a-z0-9.:/_-]+[ \\t]*(#.*)?$").matches(it) }) {
                 problems += "registry must be an unquoted value on one top-level line, e.g. `registry: ghcr.io/acme` " +
                     "(read without a YAML parser)"
+            }
+            // The scripts read the group without a YAML parser too (ADR-0041): the first `group:` line, unquoted.
+            val groupKey = Regex("^[ \\t]*(-[ \\t]+)?group:")
+            val groupLine = text.lineSequence().firstOrNull { groupKey.containsMatchIn(it) }
+            if (group.isNotEmpty() && groupLine?.replace(groupKey, "")?.substringBefore('#')?.trim() != group) {
+                problems += "projects[0].group must be an unquoted value on a line of its own, the first `group:` line, " +
+                    "e.g. `    group: com.acme.payments` (read without a YAML parser)"
             }
             if (problems.isNotEmpty()) {
                 throw IllegalArgumentException("$FILE is not valid (ADR-0030):\n" + problems.joinToString("\n") { "  - $it" })

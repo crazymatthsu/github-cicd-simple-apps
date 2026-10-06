@@ -141,9 +141,9 @@ object ConfigRules {
     /** A property root as Spring's relaxed binding reads it from the environment: `.` to `_`, no `-`, upper case. */
     fun envPrefix(property: String): String = property.replace("-", "").replace('.', '_').uppercase() + "_"
 
-    /** Variables `run-compose.sh` sets itself; no env layer may define them (ADR-0012). */
+    /** Variables `run-compose.sh` sets itself; no env layer may define them (ADR-0012, ADR-0041). */
     val SCRIPT_VARIABLES = setOf("COMPOSE_ENV_FILE", "FLOW_APP_YML", "APP_APP_YML", "INSTANCE_APP_YML", "PROJECT",
-        "INSTANCE_LOGS_DIR", "INSTANCE_DATA_DIR")
+        "INSTANCE_LOGS_DIR", "INSTANCE_DATA_DIR", "LABEL_PREFIX")
     /**
      * The env-layer variables that name the flow's host directories (ADR-0018); each instance mounts
      * `<dir>/<AppName>/<AppInstance>`, which `run-compose.sh` passes to the template as `INSTANCE_<name>`.
@@ -266,6 +266,11 @@ class ConfigLinter(
     private val validator: ManifestValidator? = null,
     /** Where check 12 keeps `<env>/<flow>/<AppName>/<AppInstance>.yaml`; null: temporary files. */
     private val renderDir: File? = null,
+    /**
+     * `LABEL_PREFIX` for check 6, as `run-compose.sh` derives it: `projects[0].group` of platform.yml (ADR-0041). Null:
+     * the template's required variable gets the placeholder, like any other.
+     */
+    private val labelPrefix: String? = null,
 ) {
     private val findings = mutableListOf<Finding>()
     private val yaml = Yaml(SafeConstructor(LoaderOptions()))
@@ -781,6 +786,7 @@ class ConfigLinter(
             "INSTANCE_APP_YML" to File(dir, ConfigRules.application(ConfigRules.Layer.INSTANCE)).absolutePath,
             "PROJECT" to "$env-$flow-$app-$instance",
         )
+        labelPrefix?.let { environment["LABEL_PREFIX"] = it }
         File(flowDir, ConfigRules.application(ConfigRules.Layer.FLOW)).takeIf { it.isFile }
             ?.let { environment["FLOW_APP_YML"] = it.absolutePath }
         // The instance's host directories, as run-compose.sh derives them (ADR-0018).

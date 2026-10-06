@@ -6,8 +6,8 @@
 # With environment configuration the image uses no default server.properties, so every required
 # property is set here (docker/examples/README.md in apache/kafka).
 x-ci-labels: &ci-labels
-  com.example.ci.run: "${CI_RUN_ID:-local}"
-  com.example.ci.attempt: "${CI_RUN_ATTEMPT:-0}"
+  - "${LABEL_PREFIX:?run through test-infra/compose/stack.sh}.ci.run=${CI_RUN_ID:-local}"
+  - "${LABEL_PREFIX}.ci.attempt=${CI_RUN_ATTEMPT:-0}"
 
 services:
   kafka:

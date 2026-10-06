@@ -19,6 +19,7 @@
 // (-strict, Kubernetes 1.37.0) validates them when it is on the PATH.
 import buildlogic.ConfigLintTask
 import buildlogic.platformList
+import buildlogic.platformValue
 
 // Evaluated lazily, once every subproject is configured: whether a subproject applies the plugin is known only then.
 val deployableApps: Provider<List<Project>> = provider {
@@ -48,6 +49,8 @@ tasks.register<ConfigLintTask>("configLint") {
     // The apps' own property roots and the project's secret properties (ADR-0042): checks 4, 5 and 9.
     propertyPrefixes = platformList("propertyPrefixes")
     secretProperties = platformList("secretProperties")
+    // Check 6 renders the template's labels with the prefix run-compose.sh derives from the group (ADR-0041).
+    labelPrefix = platformValue("group")
     template = layout.projectDirectory.file("docker/docker-compose.yml")
     appOverrides = overrideFiles.map { files -> files.mapValues { it.value.absolutePath } }
     appOverrideFiles.from(overrideFiles.map { it.values })

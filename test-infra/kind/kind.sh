@@ -15,9 +15,11 @@ Usage: test-infra/kind/kind.sh <command> [--name <cluster>] [options]
 Commands
   up
       Create the cluster from test-infra/kind/cluster.yaml (kind create cluster --wait 120s) with its
-      kubeconfig in test-infra/kind/.state/<cluster>.kubeconfig, label every node com.example.ci.run=<run>
-      and com.example.ci.attempt=<attempt>, and wait for cluster DNS. In CI it appends KIND_CLUSTER_NAME and
-      KUBECONFIG to $GITHUB_ENV first, so later steps find the cluster even when up fails half-way.
+      kubeconfig in test-infra/kind/.state/<cluster>.kubeconfig, label every node <domain>/ci.run=<run> and
+      <domain>/ci.attempt=<attempt>, the domain being projects[0].group of platform.yml reversed
+      (com.acme.payments -> payments.acme.com, ADR-0041), and wait for cluster DNS. In CI it appends
+      KIND_CLUSTER_NAME and KUBECONFIG to $GITHUB_ENV first, so later steps find the cluster even when up fails
+      half-way.
       An existing cluster of the same name is reused.
   load [--tag <tag>] <image-ref>...
       Put images on the cluster's nodes: kind load docker-image (Podman: save + kind load image-archive).
@@ -53,6 +55,7 @@ Environment
 
 Exit codes
   0 success   1 kind, kubectl or engine failure, or a leak found   2 usage
+  4 platform.yml missing, or without a valid projects[0].group (up, ADR-0041)
   5 no container engine, kind or kubectl, or the engine is not reachable
 EOF
 }
@@ -63,8 +66,10 @@ STATE_DIR=${KIND_STATE_DIR:-$KIND_DIR/.state}
 CLUSTER_CONFIG=$KIND_DIR/cluster.yaml
 VERSIONS_ENV=$KIND_DIR/versions.env
 LABEL_CLUSTER=io.x-k8s.kind.cluster # set by kind on every node container (verified in kind v0.33.0)
-LABEL_RUN=com.example.ci.run
-LABEL_ATTEMPT=com.example.ci.attempt
+PLATFORM_FILE=$REPO_ROOT/platform.yml
+# projects[0].group of platform.yml: lower-case words joined by dots, the start of every label key (ADR-0041).
+GROUP_PATTERN='^[a-z][a-z0-9]{0,62}(\.[a-z][a-z0-9]{0,62})*$'
+LABEL_DOMAIN= # the nodes' label domain, from the group (resolve_label_domain)
 NAME_MAX=50 # kind: the node hostname <cluster>-control-plane must stay within 64 characters
 WAIT=${KIND_WAIT:-120s}
 
@@ -133,6 +138,20 @@ resolve_cluster() {
     || usage_error "'$CLUSTER' is not a valid kind cluster name (lower-case letters, digits, '.' and '-', starting with a letter or digit)"
   [[ ${#CLUSTER} -le $NAME_MAX ]] || usage_error "cluster name '$CLUSTER' is longer than $NAME_MAX characters (kind's limit)"
   KUBECONFIG_FILE=$STATE_DIR/$CLUSTER.kubeconfig
+}
+
+# The Kubernetes label domain (ADR-0041): projects[0].group of platform.yml reversed as a DNS name, so the nodes carry
+# <domain>/ci.run and <domain>/ci.attempt. The group is read without a YAML parser: the value of the first `group:`
+# line, which the build checks is projects[0].group, unquoted.
+resolve_label_domain() {
+  local group
+  [[ -f $PLATFORM_FILE ]] || die 4 "platform.yml not found in $REPO_ROOT: its projects[0].group starts every label key (ADR-0041)"
+  group=$(awk '/^[ \t]*(-[ \t]+)?group:/ {
+    sub(/^[ \t]*(-[ \t]+)?group:/, ""); sub(/#.*$/, ""); gsub(/^[ \t]+|[ \t]+$/, ""); print; exit
+  }' "$PLATFORM_FILE")
+  [[ $group =~ $GROUP_PATTERN ]] \
+    || die 4 "platform.yml: projects[0].group '$group' must be lower-case words of letters and digits joined by dots, unquoted on a line of its own: every label key starts with it (ADR-0041)"
+  LABEL_DOMAIN=$(printf '%s' "$group" | awk -F. '{ for (i = NF; i > 1; i--) printf "%s.", $i; print $1 }')
 }
 
 validate_wait() {
@@ -305,6 +324,7 @@ cmd_up() {
   init_run_identity
   resolve_cluster
   validate_wait
+  resolve_label_domain
   [[ -f $CLUSTER_CONFIG ]] || die 1 "up: $(rel "$CLUSTER_CONFIG") is missing"
   detect_engine
   require_tool kind
@@ -331,7 +351,7 @@ cmd_up() {
   fi
   chmod 600 "$KUBECONFIG_FILE" 2>/dev/null || true
 
-  kctl label nodes --all --overwrite "$LABEL_RUN=$CI_RUN_ID" "$LABEL_ATTEMPT=$CI_RUN_ATTEMPT" >/dev/null \
+  kctl label nodes --all --overwrite "$LABEL_DOMAIN/ci.run=$CI_RUN_ID" "$LABEL_DOMAIN/ci.attempt=$CI_RUN_ATTEMPT" >/dev/null \
     || die 1 "up: labelling the nodes of $CLUSTER failed"
   # --wait covers the control plane; the smoke test also needs service DNS.
   kctl -n kube-system rollout status deployment/coredns --timeout="$WAIT" >/dev/null \

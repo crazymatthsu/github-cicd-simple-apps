@@ -2,7 +2,7 @@
 
 | | |
 |---|---|
-| Status | Accepted. Rule 5 superseded in part by [ADR-0030](0030-platform-yml-declares-every-project-value.md), rule 1 in part by [ADR-0037](0037-runtime-scripts-read-generic-actuator-names.md) |
+| Status | Accepted. Rule 5 superseded in part by [ADR-0030](0030-platform-yml-declares-every-project-value.md), rule 1 in part by [ADR-0037](0037-runtime-scripts-read-generic-actuator-names.md), rule 7 in part by [ADR-0041](0041-every-label-prefix-derives-from-the-group.md) |
 | Date | 2026-10-04 |
 | Applies to | every compose-run instance of this repository: laptops, CI test stacks and the dev hosts |
 | Enforced by | its own argument, safety and configuration checks (exit codes 2, 3, 4); ShellCheck and `scripts/test/pool-deploy-test.sh` in the `lint` job; the template's settings ([ADR-0012](0012-compose-template-and-generated-env.md)) |
@@ -98,6 +98,10 @@ scripts.
    ```
 
 7. **The hardened runtime of every instance** comes from the template, not from the apps:
+
+   > **Superseded in part by [ADR-0041](0041-every-label-prefix-derives-from-the-group.md) rule 6.** The labels are
+   > `<group>.env`, `.flow`, `.app` and `.instance`, plus the run labels, the group being `projects[0].group` of
+   > `platform.yml`, which `run-compose.sh` exports as `LABEL_PREFIX`.
 
    | Setting | Value |
    |---|---|

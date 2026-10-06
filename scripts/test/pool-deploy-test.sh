@@ -6,9 +6,10 @@
 # host, a registry or an engine.
 # The cases run against a fixture repository the test builds itself (ADR-0005: the shared tooling is tested with its
 # own fixture, as affected-test.sh does): this repository's scripts/ and docker/, a platform.yml of its own (project
-# pool-test-apps, regions eu / ap, flows alpha / beta, dev env eu-dev) and a config tree of one flow with one app and
-# two instances. Nothing here depends on this repository's apps, flows or vocabulary, so the test passes unchanged in
-# every repository built from this one.
+# pool-test-apps, group test.example.pooltest, regions eu / ap, flows alpha / beta, dev env eu-dev) and a config tree of
+# one flow with one app and two instances. Nothing here depends on this repository's apps, flows, vocabulary or group,
+# so the test passes unchanged in every repository built from this one. The `labels` case proves that every label key
+# derives from the fixture's group (ADR-0041).
 #
 # Usage: scripts/test/pool-deploy-test.sh [<case>...]     every case by default; the pr.yml lint job runs it.
 # Needs bash 4+, mikefarah yq v4, jq, rsync and git; a docker compose CLI is optional (validate skips its lint).
@@ -21,7 +22,7 @@ readonly H1=box-01.eu-dev.example.test H2=box-02.eu-dev.example.test
 readonly TRADES=alpha/demo-app/inst-one POSITIONS=alpha/demo-app/inst-two
 readonly V0=20261004-110000 V1=20261004-120000 V2=20261004-130000 V3=20261004-140000 V4=20261004-150000
 readonly CASES="bundle activate plan_assigns plan_pinned discovered two_boxes move versions_local dry_run health_fails
-    record_tag record_first known_hosts refusals guard ssh_deploy rollback_ssh local_execute"
+    record_tag record_first known_hosts refusals guard ssh_deploy rollback_ssh local_execute labels"
 
 for tool in yq jq rsync git; do
     command -v "$tool" >/dev/null 2>&1 || { echo "pool-deploy-test: $tool is needed" >&2; exit 2; }
@@ -56,7 +57,7 @@ kind: app
 registry: ghcr.io/example
 projects:
   - name: pool-test-apps
-    group: com.example.pooltest
+    group: test.example.pooltest
     apps_dir: apps
     kinds: [compose, helm]
     reference_app: demo-app
@@ -200,8 +201,13 @@ cat >"$DOCKER_BIN/docker" <<'EOF'
 #!/usr/bin/env bash
 # Stub docker for run-compose.sh: a compose CLI and a daemon that accept everything. With STUB_HEALTHY set,
 # `ps -q --filter label=...` (run-compose.sh finds the app's container by its compose labels) names a container, so
-# health goes on to ask the actuator (the stub curl).
-printf 'docker %s\n' "$*" >>"$STUB_LOG"
+# health goes on to ask the actuator (the stub curl). A compose command is logged with the LABEL_PREFIX that compose
+# would interpolate the template's labels with (ADR-0041).
+if [ "${1:-}" = compose ] && [ "${2:-}" != version ]; then
+    printf 'docker %s [LABEL_PREFIX=%s]\n' "$*" "${LABEL_PREFIX:-}" >>"$STUB_LOG"
+else
+    printf 'docker %s\n' "$*" >>"$STUB_LOG"
+fi
 if [ "${1:-}" = compose ] && [ "${2:-}" = version ]; then echo "Docker Compose version v2.99.0-stub"; fi
 if [ -n "${STUB_HEALTHY:-}" ] && [ "${1:-}" = ps ] && [[ " $* " == *" -q "* ]]; then echo 0123456789ab; fi
 exit 0
@@ -1021,6 +1027,44 @@ case_local_execute() { # POOL_LOCAL_EXECUTE=true: the real run-compose.sh comman
     [ ! -d "$boxes/$H1$ROOT/$V1" ] && [ ! -d "$boxes/$H1$ROOT/$V2" ] && [ -d "$boxes/$H1$ROOT/$V3" ] && [ -d "$boxes/$H1$ROOT/$V4" ] ||
         fail "after $V4 with keep 2 expected only $V3 and $V4: $(find "$boxes/$H1$ROOT" -mindepth 1 -maxdepth 1 -printf '%f ')"
     [ "$(readlink "$boxes/$H2$ROOT/current")" = "$V4" ] || fail "current did not end at $V4"
+}
+
+case_labels() { # every label key derives from the fixture's group (ADR-0041): compose, the image label, Kubernetes, a box
+    local log="$WORK/labels.log" chart="$WORK/labels/chart" b="$WORK/labels/bundle" prefix domain
+    # The engine prefix is the group itself; the Kubernetes domain is the group reversed as a DNS name.
+    prefix="$(yq '.projects[0].group' "$FIX/platform.yml")" domain=pooltest.example.test
+    [ "$prefix" = test.example.pooltest ] || fail "the fixture's group is '$prefix', expected test.example.pooltest"
+    # run-compose.sh: every compose command interpolates the template's labels with LABEL_PREFIX = the group.
+    : >"$log"
+    run env PATH="$DOCKER_BIN:$PATH" STUB_LOG="$log" SPRING_DATASOURCE_USERNAME=u SPRING_DATASOURCE_PASSWORD=p \
+        "$FIX/scripts/run-compose.sh" eu-dev alpha demo-app inst-one start --no-wait
+    expect_rc 0
+    expect_in " up -d" "$(cat "$log")"
+    [ "$(grep -v '^docker compose version' "$log" | grep -c '^docker compose ')" -eq \
+        "$(grep -c "^docker compose .* \[LABEL_PREFIX=$prefix\]$" "$log")" ] ||
+        fail "a compose command ran without LABEL_PREFIX=$prefix: $(grep '^docker compose ' "$log" | grep -v "LABEL_PREFIX=$prefix" | head -n 2)"
+    run "$FIX/scripts/run-compose.sh" eu-dev alpha demo-app inst-one start --dry-run
+    expect_in "labels        $prefix.{env,flow,app,instance,ci.run,ci.attempt}" "$OUT"
+    # version reads the build URL from the image label <group>.build-url.
+    : >"$log"
+    run env PATH="$DOCKER_BIN:$PATH" STUB_LOG="$log" STUB_HEALTHY=1 "$FIX/scripts/run-compose.sh" eu-dev alpha demo-app inst-one version
+    expect_in "{{index .Config.Labels \"$prefix.build-url\"}}" "$(cat "$log")"
+    # On a box: the bundle's run-compose.sh reads the group from the bundle's own platform.yml.
+    bundle "$FIX/config" "$b" || return 0
+    run "$b/scripts/run-compose.sh" eu-dev alpha demo-app inst-one printenv
+    expect_rc 0
+    expect_in "LABEL_PREFIX=$prefix" "$OUT"
+    # helm-deploy-instance.sh: the chart gets the domain, and the Secret carries <domain>/env ... (a stub chart: --dry-run
+    # renders nothing).
+    mkdir -p "$chart"
+    printf 'apiVersion: v2\nname: demo-app\nversion: 0.1.0\n' >"$chart/Chart.yaml"
+    run "$FIX/scripts/helm-deploy-instance.sh" eu-dev alpha demo-app inst-one --tag t1 --chart "$chart" --mode deploy --dry-run \
+        --secret-user u --secret-password p
+    expect_rc 0
+    expect_in "--set-string labelDomain=$domain " "$OUT"
+    expect_in "$domain/env=eu-dev $domain/flow=alpha $domain/app=demo-app $domain/instance=inst-one" "$OUT"
+    # No reader falls back to a prefix of its own.
+    expect_not_in "com.example" "$(cat "$log")$OUT"
 }
 
 # --- runner -----------------------------------------------------------------------------------------------

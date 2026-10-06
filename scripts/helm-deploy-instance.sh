@@ -32,6 +32,8 @@ chart apps/<AppName>/helm/<AppName>/ in the namespace <flow> (ADR-0003). The lay
 
 Flag list (identical in every mode):
   -f <app>/_helm-values.app.yaml -f <inst>/_helm-values.instance.yaml --set-string image.tag=<tag>
+  --set-string labelDomain=<domain>   the Kubernetes label domain: projects[0].group of platform.yml reversed
+                                      (com.acme.payments -> payments.acme.com, ADR-0041)
   --set-file appConfig.common=<app>/application.app.yml --set-file appConfig.instance=<inst>/application.instance.yml
   --set-file appConfig.flow=<c>/application.flow.yml      (when the file exists; the cluster layer, ADR-0011)
   --set-file appFiles.<layer>.<file>=<path>   for any other file of those three directories but the deploy-tool
@@ -163,6 +165,13 @@ read_platform_list() { # <key> <variable> [empty-ok]: only dev_envs may be [] (A
     fi
     printf -v "$2" '%s' "$words"
 }
+# projects[0].group, read without a YAML parser: the value of the first `group:` line, which the build checks is the
+# group, unquoted (ADR-0041).
+platform_group() {
+    awk '/^[ \t]*(-[ \t]+)?group:/ {
+        sub(/^[ \t]*(-[ \t]+)?group:/, ""); sub(/#.*$/, ""); gsub(/^[ \t]+|[ \t]+$/, ""); print; exit
+    }' "$PLATFORM_FILE"
+}
 [ -f "$PLATFORM_FILE" ] ||
     die "$EXIT_CONFIG" "platform.yml not found in $REPO_ROOT: it declares the regions, stages, flows and dev envs (ADR-0030)"
 REGIONS="" STAGES="" FLOWS="" DEV_ENVS=""
@@ -170,6 +179,14 @@ read_platform_list regions REGIONS
 read_platform_list stages STAGES
 read_platform_list flows FLOWS
 read_platform_list dev_envs DEV_ENVS empty-ok # [] (ADR-0035): local only
+# The Kubernetes label domain (ADR-0041): the group reversed as a DNS name, com.acme.payments -> payments.acme.com, so
+# every label key the chart and this script set is <domain>/env, <domain>/flow, ...
+GROUP="$(platform_group)" GROUP_PATTERN='^[a-z][a-z0-9]{0,62}(\.[a-z][a-z0-9]{0,62})*$'
+[[ $GROUP =~ $GROUP_PATTERN ]] ||
+    die "$EXIT_CONFIG" "platform.yml: projects[0].group '$GROUP' must be lower-case words of letters and digits joined by dots," \
+        "unquoted on a line of its own: every label key starts with it (ADR-0041)"
+LABEL_DOMAIN="$(printf '%s' "$GROUP" | awk -F. '{ for (i = NF; i > 1; i--) printf "%s.", $i; print $1 }')"
+readonly LABEL_DOMAIN
 # local, or <region>-<stage> with a region and a stage of platform.yml (ADR-0003).
 if [ "$ENV_NAME" != local ]; then
     region="${ENV_NAME%%-*}" stage="${ENV_NAME#*-}"
@@ -255,6 +272,7 @@ done
 # --- the flag list (ADR-0019) -----------------------------------------------------------------------------
 
 FLAGS=(-f "$COMMON/_helm-values.app.yaml" -f "$INST/_helm-values.instance.yaml" --set-string "image.tag=$TAG"
+    --set-string "labelDomain=$LABEL_DOMAIN"
     --set-file "appConfig.common=$COMMON/application.app.yml" --set-file "appConfig.instance=$INST/application.instance.yml")
 LAYERS_PRESENT="common instance"
 if [ -f "$FLOW_DIR/application.flow.yml" ]; then
@@ -314,7 +332,8 @@ show_plan() {
     printf 'helm-deploy-instance.sh --dry-run: %s %s %s %s --tag %s (mode %s; nothing is executed)\n' \
         "$ENV_NAME" "$FLOW" "$APP" "$INSTANCE" "$TAG" "$MODE"
     printf '  %-10s %s\n' "release" "$RELEASE" "namespace" "$NS" "chart" "$CHART" \
-        "values" "$COMMON/_helm-values.app.yaml $INST/_helm-values.instance.yaml" "layers" "$LAYERS_PRESENT"
+        "values" "$COMMON/_helm-values.app.yaml $INST/_helm-values.instance.yaml" "layers" "$LAYERS_PRESENT" \
+        "labels" "$LABEL_DOMAIN/{env,flow,app,instance} (projects[0].group reversed)"
 }
 # Runs (or, with --dry-run, prints) one command; tool output goes to stderr in deploy mode.
 run() {
@@ -326,8 +345,7 @@ run() {
     if [ "$MODE" = deploy ]; then "$@" >&2; else "$@"; fi
 }
 LABELS=("app.kubernetes.io/name=$APP" "app.kubernetes.io/instance=$RELEASE" "app.kubernetes.io/managed-by=$FIELD_MANAGER"
-    "platform.example.com/env=$ENV_NAME" "platform.example.com/flow=$FLOW" "platform.example.com/app=$APP"
-    "platform.example.com/instance=$INSTANCE")
+    "$LABEL_DOMAIN/env=$ENV_NAME" "$LABEL_DOMAIN/flow=$FLOW" "$LABEL_DOMAIN/app=$APP" "$LABEL_DOMAIN/instance=$INSTANCE")
 PSS_LABELS=(pod-security.kubernetes.io/enforce=restricted pod-security.kubernetes.io/enforce-version=latest
     pod-security.kubernetes.io/warn=restricted pod-security.kubernetes.io/audit=restricted)
 

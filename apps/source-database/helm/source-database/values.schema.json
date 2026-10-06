@@ -4,7 +4,7 @@
   "description": "Validated by helm lint / template / upgrade for every instance (config-lint check 12). Unknown top-level keys and secret-bearing env names are rejected: secrets arrive through the Secret mounted at /secrets/, never through values (ADR-0013).",
   "type": "object",
   "additionalProperties": false,
-  "required": ["image", "identity", "env", "appConfig", "secrets", "service", "probes", "resources"],
+  "required": ["image", "identity", "labelDomain", "env", "appConfig", "secrets", "service", "probes", "resources"],
   "properties": {
     "replicaCount": { "type": "integer", "minimum": 0 },
     "image": {
@@ -56,6 +56,13 @@
         "app": { "$ref": "#/$defs/token", "maxLength": 20 },
         "instance": { "$ref": "#/$defs/token", "maxLength": 32 }
       }
+    },
+    "labelDomain": {
+      "description": "The domain of the identity labels <labelDomain>/{env,flow,app,instance}: projects[0].group of platform.yml reversed, set by the deployer (--set-string labelDomain=<domain>, ADR-0041).",
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 253,
+      "pattern": "^[a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?(\\.[a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?)*$"
     },
     "env": {
       "description": "Container environment (map, sorted by name when rendered). Secret-bearing names are rejected (ADR-0013).",

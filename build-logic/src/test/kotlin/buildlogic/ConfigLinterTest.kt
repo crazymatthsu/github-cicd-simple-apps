@@ -73,7 +73,7 @@ class ConfigLinterTest {
         charts: Map<String, File> = mapOf("source-database" to chart),
         scope: LintScope = everyEnv,
     ) = ConfigLinter(config, setOf("source-database"), scope, template, mapOf("source-database" to appOverride), completeEnvs,
-        renderer, requireRender, charts, helm, validator, rendered)
+        renderer, requireRender, charts, helm, validator, rendered, labelPrefix = "test.example.lint")
 
     private fun lint(scope: LintScope = everyEnv, renderer: ComposeRenderer? = null): List<Finding> =
         linter(renderer, scope = scope).lint().filter { it.severity != Severity.TODO }
@@ -353,19 +353,22 @@ class ConfigLinterTest {
         assertEquals(listOf(template, appOverride, File(config, "local/cash/_docker-compose.flow.yml"),
             File(config, "local/cash/source-database/trades-db-to-amps/_docker-compose.instance.yml")), requests.single().composeFiles)
         assertEquals(File(config, "local/cash/application.flow.yml").absolutePath, requests.single().environment["FLOW_APP_YML"])
+        // The label prefix run-compose.sh exports: the group of platform.yml (ADR-0041).
+        assertEquals("test.example.lint", requests.single().environment["LABEL_PREFIX"])
     }
 
     @Test
     fun `check 5 keeps the image tag, the identity and the ports in the instance layer`() {
         validInstance("local", "trades-db-to-amps")
         write("local/cash/_docker-compose.flow.env", "IMAGE_TAG=main\nACTUATOR_HOST_PORT=18080\nTZ=UTC\n")
-        write("local/cash/source-database/_docker-compose.app.env", "APP_INSTANCE=shared\nPROJECT=x\nJAVA_OPTS=-Xapp\n")
+        write("local/cash/source-database/_docker-compose.app.env", "APP_INSTANCE=shared\nPROJECT=x\nLABEL_PREFIX=y\nJAVA_OPTS=-Xapp\n")
         val messages = lint().filter { it.check == 5 }.text()
         for (expected in listOf(
             "local/cash/_docker-compose.flow.env: IMAGE_TAG belongs in the instance layer only",
             "local/cash/_docker-compose.flow.env: ACTUATOR_HOST_PORT belongs in the instance layer only",
             "local/cash/source-database/_docker-compose.app.env: APP_INSTANCE belongs in the instance layer only",
             "local/cash/source-database/_docker-compose.app.env: PROJECT is set by run-compose.sh",
+            "local/cash/source-database/_docker-compose.app.env: LABEL_PREFIX is set by run-compose.sh",
         )) {
             assertTrue(messages.contains(expected), "missing '$expected' in:\n$messages")
         }

@@ -10,6 +10,8 @@
 #    joins that network (below).
 #  - test-infra/compose/stack.sh up (APP_IMAGE set): merges this file into the dependency stack, on the stack's
 #    default network, with the same variables (ADR-0025).
+# Both also export LABEL_PREFIX, projects[0].group of platform.yml, which starts every label key below (ADR-0041). The
+# labels are lists of "key=value": compose interpolates values, never mapping keys.
 # Relative paths in any -f file resolve against this file's directory (docker/): overrides use variable-based paths only.
 services:
   app:
@@ -63,12 +65,12 @@ services:
         aliases:
           - ${APP_NAME}
     labels:
-      com.example.env: ${APP_ENV}
-      com.example.flow: ${APP_FLOW}
-      com.example.app: ${APP_NAME}
-      com.example.instance: ${APP_INSTANCE}
-      com.example.ci.run: "${CI_RUN_ID:-local}"
-      com.example.ci.attempt: "${CI_RUN_ATTEMPT:-0}"
+      - "${LABEL_PREFIX:?run through run-compose.sh}.env=${APP_ENV}"
+      - "${LABEL_PREFIX}.flow=${APP_FLOW}"
+      - "${LABEL_PREFIX}.app=${APP_NAME}"
+      - "${LABEL_PREFIX}.instance=${APP_INSTANCE}"
+      - "${LABEL_PREFIX}.ci.run=${CI_RUN_ID:-local}"
+      - "${LABEL_PREFIX}.ci.attempt=${CI_RUN_ATTEMPT:-0}"
     logging:
       driver: json-file
       options:
@@ -78,12 +80,12 @@ services:
 volumes:
   logs:
     labels:
-      com.example.ci.run: "${CI_RUN_ID:-local}"
-      com.example.ci.attempt: "${CI_RUN_ATTEMPT:-0}"
+      - "${LABEL_PREFIX}.ci.run=${CI_RUN_ID:-local}"
+      - "${LABEL_PREFIX}.ci.attempt=${CI_RUN_ATTEMPT:-0}"
   data:
     labels:
-      com.example.ci.run: "${CI_RUN_ID:-local}"
-      com.example.ci.attempt: "${CI_RUN_ATTEMPT:-0}"
+      - "${LABEL_PREFIX}.ci.run=${CI_RUN_ID:-local}"
+      - "${LABEL_PREFIX}.ci.attempt=${CI_RUN_ATTEMPT:-0}"
 
 networks:
   # The project network (also the test stack's default network, which base.yml labels the same way). With
@@ -93,5 +95,5 @@ networks:
   default:
     name: ${PROJECT:?run through run-compose.sh}_default
     labels:
-      com.example.ci.run: "${CI_RUN_ID:-local}"
-      com.example.ci.attempt: "${CI_RUN_ATTEMPT:-0}"
+      - "${LABEL_PREFIX}.ci.run=${CI_RUN_ID:-local}"
+      - "${LABEL_PREFIX}.ci.attempt=${CI_RUN_ATTEMPT:-0}"
