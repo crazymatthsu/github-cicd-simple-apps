@@ -2,7 +2,7 @@
 
 | | |
 |---|---|
-| Status | Accepted. Rules 3 and 6 superseded in part by [ADR-0037](0037-runtime-scripts-read-generic-actuator-names.md) |
+| Status | Accepted. Rules 3 and 6 superseded in part by [ADR-0037](0037-runtime-scripts-read-generic-actuator-names.md). Rules 1, 3, 4, 6 and 9 superseded in part by [ADR-0040](0040-actuator-contract-and-runtime-module-carry-generic-names.md) |
 | Date | 2026-10-04 |
 | Applies to | every app |
 | Enforced by | `AbstractConnectorApplicationTest` (each app's unit tests); `scripts/smoke.sh` after every start; the readiness health check of the compose template; `ConnectorIdentity` (the app refuses to start) |
@@ -30,6 +30,10 @@ That works only if every app answers the same endpoints, with the same meaning a
 
 1. **The framework provides the contract.** Every app depends on the framework module
    ([ADR-0006](0006-apps-and-framework-modules.md)). Its auto-configuration registers:
+
+   > **Superseded in part by [ADR-0040](0040-actuator-contract-and-runtime-module-carry-generic-names.md) rule 1.**
+   > The health indicator is `app` (`AppHealthIndicator`), and the endpoint is `appconfig` (`AppConfigEndpoint`).
+
    - the identity (`ConnectorIdentity`, validated at start-up,
      [ADR-0003](0003-identity-tuple-names-every-instance.md));
    - the common metric tags;
@@ -44,8 +48,13 @@ That works only if every app answers the same endpoints, with the same meaning a
    > **Superseded in part by [ADR-0037](0037-runtime-scripts-read-generic-actuator-names.md) rule 7.**
    > `connectorconfig` is the summary endpoint of an app on the framework; another app exposes `appconfig` when it has
    > a summary, or no summary endpoint.
+   > **Superseded in part by [ADR-0040](0040-actuator-contract-and-runtime-module-carry-generic-names.md) rule 2.** An
+   > app on the framework exposes `appconfig` instead of `connectorconfig`.
 
 4. **Health groups:**
+
+   > **Superseded in part by [ADR-0040](0040-actuator-contract-and-runtime-module-carry-generic-names.md) rule 3.**
+   > Readiness is `readinessState` plus the `app` indicator, which takes the place of `connector`.
 
    | Endpoint | Contains | Meaning |
    |---|---|---|
@@ -87,6 +96,8 @@ That works only if every app answers the same endpoints, with the same meaning a
 
    > **Superseded in part by [ADR-0037](0037-runtime-scripts-read-generic-actuator-names.md) rule 2.** The identity is
    > also published under the generic `app` section, which the runtime scripts read first (rule 3 there).
+   > **Superseded in part by [ADR-0040](0040-actuator-contract-and-runtime-module-carry-generic-names.md) rule 4.**
+   > The framework publishes the identity under `app` only; the `connector` section is gone.
 
    - the build: version, git sha, branch, dirty flag and version kind, from the build info
      ([ADR-0007](0007-gradle-build-with-convention-plugins.md));
@@ -100,6 +111,11 @@ That works only if every app answers the same endpoints, with the same meaning a
    as PID 1, so the stop signal reaches it ([ADR-0009](0009-one-shared-image-definition.md)).
 9. **The contract is tested.** Each app has a unit test that extends `AbstractConnectorApplicationTest`. It starts
    the whole app on a random port and asserts:
+
+   > **Superseded in part by [ADR-0040](0040-actuator-contract-and-runtime-module-carry-generic-names.md) rule 5.**
+   > The test is `AbstractPlatformApplicationTest`: readiness holds exactly `readinessState` and `app`,
+   > `/actuator/info` has no `connector` section, and `/actuator/appconfig` masks secrets.
+
    - liveness and readiness are `UP`, and readiness includes `connector`;
    - `/actuator/info` carries the identity and the build;
    - Prometheus output carries the four tags;

@@ -2,7 +2,7 @@
 
 | | |
 |---|---|
-| Status | Accepted. Rule 6 superseded in part by [ADR-0030](0030-platform-yml-declares-every-project-value.md) |
+| Status | Accepted. Rule 6 superseded in part by [ADR-0030](0030-platform-yml-declares-every-project-value.md). Rules 1 and 4 superseded in part by [ADR-0040](0040-actuator-contract-and-runtime-module-carry-generic-names.md) |
 | Date | 2026-10-04 |
 | Applies to | every app and library module |
 | Enforced by | `settings.gradle.kts` discovery; config-lint check 2 (configured apps are deployable subprojects; every deployable app is configured in `local`); `AbstractConnectorApplicationTest` in each app |
@@ -23,6 +23,10 @@ directory should hold the app's code, and only the infrastructure that really di
 1. **An app is `apps/<AppName>/`,** a top-level Gradle project `:<AppName>`. The directory name, the Gradle project
    name, the image name, `spring.application.name` and the `AppName` of the identity tuple
    ([ADR-0003](0003-identity-tuple-names-every-instance.md)) MUST be the same string. The directory holds:
+
+   > **Superseded in part by [ADR-0040](0040-actuator-contract-and-runtime-module-carry-generic-names.md) rule 1.**
+   > The main class calls `PlatformApplication.run(<Main>.class, args)`, and the unit test extends
+   > `AbstractPlatformApplicationTest`.
 
    ```
    apps/<AppName>/
@@ -48,6 +52,10 @@ directory should hold the app's code, and only the infrastructure that really di
    tested and released with the apps, but it is never deployed and never published as an image.
 4. **The framework carries the operational contract.** Every app depends on the framework module that implements
    that contract, today `framework/connectors-framework`. The module provides:
+
+   > **Superseded in part by [ADR-0040](0040-actuator-contract-and-runtime-module-carry-generic-names.md) rule 1.**
+   > The module is `framework/app-runtime`, the Gradle project `:app-runtime`.
+
    - identity, the actuator contract, metric tags and the masked start-up summary
      ([ADR-0015](0015-actuator-health-and-metrics-contract.md),
      [ADR-0016](0016-logging-and-startup-configuration-summary.md));

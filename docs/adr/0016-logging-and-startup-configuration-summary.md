@@ -2,7 +2,7 @@
 
 | | |
 |---|---|
-| Status | Accepted. Rule 5 superseded in part by [ADR-0037](0037-runtime-scripts-read-generic-actuator-names.md) |
+| Status | Accepted. Rule 5 superseded in part by [ADR-0037](0037-runtime-scripts-read-generic-actuator-names.md) and [ADR-0040](0040-actuator-contract-and-runtime-module-carry-generic-names.md) |
 | Date | 2026-10-04 |
 | Applies to | every app; `run-compose.sh` |
 | Enforced by | `ConfigurationSummaryTest`, `SecretMaskerTest` and `ConnectorMdcTest` in the framework; the actuator contract test (`connectorconfig` masks secrets); review of each app's `application.yml` |
@@ -64,6 +64,8 @@ must not expose secrets.
 
    > **Superseded in part by [ADR-0037](0037-runtime-scripts-read-generic-actuator-names.md) rule 5.** `run-compose.sh
    > app-config` reads `/actuator/appconfig`, then `/actuator/connectorconfig`, and says which one answered.
+   > **Superseded in part by [ADR-0040](0040-actuator-contract-and-runtime-module-carry-generic-names.md) rule 1.**
+   > The running instance serves the summary at `/actuator/appconfig`.
 
    | Where | How | When |
    |---|---|---|
