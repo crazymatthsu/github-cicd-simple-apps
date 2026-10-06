@@ -5,11 +5,12 @@ description: >-
   GitHub-hosted runners carry another v4, a bare runner may have none or the Python wrapper of the same name — is
   shadowed by the release binary, checked against the SHA-256 the release publishes. The logic is
   scripts/ci/setup-yq.sh, the same on a laptop; this action only prepends the install directory to PATH for the
-  later steps. Behind the company's JFrog, the repository variable YQ_DOWNLOAD_BASE (or the base-url input) names
-  the generic remote of the GitHub releases. Linux runners, amd64 or arm64. Needs a checkout holding scripts/ci.
+  later steps. Behind the company's JFrog, the repository variable YQ_DOWNLOAD_BASE names the generic remote of the
+  GitHub releases: every workflow puts it in its env (a composite action cannot read `vars` itself), and the
+  base-url input overrides it. Linux runners, amd64 or arm64. Needs a checkout holding scripts/ci.
 inputs:
   base-url:
-    description: "Where the release assets are, <base-url>/<version>/yq_linux_<arch>. Empty: the repository variable YQ_DOWNLOAD_BASE, else github.com."
+    description: "Where the release assets are, <base-url>/<version>/yq_linux_<arch>. Empty: env YQ_DOWNLOAD_BASE (the workflows set it from the repository variable of that name), else github.com."
     required: false
     default: ''
 outputs:
@@ -22,7 +23,7 @@ runs:
     - id: setup
       shell: bash
       env:
-        BASE_URL: ${{ inputs.base-url || vars.YQ_DOWNLOAD_BASE || '' }}
+        BASE_URL: ${{ inputs.base-url }}
       run: |
         set -euo pipefail
         script="$GITHUB_WORKSPACE/scripts/ci/setup-yq.sh"

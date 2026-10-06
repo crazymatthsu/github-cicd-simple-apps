@@ -69,6 +69,12 @@ on:
 permissions:
   contents: read
 
+# Behind the company's JFrog, the repository variable YQ_DOWNLOAD_BASE names the generic remote of the GitHub releases
+# that setup-yq fetches yq from (ADR-0021); a composite action cannot read `vars`, so the workflow hands it on. Unset:
+# github.com.
+env:
+  YQ_DOWNLOAD_BASE: ${{ vars.YQ_DOWNLOAD_BASE }}
+
 jobs:
   deploy:
     name: deploy ${{ inputs.env }}
