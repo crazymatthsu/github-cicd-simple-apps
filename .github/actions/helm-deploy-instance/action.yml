@@ -86,6 +86,8 @@ outputs:
 runs:
   using: composite
   steps:
+    - uses: ./.github/actions/setup-yq
+
     - id: deploy
       shell: bash
       env:

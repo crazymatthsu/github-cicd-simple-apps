@@ -58,6 +58,8 @@ jobs:
     steps:
       - uses: actions/checkout@v7
 
+      - uses: ./.github/actions/setup-yq
+
       - name: Sweep GHCR (ADR-0010)
         env:
           # GITHUB_TOKEN deletes versions only of packages that grant this repository admin access;

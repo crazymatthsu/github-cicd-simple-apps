@@ -67,6 +67,9 @@ jobs:
     steps:
       - uses: actions/checkout@v7
 
+      # The script tests need mikefarah yq v4 (pool-deploy-test.sh); the pin of .github/versions.env.
+      - uses: ./.github/actions/setup-yq
+
       - name: Install linters (pinned)
         run: |
           set -euo pipefail

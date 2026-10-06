@@ -37,7 +37,9 @@ jobs:
     steps:
       - uses: actions/checkout@v7
         with:
-          sparse-checkout: .github
+          sparse-checkout: |
+            .github
+            scripts/ci
 
       - id: platform
         uses: ./.github/actions/platform-manifest

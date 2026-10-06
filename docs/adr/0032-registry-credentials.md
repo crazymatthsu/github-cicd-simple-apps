@@ -92,7 +92,9 @@ flowchart LR
 - This repository keeps working with no secrets set.
 - A repository built from this one for Artifactory needs: `registry` in `platform.yml`, the two secrets, the base
   images under that registry, read credentials for the registry on every box of its pools, and `IMAGE_REPO` in
-  each flow's `_docker-compose.flow.env` (known gap G24: the line restates the registry and the project).
+  each flow's `_docker-compose.flow.env` (known gap G24: the line restates the registry and the project). Behind
+  JFrog it also sets the repository variable `YQ_DOWNLOAD_BASE` to the generic remote of the GitHub releases, from
+  which the `setup-yq` action fetches yq ([ADR-0021](0021-ci-layering.md)).
 - [ADR-0020](0020-branching-protection-and-merge-rules.md) rule 8's table of repository settings gains the two
   optional secrets and the box credentials.
 - [ADR-0010](0010-image-tags-digests-promotion-retention.md) rule 7's retention sweep applies on GHCR only.

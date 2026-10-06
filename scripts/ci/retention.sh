@@ -19,7 +19,7 @@
 #   true; --delete / --dry-run win) · PR_GRACE_DAYS (7) · RC_KEEP (20) · RC_MIN_AGE_DAYS (30) · CONFIG_DIR
 #   (config) · GITHUB_REPOSITORY (owner/repo, for PR lookups).
 # Output: one line per version (package, id, tags, age, decision, reason) on stdout and, in CI, a table in
-#   $GITHUB_STEP_SUMMARY. Exit codes: 0 ok · 1 an API call failed · 2 usage.
+#   $GITHUB_STEP_SUMMARY. Exit codes: 0 ok · 1 an API call failed · 2 usage · 5 mikefarah yq v4 missing.
 set -euo pipefail
 
 usage() {
@@ -69,7 +69,11 @@ if [[ ${#packages[@]} -eq 0 ]]; then
   # the project is the release line of platform.yml (:source-database → github-cicd-simple-apps/source-database);
   # a nested app keeps its Gradle parent path (:deephaven-connectors:source-database, in a monorepo).
   project_name=""
-  if [[ -f platform.yml ]]; then project_name=$(yq '.projects[0].name // ""' platform.yml); fi
+  if [[ -f platform.yml ]]; then
+    yq --version 2>/dev/null | grep -q mikefarah ||
+      { echo "retention.sh: mikefarah yq v4 is needed to read platform.yml (scripts/ci/setup-yq.sh installs it)" >&2; exit 5; }
+    project_name=$(yq '.projects[0].name // ""' platform.yml)
+  fi
   mapfile -t packages < <(python3 scripts/ci/projects.py --images | jq -r '.[]' | sed 's/^://; s/:/\//g' |
     awk -v project="$project_name" '{ print (project != "" && index($0, "/") == 0) ? project "/" $0 : $0 }')
 fi

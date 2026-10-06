@@ -52,6 +52,13 @@
       "semanticCommitType": "ci"
     },
     {
+      "description": "yq, put on the runner by setup-yq (.github/versions.env), is a CI-only change.",
+      "matchPackageNames": [
+        "mikefarah/yq"
+      ],
+      "semanticCommitType": "ci"
+    },
+    {
       "description": "kind and kubectl track the kind release's default node image; bump them together (test-infra/kind/versions.env).",
       "matchPackageNames": [
         "kubernetes-sigs/kind",
@@ -74,10 +81,11 @@
       "datasourceTemplate": "docker"
     },
     {
-      "description": "Kubernetes tools pinned in test-infra/kind/versions.env: a `# renovate:` hint names the datasource and package of the KEY=value line below it (ADR-0021).",
+      "description": "Runner tools pinned in test-infra/kind/versions.env and .github/versions.env: a `# renovate:` hint names the datasource and package of the KEY=value line below it (ADR-0021).",
       "customType": "regex",
       "managerFilePatterns": [
-        "/(^|/)test-infra/kind/versions\\.env$/"
+        "/(^|/)test-infra/kind/versions\\.env$/",
+        "/(^|/)\\.github/versions\\.env$/"
       ],
       "matchStrings": [
         "# renovate: datasource=(?<datasource>[a-z-]+) depName=(?<depName>[^\\s]+)\\s*\\n[A-Z_]+=(?<currentValue>[^\\s]+)"

@@ -101,6 +101,8 @@ jobs:
     steps:
       - uses: actions/checkout@v7
 
+      - uses: ./.github/actions/setup-yq # platform.yml, workflows-config.yml and pool-deploy.sh
+
       - name: Guard
         run: |
           set -euo pipefail

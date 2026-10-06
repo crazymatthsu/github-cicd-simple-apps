@@ -182,7 +182,10 @@ flowchart LR
    - when the registry is not GHCR: the repository secrets `REGISTRY_USER` and `REGISTRY_TOKEN`
      ([ADR-0032](0032-registry-credentials.md)), the base images under `<registry>/base/`, and read credentials for
      the registry on every box of a pool;
-   - `IMAGE_REPO` in each `config/<env>/<flow>/_docker-compose.flow.env` (known gap G24).
+   - `IMAGE_REPO` in each `config/<env>/<flow>/_docker-compose.flow.env` (known gap G24);
+   - a self-hosted runner: Linux (amd64 or arm64) with bash 4, git, curl, docker with buildx, jq and python3 3.8+.
+     The `setup-yq` action installs yq itself, behind JFrog from the generic remote named by the repository
+     variable `YQ_DOWNLOAD_BASE` ([ADR-0021](0021-ci-layering.md)).
 3. Replace the project files with the new project's own:
    - `apps/`, the domain code under `framework/`, `config/`;
    - `test-infra/testdata/`, the dependency stacks, `versions.env`, `stacks.yml`;

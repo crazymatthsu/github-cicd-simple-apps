@@ -27,7 +27,7 @@ CI must also be reproducible locally, with the same commands.
    |---|---|---|
    | trigger workflows | `.github/workflows/pr.yml`, `main.yml`, `release.yml`, `release-please.yml`, `nightly.yml`, `config-lint.yml` | events, concurrency, permissions, the job graph, the project's parameters |
    | reusable stage workflows | `.github/workflows/_gradle-build.yml`, `_integration-test.yml`, `_docker-publish.yml`, `_kind-deploy.yml`, `_deploy-dev.yml` | one pipeline stage each, with typed inputs and outputs |
-   | composite actions | `.github/actions/{setup-build-env,registry-login,affected-matrix,compose-stack,kind-cluster,setup-kube-tools,helm-deploy-instance}` | reusable step sequences |
+   | composite actions | `.github/actions/{platform-manifest,setup-yq,setup-build-env,registry-login,affected-matrix,compose-stack,kind-cluster,setup-kube-tools,helm-deploy-instance}` | reusable step sequences |
    | scripts and Gradle tasks | `scripts/`, `scripts/ci/`, `test-infra/compose/stack.sh`, `test-infra/kind/kind.sh`, `./gradlew …` | the logic |
 
    A call usually goes down the layers in order, and a laptop runs the bottom layer directly:

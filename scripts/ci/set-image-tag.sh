@@ -4,10 +4,10 @@
 # Usage: set-image-tag.sh <tag> <file>...
 #   _docker-compose.instance.env  IMAGE_TAG=<tag>  (the line is replaced in place, or appended when missing)
 #   _helm-values.instance.yaml    .image.tag       (only when the file already has an `image` mapping — ADR-0019;
-#                                                   needs mikefarah yq v4, as on GitHub-hosted runners)
+#                                                   needs mikefarah yq v4: scripts/ci/setup-yq.sh puts it on PATH)
 #   (the instance layers of ADR-0012: the only ones that hold the tag)
 # Prints each file whose content changed. Touches nothing else in the files.
-# Exit codes: 0 ok (also when nothing changed) · 2 usage · 4 file missing or of an unsupported kind.
+# Exit codes: 0 ok (also when nothing changed) · 2 usage · 4 file missing or of an unsupported kind · 5 mikefarah yq v4 missing.
 set -euo pipefail
 
 usage() {
@@ -33,6 +33,9 @@ for file in "$@"; do
       ' "$file" > "$tmp"
       ;;
     _helm-values.instance.yaml)
+      # The Python wrapper of the same name answers nothing useful here and would leave the file unchanged.
+      yq --version 2>/dev/null | grep -q mikefarah ||
+        { rm -f "$tmp"; echo "set-image-tag.sh: mikefarah yq v4 is needed for $file (scripts/ci/setup-yq.sh installs it)" >&2; exit 5; }
       cp "$file" "$tmp"
       if [[ $(yq '.image | tag' "$file") == '!!map' ]]; then
         TAG="$tag" yq -i '.image.tag = strenv(TAG)' "$tmp"
