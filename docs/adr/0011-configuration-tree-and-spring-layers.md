@@ -2,7 +2,7 @@
 
 | | |
 |---|---|
-| Status | Accepted |
+| Status | Accepted. Rule 5 superseded in part by [ADR-0036](0036-helm-checks-only-when-kinds-include-helm.md) |
 | Date | 2026-10-04 |
 | Applies to | every app, every instance, this repository's `config/` and the configuration repository |
 | Enforced by | config-lint checks 1 to 5 and 9; `ConfigLayeringTest` (the precedence, against a rendered tree); `run-compose.sh` (required files, layouts it does not know) |

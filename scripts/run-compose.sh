@@ -41,7 +41,8 @@ Commands (ADR-0017):
   down [--volumes]      down --remove-orphans; --volumes adds -v (on *-dev hosts also needs --force)
   restart               stop, then start (picks up env layer, image and mount changes)
   config                the rendered compose configuration, secrets masked
-  app-config [--offline]  the app's effective configuration (actuator), or --offline: run --print-config
+  app-config [--offline]  the app's masked configuration summary: /actuator/appconfig, else the framework's
+                        /actuator/connectorconfig (ADR-0037); --offline: run the image with --print-config
   printenv              the resolved environment (paths, identity, engine, the combined env), secrets masked
   compose-env           write the combined env (below) and print its path
   health                container running and /actuator/health/readiness UP; 1 otherwise
@@ -374,9 +375,9 @@ platform_list() { # <key>
     }
     END { if (bad) exit 2; if (!found) exit 1 }' "$PLATFORM_FILE"
 }
-read_platform_list() { # <key> <variable>
+read_platform_list() { # <key> <variable> [empty-ok]: only dev_envs may be [] (ADR-0035)
     local words
-    if ! words="$(platform_list "$1")" || [ -z "$words" ]; then
+    if ! words="$(platform_list "$1")" || { [ -z "$words" ] && [ "${3:-}" != empty-ok ]; }; then
         die "$EXIT_CONFIG" "$(rel "$PLATFORM_FILE"): $1 must be a one-line list at the top level, e.g. '$1: [a, b]' (ADR-0030)"
     fi
     printf -v "$2" '%s' "$words"
@@ -387,7 +388,7 @@ REGIONS="" STAGES="" FLOWS="" DEV_ENVS=""
 read_platform_list regions REGIONS
 read_platform_list stages STAGES
 read_platform_list flows FLOWS
-read_platform_list dev_envs DEV_ENVS
+read_platform_list dev_envs DEV_ENVS empty-ok # [] (ADR-0035): local only
 
 # --- validation: usage (2), safety (3) --------------------------------------------------------------------
 
@@ -1152,18 +1153,34 @@ cmd_record_tag() {
     info "IMAGE_TAG=$RECORD_TAG recorded in $(rel "$INSTANCE_ENV") (was ${previous:-unset}); this version directory keeps it (ADR-0018)"
 }
 
+# The masked configuration summary (ADR-0016) from the running instance: the generic endpoint appconfig, else the
+# framework's connectorconfig (ADR-0037). --offline runs the image with --print-config, which only an app on the
+# framework understands.
 cmd_app_config() {
+    local rc base endpoint body
     if [ "$OFFLINE" -eq 1 ]; then
         compose run --rm --no-deps -T "$SERVICE" --print-config | mask_stream
-        return "${PIPESTATUS[0]}"
+        rc="${PIPESTATUS[0]}"
+        [ "$rc" -eq 0 ] || warn "the offline run exited $rc: either the configuration does not resolve (see above), or the" \
+            "app does not understand --print-config and has no offline summary (ADR-0037); try app-config on the running instance"
+        return "$rc"
     fi
-    local url="http://127.0.0.1:$ACTUATOR_PORT/actuator/connectorconfig"
+    base="http://127.0.0.1:$ACTUATOR_PORT/actuator"
     if [ "$DRY_RUN" -eq 1 ]; then
-        printf '  %-13s curl -fsS %s\n' "command" "$url"
+        printf '  %-13s curl -fsS %s\n' "command" "$base/appconfig"
+        plan_step "if it does not answer: curl -fsS $base/connectorconfig"
         return 0
     fi
-    http_get "$url" | mask_stream || { warn "$url did not answer: is the stack up? (or use --offline)"; return "$EXIT_FAILED"; }
-    printf '\n'
+    for endpoint in appconfig connectorconfig; do
+        if body="$(http_get "$base/$endpoint" 2>/dev/null)"; then
+            info "the configuration summary from $base/$endpoint"
+            printf '%s\n' "$body" | mask_stream
+            return 0
+        fi
+    done
+    warn "neither $base/appconfig nor $base/connectorconfig answered: is the stack up, and does the app expose a" \
+        "configuration summary (ADR-0037)? (or use --offline)"
+    return "$EXIT_FAILED"
 }
 
 # --- dispatch (ADR-0017) ----------------------------------------------------------------------------------

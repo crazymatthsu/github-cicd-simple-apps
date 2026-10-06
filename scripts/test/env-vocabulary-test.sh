@@ -1,7 +1,8 @@
 #!/usr/bin/env bash
 # env-vocabulary-test.sh — the env and flow checks of scripts/run-compose.sh and scripts/helm-deploy-instance.sh against
 # platform.yml (ADR-0003, ADR-0004, ADR-0030): an unknown region, stage or flow is a usage error (2); a promoted env, or
-# a dev env that dev_envs does not list, is refused (3); a missing or malformed platform.yml is a config error (4).
+# a dev env that dev_envs does not list, is refused (3); a missing or malformed platform.yml is a config error (4);
+# with dev_envs: [] only local passes (ADR-0035).
 # The cases are derived from this repository's platform.yml. Plain bash 3.2+: no engine, Helm or yq, because every
 # case ends before a script needs one. The lint job runs it with the other scripts/test/*-test.sh.
 # Exit codes: 0 every case passed · 1 a case failed.
@@ -78,6 +79,15 @@ if [ -n "$promoted" ]; then
 fi
 [ -z "$unlisted_dev" ] || expect 3 "is not a dev env of this repository" \
     "$HELM_DEPLOY" "$unlisted_dev" "$flow" source-x inst --tag t --mode deploy --dry-run
+
+# --- dev_envs: [] (ADR-0035): a repository that deploys no env yet; local passes the env checks, no other env does ----
+mkdir -p "$WORK/no-dev/scripts"
+cp "$RUN_COMPOSE" "$HELM_DEPLOY" "$WORK/no-dev/scripts/"
+sed 's/^dev_envs:.*/dev_envs: []/' "$REPO/platform.yml" >"$WORK/no-dev/platform.yml"
+expect 4 "config tree: directory missing: config/local" "$WORK/no-dev/scripts/run-compose.sh" local "$flow" source-x inst status
+expect 3 "is not a dev env of this repository" "$WORK/no-dev/scripts/run-compose.sh" "$region-dev" "$flow" source-x inst status
+expect 3 "is not a dev env of this repository" \
+    "$WORK/no-dev/scripts/helm-deploy-instance.sh" "$region-dev" "$flow" source-x inst --tag t --mode deploy --dry-run
 
 printf 'env-vocabulary-test: %s passed, %s failed\n' "$PASSED" "$FAILED"
 [ "$FAILED" -eq 0 ]

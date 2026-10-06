@@ -115,7 +115,7 @@ jobs:
           set -euo pipefail
           # ci-build decides where the build job runs (ADR-0021); jre21 is handed to the build job so it
           # does not probe again. Missing images are the first-run bootstrap: the build job then runs on
-          # the host and builds jre21 locally.
+          # the host with setup-java, and setup-build-env takes jre21's public fallback (ADR-0033).
           for name in ci-build jre21; do
             ref=""
             if [[ $REBUILD != true ]]; then
@@ -283,7 +283,8 @@ jobs:
 
       - name: Build images
         if: env.IMAGE_BUILD_TASKS != ''
-        # BASE_IMAGE (exported by setup-build-env) is the jre21 base: GHCR digest, or the local bootstrap build.
+        # BASE_IMAGE (exported by setup-build-env) is the jre21 base: registry digest, the local bootstrap build, or
+        # the public fallback of .github/versions.env (ADR-0033).
         run: |
           read -r -a tasks <<<"$IMAGE_BUILD_TASKS"
           ./gradlew "${tasks[@]}"

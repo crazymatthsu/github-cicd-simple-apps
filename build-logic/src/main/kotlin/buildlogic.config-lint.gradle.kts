@@ -3,7 +3,8 @@
 // reported as TODO. A deployable app is a subproject that applies `buildlogic.docker-image` (ADR-0012: every app is
 // run from the one compose template docker/docker-compose.yml, plus its optional
 // <subproject>/docker/docker-compose.override.yml); its name is the AppName directory expected in the tree, and its
-// Helm chart is <subproject>/helm/<AppName>/Chart.yaml (ADR-0019).
+// Helm chart is <subproject>/helm/<AppName>/Chart.yaml (ADR-0019). The Helm checks run only when platform.yml
+// kinds includes helm (ADR-0036).
 //
 //   ./gradlew configLint                      # render check 6 with docker compose / podman compose if present,
 //                                             # check 12 with helm (and kubeconform) if present
@@ -11,6 +12,7 @@
 //   -PconfigLint.helm=auto|none|<path>        # Helm 4 for check 12: from the PATH, off, or this binary
 //   -PconfigLint.requireRender=true           # fail when no compose CLI / Helm 4 exists (default when CI=true)
 //   -PconfigLint.completeEnvs=local           # envs in which every deployable app must have configuration and a chart
+//                                             # (a chart only when kinds includes helm)
 //
 // Check 12 runs scripts/helm-deploy-instance.sh --mode lint and --mode template per instance and keeps the
 // manifests in build/reports/config-lint/rendered/<env>/<flow>/<AppName>/<AppInstance>.yaml; kubeconform

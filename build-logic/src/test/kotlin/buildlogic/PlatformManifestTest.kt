@@ -40,7 +40,7 @@ class PlatformManifestTest {
     fun `the repository's own platform_yml is valid`() {
         val manifest = PlatformManifest.parse(File("../${PlatformManifest.FILE}").readText())
         // Parsing is the check; the values are this repository's own.
-        assertTrue(manifest.project.isNotEmpty() && manifest.referenceApp.isNotEmpty(), manifest.toString())
+        assertTrue(manifest.project.isNotEmpty(), manifest.toString())
     }
 
     @Test
@@ -88,18 +88,50 @@ class PlatformManifestTest {
             .replace("apps_dir: services", "apps_dir: /services")
             .replace("kinds: [compose]", "kinds: [compose, nomad, compose]")
             .replace("stages: [dev, qa, prod]", "stages: [dev, pre-prod]")
-            .replace("reference_app: ledger-feed\n", ""))
+            .replace("reference_app: ledger-feed", "reference_app: Ledger_Feed"))
         for (expected in listOf(
             "projects[0].name 'Payments_Apps' is not valid",
             "projects[0].group 'com.acme-payments' is not valid",
             "projects[0].apps_dir '/services' is not valid",
             "projects[0].kinds: 'nomad' is not a runtime (compose, helm)",
             "projects[0].kinds: 'compose' is listed twice",
-            "projects[0].reference_app is required (a string)",
+            "projects[0].reference_app 'Ledger_Feed' is not valid",
             "stages: 'pre-prod' is not valid",
         )) {
             assertTrue(messages.contains(expected), "missing '$expected' in:\n$messages")
         }
+    }
+
+    @Test
+    fun `a repository may deploy no env and have no reference app yet`() {
+        // ADR-0035: dev_envs [] and no reference_app key; the deploy and the reference scenario are switched off.
+        val manifest = PlatformManifest.parse(valid
+            .replace("dev_envs: [us-dev, jp-dev]  # a comment after the list", "dev_envs: []  # none yet")
+            .replace("    reference_app: ledger-feed\n", ""))
+        assertEquals(emptyList<String>(), manifest.devEnvs)
+        assertEquals("", manifest.referenceApp)
+        assertEquals("", manifest.asProperties()["devEnvs"])
+        assertEquals("", manifest.asProperties()["referenceApp"])
+        assertEquals(null, manifest.referenceAppProblem(mapOf("ledger-feed" to "services", "lib" to "framework")))
+        // The key itself stays required, and the other lists stay non-empty.
+        val missing = problems(valid.replace("dev_envs: [us-dev, jp-dev]  # a comment after the list", "")
+            .replace("flows: [cash]", "flows: []"))
+        assertTrue(missing.contains("dev_envs is required (a list)"), missing)
+        assertTrue(missing.contains("dev_envs must be a one-line list"), missing)
+        assertTrue(missing.contains("flows is required (a non-empty list)"), missing)
+    }
+
+    @Test
+    fun `a reference_app that is present must name an app`() {
+        val empty = problems(valid.replace("reference_app: ledger-feed", "reference_app:"))
+        assertTrue(empty.contains("projects[0].reference_app is required (a string)"), empty)
+        val manifest = PlatformManifest.parse(valid)
+        assertEquals(null, manifest.referenceAppProblem(mapOf("ledger-feed" to "services", "lib" to "framework")))
+        assertEquals("platform.yml: reference_app 'ledger-feed' is not an app under services/ (ADR-0030)",
+            manifest.referenceAppProblem(mapOf("ledger" to "services")))
+        // A library is not an app (ADR-0006).
+        assertEquals("platform.yml: reference_app 'ledger-feed' is not an app under services/ (ADR-0030)",
+            manifest.referenceAppProblem(mapOf("ledger-feed" to "framework")))
     }
 
     @Test

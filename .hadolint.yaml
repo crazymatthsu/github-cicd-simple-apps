@@ -15,7 +15,8 @@ trustedRegistries:
 
 override:
   info:
-    # Pin versions in apt-get install: relaxed. Only the company base images install OS packages, they
+    # Pin versions in apt-get install: relaxed. The company base images install OS packages, they
     # are rebuilt weekly to pick up patches (ADR-0009), and pinned Ubuntu package versions disappear from
-    # the archive. App Dockerfiles install nothing.
+    # the archive. The shared app Dockerfile installs only curl, and only on a base that lacks it (the
+    # public fallback, ADR-0033).
     - DL3008

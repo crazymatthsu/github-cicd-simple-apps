@@ -2,9 +2,10 @@ name: setup-build-env
 description: >-
   Shared build environment (ADR-0021): Temurin 21 only when the job does not run in the
   ci-build image, Gradle wrapper validation and Gradle user-home cache, an optional CA bundle, and the
-  company base images (ADR-0009). A base image is taken from GHCR (digest-pinned) when published and
-  otherwise built locally from docker/base/<name>/Dockerfile with a GitHub Actions layer cache, so the
-  very first run on a new repository succeeds before the base images are published (outside this repository).
+  company base images (ADR-0009). A base image is taken from the registry (digest-pinned) when published,
+  else built locally from docker/base/<name>/Dockerfile with a GitHub Actions layer cache when that file
+  exists, else replaced by its public fallback pinned in .github/versions.env (ADR-0033). So the very first
+  run on a new repository succeeds before the base images are published (outside this repository).
   Exports BASE_IMAGE (jre21) and CI_BUILD_IMAGE (ci-build) for later steps.
 inputs:
   java:
@@ -100,7 +101,7 @@ runs:
           echo "REQUESTS_CA_BUNDLE=$bundle"
         } >> "$GITHUB_ENV"
 
-    - name: Resolve base images (GHCR first, local build as bootstrap)
+    - name: Resolve base images (registry first, then a local bootstrap build, then the public fallback)
       id: resolve
       if: inputs.ensure-base != ''
       shell: bash
@@ -119,11 +120,11 @@ runs:
           [[ $NAMESPACE =~ ^[a-z0-9.-]+(:[0-9]+)?(/[a-z0-9._-]+)*$ ]] ||
             { echo "::error::image-namespace is empty and platform.yml has no plain 'registry: <host>/<namespace>' line (ADR-0030)"; exit 1; }
         fi
-        local_builds=()
+        local_builds=() fallbacks=()
         for name in ${ENSURE//,/ }; do
           case "$name" in
-            jre21) pre=$PRE_JRE21 ;;
-            ci-build) pre=$PRE_CI_BUILD ;;
+            jre21) pre=$PRE_JRE21 fallback_key=BASE_IMAGE_FALLBACK ;;
+            ci-build) pre=$PRE_CI_BUILD fallback_key=CI_BUILD_IMAGE_FALLBACK ;;
             *) echo "::error::ensure-base: unknown base image '$name' (expected jre21, ci-build)"; exit 2 ;;
           esac
           ref=""
@@ -134,9 +135,14 @@ runs:
               ref=$(scripts/ci/resolve-image.sh "$NAMESPACE/base/$name:latest") || ref=""
             fi
           fi
-          if [[ -z $ref ]]; then
-            [[ -f docker/base/$name/Dockerfile ]] ||
-              { echo "::error::$NAMESPACE/base/$name:latest is not published and docker/base/$name/Dockerfile is missing (the base images are built and published outside this repository)"; exit 1; }
+          if [[ -z $ref && ! -f docker/base/$name/Dockerfile ]]; then
+            # Not published and nothing to build: the public fallback (ADR-0033), read without yq like platform.yml.
+            ref=$(sed -n "s/^${fallback_key}=//p" "$GITHUB_WORKSPACE/.github/versions.env" 2>/dev/null | tail -n 1) || ref=""
+            [[ -n $ref ]] ||
+              { echo "::error::$NAMESPACE/base/$name:latest is not published, docker/base/$name/Dockerfile is missing, and .github/versions.env has no $fallback_key (ADR-0033)"; exit 1; }
+            fallbacks+=("$name")
+            echo "::notice title=base image::$NAMESPACE/base/$name:latest is not published: using the public fallback $ref (ADR-0033). Publish the company base image (built outside this repository) to use it instead."
+          elif [[ -z $ref ]]; then
             ref="$NAMESPACE/base/$name:bootstrap-${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}"
             local_builds+=("$name")
             if [[ $REBUILD == true ]]; then
@@ -150,6 +156,7 @@ runs:
           echo "build_${key}=$([[ " ${local_builds[*]} " == *" $name "* ]] && echo true || echo false)" >> "$GITHUB_OUTPUT"
         done
         echo "local=${local_builds[*]}" >> "$GITHUB_OUTPUT"
+        echo "fallback=${fallbacks[*]}" >> "$GITHUB_OUTPUT"
 
     - name: Buildx builder for local base builds
       id: buildx
@@ -198,6 +205,7 @@ runs:
         JRE21: ${{ steps.resolve.outputs.ref_jre21 }}
         CI_BUILD: ${{ steps.resolve.outputs.ref_ci_build }}
         LOCAL: ${{ steps.resolve.outputs.local }}
+        FALLBACK: ${{ steps.resolve.outputs.fallback }}
       run: |
         set -euo pipefail
         echo "base-image=${JRE21}" >> "$GITHUB_OUTPUT"
@@ -214,6 +222,7 @@ runs:
               name=${pair%%|*}; ref=${pair#*|}
               [[ -n $ref ]] || continue
               source=GHCR; [[ " $LOCAL " == *" $name "* ]] && source="built locally (bootstrap)"
+              [[ " $FALLBACK " == *" $name "* ]] && source="public fallback (ADR-0033)"
               echo "| $name | \`$ref\` | $source |"
             done
           } >> "$GITHUB_STEP_SUMMARY"

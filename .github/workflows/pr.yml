@@ -6,6 +6,7 @@
 #                               + kind-deploy (ADR-0019: Helm releases of <dev env>/*/<reference app> in a
 #                               throwaway kind cluster, per dev env of platform.yml) when detect-affected reports
 #                               deploy-test and the reference app's image was pushed
+#                               + public-base (ADR-0033) when every project is affected
 #   docs-only changes           everything skipped; pr-gate passes with a docs-only summary
 # `pr-gate` fans everything in and is the ONLY required status check on `main` (ADR-0022).
 name: pr
@@ -172,6 +173,7 @@ jobs:
     if: >-
       (github.event_name == 'pull_request' || github.event_name == 'merge_group')
       && needs.detect-affected.outputs.deploy-test == 'true'
+      && needs.detect-affected.outputs.dev-envs != '[]' && needs.detect-affected.outputs.reference-app != ''
       && contains(needs.build.outputs.images, format(':{0}"', needs.detect-affected.outputs.reference-app))
     strategy:
       fail-fast: false
@@ -190,12 +192,39 @@ jobs:
       images: ${{ needs.build.outputs.images }}
       retention-days: 7
 
+  public-base:
+    # A repository built from this one may lack the company base images: setup-build-env then builds its images on
+    # the public fallback of .github/versions.env (ADR-0033). Here the company images exist, so only this job uses
+    # it: on every shared change, the reference app's image is built on the fallback, on the runner host, and must
+    # start as user 10001 and report ready. It pushes nothing, so it runs for fork pull requests too. Without a
+    # reference app (ADR-0035) there is no app to prove it with, so the job is skipped.
+    name: public base
+    needs: detect-affected
+    if: >-
+      (github.event_name == 'pull_request' || github.event_name == 'merge_group')
+      && needs.detect-affected.outputs.full == 'true'
+      && needs.detect-affected.outputs.reference-app != ''
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: ./.github/actions/setup-build-env
+        with:
+          java: 'true'
+
+      - name: Build the reference app on the public base, start it, wait for readiness
+        env:
+          APP: ${{ needs.detect-affected.outputs.reference-app }}
+        run: scripts/ci/public-base-smoke.sh "$APP"
+
   pr-gate:
     # A plain branch push reports `push-gate`: its fast-tier result lands on the same head SHA as the
     # PR run and must never satisfy (or mask) the required `pr-gate` check.
     name: ${{ github.event_name == 'push' && 'push-gate' || 'pr-gate' }}
     if: always()
-    needs: [detect-affected, lint, build, config-lint, integration-test, kind-deploy]
+    # A job skipped by its condition passes; a failed or cancelled one fails the gate (public-base included).
+    needs: [detect-affected, lint, build, config-lint, integration-test, kind-deploy, public-base]
     runs-on: ubuntu-latest
     timeout-minutes: 5
     steps:
@@ -207,7 +236,7 @@ jobs:
           DOCS_ONLY: ${{ needs.detect-affected.outputs.docs-only }}
           MATRIX: ${{ needs.detect-affected.outputs.matrix }}
           IMAGES: ${{ needs.build.outputs.images }}
-          DEPLOY_TEST: ${{ needs.detect-affected.outputs.deploy-test }}
+          DEPLOY_TEST: ${{ needs.detect-affected.outputs.deploy-test == 'true' && needs.detect-affected.outputs.dev-envs != '[]' && needs.detect-affected.outputs.reference-app != '' }}
           BUILD_RESULT: ${{ needs.build.result }}
           KIND_RESULT: ${{ needs.kind-deploy.result }}
           REFERENCE_APP: ${{ needs.detect-affected.outputs.reference-app }}

@@ -1,6 +1,7 @@
 # test-infra/compose/it-runner.yml: the test JVM as a compose service (ADR-0025).
 #
-# CI runs the integration tests inside the ci-build image on the stack network, so no port is published:
+# CI runs the integration tests inside the ci-build image, or its public fallback when ci-build is not published
+# (setup-build-env exports CI_BUILD_IMAGE, ADR-0033), on the stack network, so no port is published:
 #   docker compose run --rm it-runner ./gradlew <project>:integrationTest -Pcompose.managed=false --no-daemon
 # (COMPOSE_FILE, COMPOSE_PROJECT_NAME, COMPOSE_ENV_FILES and the IT_* values come from $GITHUB_ENV,
 # written by `stack.sh up`.) The `tools` profile keeps `up --wait` from ever starting it.
@@ -20,20 +21,13 @@ services:
     environment:
       HOME: /tmp
       GRADLE_USER_HOME: /gradle-home
-      # Endpoints on the compose network (ADR-0025). A host JVM uses localhost instead.
-      IT_DEEPHAVEN_HOST: deephaven
-      IT_DEEPHAVEN_PORT: "10000"
-      IT_SQLSERVER_HOST: sqlserver
-      IT_SQLSERVER_PORT: "1433"
+      # The run's prefix for target tables (ADR-0025).
       IT_TABLE_PREFIX: ${IT_TABLE_PREFIX:-}
       # The app under test when the stack includes it (ADR-0025): stack.sh up exports APP_IMAGE and APP_NAME,
       # the compose service name. Both stay empty for a stack without an app, and the actuator check skips.
       APP_IMAGE: ${APP_IMAGE:-}
       IT_APP_HOST: ${APP_NAME:-}
       IT_APP_PORT: "8080"
-      # The SQL Server login the tests use: the same Spring property names the app binds (ADR-0013).
-      SPRING_DATASOURCE_USERNAME: sa
-      SPRING_DATASOURCE_PASSWORD: ${IT_SA_PASSWORD:?IT_SA_PASSWORD is not set - run test-infra/compose/stack.sh up first}
       # CI context passed through when set (version computation in build-logic, CI-only guards).
       CI:
       GITHUB_ACTIONS:
@@ -46,6 +40,11 @@ services:
       GITHUB_SERVER_URL:
       GITHUB_REPOSITORY:
       PR_NUMBER:
+    # What the project's stacks publish to the tests (ADR-0038): the env entries of their stacks.yml declarations,
+    # as a JVM on the stack network sees them (endpoints by service name, generated secrets), written by
+    # `stack.sh up`. The environment above wins over them.
+    env_file:
+      - ${IT_RUNNER_ENV_FILE:?IT_RUNNER_ENV_FILE is not set - run test-infra/compose/stack.sh up first}
     volumes:
       - ${IT_WORKSPACE:-../..}:/workspace
       # Host Gradle home restored by setup-gradle, mounted read-write.

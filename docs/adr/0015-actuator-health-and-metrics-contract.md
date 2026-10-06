@@ -2,7 +2,7 @@
 
 | | |
 |---|---|
-| Status | Accepted |
+| Status | Accepted. Rules 3 and 6 superseded in part by [ADR-0037](0037-runtime-scripts-read-generic-actuator-names.md) |
 | Date | 2026-10-04 |
 | Applies to | every app |
 | Enforced by | `AbstractConnectorApplicationTest` (each app's unit tests); `scripts/smoke.sh` after every start; the readiness health check of the compose template; `ConnectorIdentity` (the app refuses to start) |

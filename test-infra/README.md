@@ -18,8 +18,8 @@ test-infra/
 │   ├── it-runner.yml         the test JVM as a compose service (ci-build image, profile "tools")
 │   ├── local-ports.yml       localhost ports for developers; never used in CI
 │   ├── versions.env          image references, tag + digest, one line each
-│   ├── stacks.yml            which stacks each Gradle subproject declares
-│   └── stack.sh              up | diagnostics | down | leak-check
+│   ├── stacks.yml            which stacks each Gradle subproject declares, and what each stack publishes (ADR-0038)
+│   └── stack.sh              up | diagnostics | down | leak-check (scripts/test/stack-test.sh checks its reading of stacks.yml)
 ├── kind/                     the kind cluster of the Helm deployment test (ADR-0019; README inside)
 │   ├── versions.env          pinned kind, kubectl, helm, kubeconform (= the ci-build image pins)
 │   ├── cluster.yaml          one control-plane node, no port mappings
@@ -53,6 +53,31 @@ replaced by labelled named volumes (Deephaven) or tmpfs (Kafka), so no unlabelle
 can escape the leak check. A system IT sets `DEEPHAVEN_IMAGE` to the platform's `deephaven-server` image (`DEEPHAVEN_SERVER_IMAGE` in `versions.env`)
 ([ADR-0025](../docs/adr/0025-integration-tests-on-compose-stacks.md)).
 
+### What a stack publishes ([ADR-0038](../docs/adr/0038-stacks-publish-their-test-environment.md))
+
+The shared tooling (`stack.sh`, `it-runner.yml`, `buildlogic.integration-test`) names no dependency. Each stack
+declares under `stacks:` in `compose/stacks.yml` what it gives the tests, all optional:
+
+| Field | Meaning |
+|---|---|
+| `seed` | a command run in the stack's service (`compose exec -T <stack>`) once the stacks are healthy, before the app |
+| `env` | `KEY=value` entries as a JVM on the stack network (it-runner) sees the stack; also exported for compose's interpolation |
+| `local_env` | `KEY=value` entries for a test JVM on the host (`--local`): each replaces the `env` entry of its key |
+
+Values expand `${NAME}` and `${NAME:-default}` from the entries above and the environment. `KEY=<generated-secret>`
+is a throwaway secret, generated at the first `up` of the project and reused on a re-run (a value set in the
+environment wins). This repository declares:
+
+| Stack | `env` (it-runner) | `local_env` (host JVM) | `seed` |
+|---|---|---|---|
+| `deephaven` | `IT_DEEPHAVEN_HOST=deephaven`, `IT_DEEPHAVEN_PORT=10000` | `localhost`, `DEEPHAVEN_HOST_PORT` (10000) | none |
+| `sqlserver` | `IT_SQLSERVER_HOST=sqlserver`, `IT_SQLSERVER_PORT=1433`, `IT_SA_PASSWORD=<generated-secret>`, `SPRING_DATASOURCE_USERNAME=sa`, `SPRING_DATASOURCE_PASSWORD=${IT_SA_PASSWORD}` | `localhost`, `SQLSERVER_HOST_PORT` (1433) | `bash /seed/apply.sh` |
+| `kafka` | `IT_KAFKA_HOST=kafka`, `IT_KAFKA_PORT=9092` | `localhost`, `KAFKA_HOST_PORT` (9092) | none |
+
+A test client belongs to the app whose tests use it: `apps/source-database/build.gradle.kts` declares the Deephaven
+Java client and the `--add-opens` that Arrow needs. `scripts/test/stack-test.sh` checks the reading of `stacks.yml`
+against a stub engine; the `lint` job runs it.
+
 ## `compose/stack.sh`
 
 ```
@@ -76,14 +101,17 @@ What `up` does:
    several env files).
 2. Project name: `COMPOSE_PROJECT_NAME` if set, else `ci-<CI_RUN_ID>-<CI_RUN_ATTEMPT>` in CI
    (`CI_RUN_ID` defaults to `GITHUB_RUN_ID`), else `local-<AppName>`.
-3. Generates `IT_SA_PASSWORD` when unset (reused on a re-run of the same project) and sets
-   `IT_TABLE_PREFIX=it_<sha7>_`, `IT_RUNNER_UID/GID` (the caller's), `IT_WORKSPACE` and `IT_GRADLE_HOME`.
+3. Sets `IT_TABLE_PREFIX=it_<sha7>_`, `IT_RUNNER_UID/GID` (the caller's), `IT_WORKSPACE` and `IT_GRADLE_HOME`.
+   It resolves the `env` entries of the project's stacks (generating each `<generated-secret>`, reused on a re-run),
+   exports them, and writes them for the tests: `compose/.state/<project>.it-runner.env` (the `env` entries, read by
+   `it-runner.yml` through `env_file`, path in `IT_RUNNER_ENV_FILE`) and `compose/.state/<project>.host.env` (with
+   the `local_env` replacements, read by Gradle's `integrationTest` on the host).
 4. Records all of it in `compose/.state/<project>.env` (git-ignored, mode 600). In CI it also appends
-   it to `$GITHUB_ENV`, masking the password first, so later steps can run
+   it to `$GITHUB_ENV`, masking the generated secrets first, so later steps can run
    `docker compose run --rm it-runner ...` with no further setup.
 5. `pull --quiet` of the dependency images, `up --wait --wait-timeout 180` of the dependencies, then
-   `bash /seed/apply.sh` in `sqlserver` (creates the `positions` and `trades` databases). When
-   `APP_IMAGE` is set, a second `up --wait` starts the app after its dependencies are healthy and
+   each stack's `seed` (here `bash /seed/apply.sh` in `sqlserver`, which creates the `positions` and `trades`
+   databases). When `APP_IMAGE` is set, a second `up --wait` starts the app after its dependencies are healthy and
    seeded. The app image is not pulled up front, because Gradle's `buildImage` produces it locally.
 
 When the app joins the stack, its template gets what `run-compose.sh` would export ([ADR-0025](../docs/adr/0025-integration-tests-on-compose-stacks.md)):
@@ -93,8 +121,9 @@ the project's testdata manifests, `positions-db-to-deephaven` for `source-databa
 directory under `config/local/<flow>/<AppName>/`, as for `source-kafka` and `source-amps`; several candidates
 or none is a usage error). It also gets
 the Spring layer files (`FLOW_APP_YML`, `APP_APP_YML`, `INSTANCE_APP_YML`), the combined env `COMPOSE_ENV_FILE`
-that `scripts/run-compose.sh ... compose-env` writes (one merge implementation), `PROJECT` and
-`SPRING_DATASOURCE_USERNAME/PASSWORD`, plus `IMAGE_REPO` and `IMAGE_TAG` derived from `APP_IMAGE` (the combined env's
+that `scripts/run-compose.sh ... compose-env` writes (one merge implementation), `PROJECT`, the stacks' `env`
+entries (`SPRING_DATASOURCE_USERNAME/PASSWORD` here), `ACTUATOR_HOST_PORT` (the combined env's, else `18080`;
+recorded, so a host JVM finds the actuator), plus `IMAGE_REPO` and `IMAGE_TAG` derived from `APP_IMAGE` (the combined env's
 last layer), so a template written as
 `${IMAGE_REPO}/${APP_NAME}:${IMAGE_TAG}` still runs the image under test (a digest-only reference
 becomes `by-digest@sha256:...`; the digest wins). `APP_IMAGE` must be
@@ -137,11 +166,13 @@ steps:
     run: test-infra/compose/stack.sh leak-check
 ```
 
-Inside `it-runner`, the tests see `IT_DEEPHAVEN_HOST=deephaven`, `IT_DEEPHAVEN_PORT=10000`,
-`IT_SQLSERVER_HOST=sqlserver`, `IT_SQLSERVER_PORT=1433`, `IT_TABLE_PREFIX`,
-`SPRING_DATASOURCE_USERNAME=sa` and `SPRING_DATASOURCE_PASSWORD`. The workspace is at `/workspace` and
-the host Gradle home at `/gradle-home`. The container runs as the runner's UID/GID, so build outputs
-keep their owner.
+Inside `it-runner`, the tests see the generic `IT_TABLE_PREFIX`, `APP_IMAGE`, `IT_APP_HOST` (the app's service
+alias) and `IT_APP_PORT=8080`, plus the `env` entries of the project's stacks
+([ADR-0038](../docs/adr/0038-stacks-publish-their-test-environment.md)). For `:source-database` those are
+`IT_DEEPHAVEN_HOST=deephaven`, `IT_DEEPHAVEN_PORT=10000`, `IT_SQLSERVER_HOST=sqlserver`, `IT_SQLSERVER_PORT=1433`,
+`IT_SA_PASSWORD`, `SPRING_DATASOURCE_USERNAME=sa` and `SPRING_DATASOURCE_PASSWORD`. The workspace is at
+`/workspace` and the host Gradle home at `/gradle-home`. The container runs as the runner's UID/GID, so build
+outputs keep their owner.
 
 ## Local development
 
@@ -184,7 +215,9 @@ With Docker (or Podman) available:
 `composeUp` builds the app image (`buildImage`, tag `local`). It then runs
 `stack.sh up --project :source-database --local` with `APP_IMAGE` set to that
 image, so the connector container starts with `config/local/cash/source-database/positions-db-to-deephaven`
-mounted. The tests run on the host JVM against `localhost`. `composeDown` (`stack.sh down`) runs even
+mounted. The tests run on the host JVM against `localhost`, with the variables of
+`compose/.state/local-source-database.host.env` and the app's actuator on its `ACTUATOR_HOST_PORT` (18081 for this
+instance). `composeDown` (`stack.sh down`) runs even
 when they fail. `-Pcompose.keep=true` keeps the stack for debugging; `stack.sh down` removes it
 afterwards.
 

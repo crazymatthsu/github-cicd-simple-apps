@@ -50,10 +50,11 @@ scripts/run-compose.sh --help
 ## Pipeline
 
 `pr.yml` (affected build, lint, config-lint, images `pr-<n>-<sha7>`, component integration tests, kind deploy
-test; `pr-gate` is the one required check) → `main.yml` (build all, integration tests, system test against the
-platform's Deephaven server image, publish, kind deploy, deploy-dev) → `release-please.yml` / `release.yml`
-(release PR, tag, promote the tested digests, SBOMs, GitHub Release). The details are in ADR-0021 to ADR-0029, and
-the repository settings the pipeline needs are in [ADR-0020](docs/adr/0020-branching-protection-and-merge-rules.md).
+test; `pr-gate` is the one required check) → `main.yml` (build all, integration tests when a project has them,
+system test against the platform's Deephaven server image when `test-infra/compose/versions.env` declares one,
+publish, kind deploy, deploy-dev) → `release-please.yml` / `release.yml` (release PR, tag, promote the tested
+digests, SBOMs, GitHub Release). The details are in ADR-0021 to ADR-0029 and ADR-0034, and the repository settings
+the pipeline needs are in [ADR-0020](docs/adr/0020-branching-protection-and-merge-rules.md).
 
 ## Shared tooling
 

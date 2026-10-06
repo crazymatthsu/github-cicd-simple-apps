@@ -2,7 +2,7 @@
 
 | | |
 |---|---|
-| Status | Accepted |
+| Status | Accepted. Rule 2 superseded in part by [ADR-0036](0036-helm-checks-only-when-kinds-include-helm.md) |
 | Date | 2026-10-04 |
 | Applies to | every configuration tree |
 | Enforced by | the `configLint` task in `pr.yml`, `main.yml` and `config-lint.yml`; `ConfigLinterTest` |

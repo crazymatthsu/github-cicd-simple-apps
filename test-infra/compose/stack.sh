@@ -15,10 +15,13 @@ Commands
       Start the dependency stacks that stacks.yml declares for the project (base.yml, <stack>.yml...,
       it-runner.yml), plus the shared docker/docker-compose.yml and the app's overrides when APP_IMAGE is set
       (ADR-0025): pull --quiet,
-      up --wait --wait-timeout 180, apply the SQL Server seed, then start the app under test.
+      up --wait --wait-timeout 180, run each stack's seed (stacks.yml), then start the app under test.
       Exports COMPOSE_FILE, COMPOSE_PROJECT_NAME, COMPOSE_ENV_FILES and the IT_* values to
       $GITHUB_ENV in CI and records them in test-infra/compose/.state/<project>.env.
-      --local also publishes 10000 / 1433 / 9092 on 127.0.0.1 (local-ports.yml). In CI the app under
+      Writes what the stacks publish to the tests (their env entries in stacks.yml, ADR-0038) to
+      .state/<project>.it-runner.env (it-runner, on the stack network) and .state/<project>.host.env
+      (a test JVM on the host: local_env replaces env).
+      --local also publishes the stacks' ports on 127.0.0.1 (local-ports.yml). In CI the app under
       test publishes no port either (tests reach it as <AppName>:8080 on the stack network: the service is
       `app`, aliased <AppName>).
   diagnostics <dir>
@@ -43,8 +46,9 @@ Environment
                            identity of the app instance (default local, the one flow of config/<env>/ that
                            configures the app, and the instance named by the project's test-infra/testdata
                            manifests)
-  IT_SA_PASSWORD           SQL Server sa password (generated when unset; reused on a re-run)
-  IT_TABLE_PREFIX          Deephaven table prefix for the run (default it_<sha7>_)
+  <KEY> of a stack's KEY=<generated-secret> entry (stacks.yml)
+                           a throwaway secret (generated when unset; reused on a re-run)
+  IT_TABLE_PREFIX          the run's prefix for target tables (default it_<sha7>_)
   STACK_WAIT_TIMEOUT       seconds for each up --wait (default 180); STACK_SKIP_PULL=1 skips the pull
 
 Exit codes
@@ -67,10 +71,12 @@ DOWN_TIMEOUT=20
 # Recorded in the state file and, in CI, appended to $GITHUB_ENV: every later compose call on the stack
 # (the workflow's `docker compose run --rm it-runner`, diagnostics, down) needs the same interpolation.
 STATE_VARS="COMPOSE_PROJECT_NAME COMPOSE_FILE COMPOSE_PATH_SEPARATOR COMPOSE_ENV_FILES
-  CI_RUN_ID CI_RUN_ATTEMPT IT_SA_PASSWORD IT_TABLE_PREFIX IT_RUNNER_UID IT_RUNNER_GID IT_WORKSPACE
-  IT_GRADLE_HOME STACK_PROJECT STACK_SERVICES APP_IMAGE APP_NAME APP_ENV APP_FLOW APP_INSTANCE
-  COMPOSE_ENV_FILE FLOW_APP_YML APP_APP_YML INSTANCE_APP_YML PROJECT IMAGE_REPO IMAGE_TAG ACTUATOR_HOST_PORT
-  SPRING_DATASOURCE_USERNAME SPRING_DATASOURCE_PASSWORD"
+  CI_RUN_ID CI_RUN_ATTEMPT IT_TABLE_PREFIX IT_RUNNER_UID IT_RUNNER_GID IT_WORKSPACE IT_GRADLE_HOME
+  IT_RUNNER_ENV_FILE STACK_PROJECT STACK_SERVICES APP_IMAGE APP_NAME APP_ENV APP_FLOW APP_INSTANCE
+  COMPOSE_ENV_FILE FLOW_APP_YML APP_APP_YML INSTANCE_APP_YML PROJECT IMAGE_REPO IMAGE_TAG ACTUATOR_HOST_PORT"
+# Plus the keys of the stacks' env entries (stacks.yml, ADR-0038), and which of them are generated secrets.
+STACK_ENV_KEYS=
+STACK_SECRETS=
 
 COMPOSE_CMD=()
 ENGINE=
@@ -190,7 +196,10 @@ load_context() {
   fi
   if [[ -z ${COMPOSE_PROJECT_NAME:-} ]]; then
     for f in "$STATE_DIR"/*.env; do
-      if [[ -f $f ]]; then candidates+=("$f"); fi
+      name=${f##*/}
+      name=${name%.env}
+      # <project>.env only: <project>.compose.env, .it-runner.env and .host.env belong to it.
+      if [[ -f $f && $name != *.* ]]; then candidates+=("$f"); fi
     done
     if [[ ${#candidates[@]} -eq 1 ]]; then
       name=${candidates[0]##*/}
@@ -216,7 +225,7 @@ load_context() {
   fi
 }
 
-# A value recorded by an earlier `up` of the same project (keeps the running SQL Server's password).
+# A value recorded by an earlier `up` of the same project (keeps a running dependency's generated secret).
 previous_value() {
   [[ -f $STATE_FILE ]] || return 0
   (
@@ -232,10 +241,10 @@ write_state() {
   (
     umask 077
     {
-      printf '# Written by test-infra/compose/stack.sh up (%s). Contains a throwaway test password.\n' \
+      printf '# Written by test-infra/compose/stack.sh up (%s). May contain throwaway test secrets.\n' \
         "$(date -u +%Y-%m-%dT%H:%M:%SZ)"
       printf '# To run compose against this stack: set -a; . %s; set +a\n' "$(rel "$STATE_FILE")"
-      for var in $STATE_VARS; do
+      for var in $STATE_VARS $STACK_ENV_KEYS; do
         if [[ -n ${!var:-} ]]; then printf '%s=%q\n' "$var" "${!var}"; fi
       done
     } >"$tmp"
@@ -246,21 +255,113 @@ write_state() {
 export_github_env() {
   [[ -n ${GITHUB_ENV:-} ]] || return 0
   local var
-  printf '::add-mask::%s\n' "$IT_SA_PASSWORD"
-  for var in $STATE_VARS; do
+  for var in $STACK_SECRETS; do printf '::add-mask::%s\n' "${!var}"; done
+  for var in $STATE_VARS $STACK_ENV_KEYS; do
     if [[ -n ${!var:-} ]]; then printf '%s=%s\n' "$var" "${!var}" >>"$GITHUB_ENV"; fi
   done
 }
 
-generate_password() {
+generate_secret() {
   local random
   if command -v openssl >/dev/null 2>&1; then
     random=$(openssl rand -hex 16)
   else
     random=$(od -An -N16 -tx1 /dev/urandom | tr -d ' \n')
   fi
-  # Upper case, lower case, digits and a symbol: meets the SQL Server password policy.
+  # Upper case, lower case, digits and a symbol: meets common database password policies.
   printf 'It-%s-Aa1' "$random"
+}
+
+# --- what the stacks publish to the tests (stacks.yml, ADR-0038) ----------------------------------------
+
+# Prints one field of a stack's declaration under `stacks:` in stacks.yml: the `seed` command, or the entries of its
+# `env` or `local_env` list, one per line. Block style with two-space steps, as the file's header describes.
+stack_field() {
+  awk -v stack="$1" -v field="$2" -v q="'" '
+    function clean(s) {
+      sub(/[[:space:]]+#.*$/, "", s); sub(/[[:space:]]+$/, "", s)
+      if (length(s) >= 2 && (s ~ /^".*"$/ || (substr(s, 1, 1) == q && substr(s, length(s), 1) == q))) s = substr(s, 2, length(s) - 2)
+      return s
+    }
+    /^[^[:space:]#]/ { in_stacks = ($0 ~ /^stacks:[[:space:]]*$/); on = 0; next }
+    !in_stacks || /^[[:space:]]*(#|$)/ { next }
+    /^  [^[:space:]-][^:]*:[[:space:]]*$/ { name = $1; sub(/:$/, "", name); on = (name == stack); list = 0; next }
+    !on { next }
+    /^    +- / { if (list) { s = $0; sub(/^ +- +/, "", s); print clean(s) }; next }
+    /^    [^[:space:]]/ {
+      key = $1; sub(/:.*$/, "", key); list = (key == field && field != "seed")
+      if (key == field && field == "seed") { s = $0; sub(/^ +[^:]*:[[:space:]]*/, "", s); print clean(s) }
+    }
+  ' "$STACKS_FILE"
+}
+
+# Expands ${NAME} and ${NAME:-default} in a declared value from the environment, which by then holds the entries
+# declared before it. Fails on an unset ${NAME} without a default.
+expand_value() {
+  local rest=$1 out='' name re='^([^$]*)\$\{([A-Za-z_][A-Za-z0-9_]*)(:-([^}]*))?\}(.*)$'
+  while [[ $rest =~ $re ]]; do
+    out+=${BASH_REMATCH[1]}
+    name=${BASH_REMATCH[2]}
+    if [[ -n ${!name:-} ]]; then
+      out+=${!name}
+    elif [[ -n ${BASH_REMATCH[3]} ]]; then
+      out+=${BASH_REMATCH[4]}
+    else
+      return 1
+    fi
+    rest=${BASH_REMATCH[5]}
+  done
+  # shellcheck disable=SC2016 # a literal ${ left over: a malformed reference
+  [[ $rest != *'${'* ]] || return 1
+  printf '%s' "$out$rest"
+}
+
+# Resolves the env entries of the given stacks, in order. Each `env` entry is exported (compose interpolates it in
+# the stack files and the app's overrides) and recorded in the state file. Writes them for the tests: $1 as the
+# it-runner sees the stack, on its network; $2 as a JVM on the host does, each `local_env` entry replacing the env
+# entry of its key. A KEY=<generated-secret> entry keeps the value of the environment, else of the previous up of
+# the same project, else gets a new one.
+write_stack_env() {
+  local runner_file=$1 host_file=$2 stack list entry key value runner='' host=''
+  shift 2
+  STACK_ENV_KEYS='' STACK_SECRETS=''
+  for stack in "$@"; do
+    for list in env local_env; do
+      while IFS= read -r entry; do
+        [[ $entry =~ ^[A-Za-z_][A-Za-z0-9_]*= ]] || usage_error "up: stacks.yml: '$entry' in $stack.$list is not KEY=value"
+        key=${entry%%=*}
+        value=${entry#*=}
+        # shellcheck disable=SC2086 # one word per name
+        ! has_word "$key" $STATE_VARS || usage_error "up: stacks.yml: $stack.$list sets $key, which stack.sh sets itself"
+        if [[ $value == '<generated-secret>' ]]; then
+          [[ $list == env ]] || usage_error "up: stacks.yml: $key=<generated-secret> belongs in $stack.env, not $stack.$list"
+          value=${!key:-$(previous_value "$key")}
+          [[ -n $value ]] || value=$(generate_secret)
+          STACK_SECRETS+=" $key"
+        else
+          value=$(expand_value "$value") \
+            || usage_error "up: stacks.yml: '$entry' in $stack.$list refers to a variable that is not set (use \${NAME:-default})"
+        fi
+        if [[ $list == env ]]; then
+          export "$key=$value"
+          # shellcheck disable=SC2086
+          has_word "$key" $STACK_ENV_KEYS || STACK_ENV_KEYS+=" $key"
+          runner+="$key=$value"$'\n'
+        fi
+        host+="$key=$value"$'\n'
+      done < <(stack_field "$stack" "$list")
+    done
+  done
+  (
+    umask 077
+    printf '# Written by stack.sh up: the env entries of the stacks (stacks.yml), for the it-runner.\n%s' "$runner" >"$runner_file"
+    {
+      printf '# Written by stack.sh up: the env entries of the stacks (stacks.yml) with local_env, for a JVM on the host.\n'
+      # One line per key in the order of its first entry; the last value wins.
+      printf '%s' "$host" | awk '{ k = substr($0, 1, index($0, "=") - 1); if (!(k in v)) o[++n] = k; v[k] = substr($0, index($0, "=") + 1) }
+        END { for (i = 1; i <= n; i++) print o[i] "=" v[o[i]] }'
+    } >"$host_file"
+  )
 }
 
 short_sha() {
@@ -360,12 +461,12 @@ prepare_app() {
     export FLOW_APP_YML=$config_root/$APP_ENV/$APP_FLOW/application.flow.yml
   fi
   # The template publishes 127.0.0.1:${ACTUATOR_HOST_PORT:?...}, which compose interpolates even when the CI
-  # override drops the port. Default it only when the combined env does not set it: the shell beats --env-file.
-  if [[ -z ${ACTUATOR_HOST_PORT:-} ]] && ! grep -Eq '^ACTUATOR_HOST_PORT=' "$COMPOSE_ENV_FILE"; then
-    export ACTUATOR_HOST_PORT=18080
+  # override drops the port. The shell beats --env-file, so the combined env's value is taken over, else 18080; the
+  # state file records it, and a test JVM on the host finds the actuator there.
+  if [[ -z ${ACTUATOR_HOST_PORT:-} ]]; then
+    ACTUATOR_HOST_PORT=$(sed -n 's/^ACTUATOR_HOST_PORT=//p' "$COMPOSE_ENV_FILE" | tail -n 1)
+    export ACTUATOR_HOST_PORT=${ACTUATOR_HOST_PORT:-18080}
   fi
-  export SPRING_DATASOURCE_USERNAME=${SPRING_DATASOURCE_USERNAME:-sa}
-  export SPRING_DATASOURCE_PASSWORD=${SPRING_DATASOURCE_PASSWORD:-$IT_SA_PASSWORD}
   APP_OVERRIDES=()
   for file in "$config_root/$APP_ENV/$APP_FLOW/_docker-compose.flow.yml" "$base/_docker-compose.app.yml" \
     "$base/$APP_INSTANCE/_docker-compose.instance.yml"; do
@@ -506,23 +607,24 @@ cmd_up() {
   STATE_FILE=$(state_file_for "$COMPOSE_PROJECT_NAME")
 
   # Test-only settings (ADR-0013, ADR-0025).
-  if [[ -z ${IT_SA_PASSWORD:-} ]]; then
-    IT_SA_PASSWORD=$(previous_value IT_SA_PASSWORD)
-    [[ -n $IT_SA_PASSWORD ]] || IT_SA_PASSWORD=$(generate_password)
-  fi
-  export IT_SA_PASSWORD
   export IT_TABLE_PREFIX=${IT_TABLE_PREFIX:-it_$(short_sha)_}
   export IT_RUNNER_UID=${IT_RUNNER_UID:-$(id -u)} IT_RUNNER_GID=${IT_RUNNER_GID:-$(id -g)}
   export IT_WORKSPACE=${IT_WORKSPACE:-$REPO_ROOT}
   export IT_GRADLE_HOME=${IT_GRADLE_HOME:-${GRADLE_USER_HOME:-$HOME/.gradle}}
   mkdir -p "$IT_GRADLE_HOME" # created by the caller, not by the engine as root
   export STACK_PROJECT=$gradle_path STACK_SERVICES=${stacks// /,}
+  # What the stacks publish to the tests (stacks.yml, ADR-0038). The it-runner reads its file through env_file,
+  # which compose resolves against test-infra/compose/, so the path is absolute.
+  mkdir -p "$STATE_DIR"
+  export IT_RUNNER_ENV_FILE
+  IT_RUNNER_ENV_FILE=$(cd "$STATE_DIR" && pwd -P)/$COMPOSE_PROJECT_NAME.it-runner.env
+  # shellcheck disable=SC2086 # one argument per stack
+  write_stack_env "$IT_RUNNER_ENV_FILE" "${STATE_FILE%.env}.host.env" $stacks
 
   ENV_FILES=("$VERSIONS_ENV")
   local files=("$COMPOSE_DIR/base.yml")
   for stack in $stacks; do files+=("$COMPOSE_DIR/$stack.yml"); done
   files+=("$COMPOSE_DIR/it-runner.yml")
-  mkdir -p "$STATE_DIR"
   if [[ -n $app_file ]]; then
     files+=("$app_file")
     if [[ -n $app_override ]]; then files+=("$app_override"); fi
@@ -562,11 +664,15 @@ cmd_up() {
   log "starting $stacks (up --wait, ${WAIT_TIMEOUT}s)"
   # shellcheck disable=SC2086
   compose up --wait --wait-timeout "$WAIT_TIMEOUT" $stacks || up_failed "the dependencies did not become healthy"
-  # shellcheck disable=SC2086
-  if has_word sqlserver $stacks; then
-    log "seeding SQL Server (test-infra/seed/sqlserver)"
-    compose exec -T sqlserver bash /seed/apply.sh || up_failed "seeding SQL Server failed"
-  fi
+  # Each stack's seed (stacks.yml), in the stack's own service, before the app starts.
+  local seed seed_args=()
+  for stack in $stacks; do
+    seed=$(stack_field "$stack" seed)
+    [[ -n $seed ]] || continue
+    read -r -a seed_args <<<"$seed"
+    log "seeding $stack: $seed"
+    compose exec -T "$stack" "${seed_args[@]}" || up_failed "seeding $stack failed ($seed)"
+  done
   if [[ -n $app_file ]]; then
     log "starting the app under test (up --wait, ${WAIT_TIMEOUT}s)"
     compose up --wait --wait-timeout "$WAIT_TIMEOUT" --quiet-pull || up_failed "the app under test did not become healthy"
@@ -576,14 +682,16 @@ cmd_up() {
   log "  state file: $(rel "$STATE_FILE")  (set -a; . <file>; set +a  to run compose against the stack)"
   log "  network for run-compose.sh: DEPS_NETWORK=${COMPOSE_PROJECT_NAME}_default"
   if $local_ports; then
-    local endpoints=''
-    # shellcheck disable=SC2086
-    if has_word deephaven $stacks; then endpoints+=", deephaven 127.0.0.1:${DEEPHAVEN_HOST_PORT:-10000}"; fi
-    # shellcheck disable=SC2086
-    if has_word sqlserver $stacks; then endpoints+=", sqlserver 127.0.0.1:${SQLSERVER_HOST_PORT:-1433} (user sa, password IT_SA_PASSWORD in the state file)"; fi
-    # shellcheck disable=SC2086
-    if has_word kafka $stacks; then endpoints+=", kafka 127.0.0.1:${KAFKA_HOST_PORT:-9092}"; fi
-    log "  endpoints:${endpoints#,}"
+    # What the stacks publish to a JVM on the host (stacks.yml); a value holding a secret stays in the file.
+    local line secret summary=''
+    while IFS= read -r line; do
+      [[ -n $line && $line != '#'* ]] || continue
+      for secret in $STACK_SECRETS; do
+        if [[ ${line#*=} == *"${!secret}"* ]]; then line="${line%%=*}=<secret>"; fi
+      done
+      summary+=" $line"
+    done <"${STATE_FILE%.env}.host.env"
+    log "  for the tests on this host:${summary:- nothing} ($(rel "${STATE_FILE%.env}.host.env"))"
   fi
 }
 
@@ -635,7 +743,6 @@ cmd_diagnostics() {
 
   # compose-ps.txt: the compose view when up recorded the files, the engine view otherwise.
   if [[ -n ${COMPOSE_FILE:-} && -n ${COMPOSE_PROJECT_NAME:-} ]]; then
-    export IT_SA_PASSWORD=${IT_SA_PASSWORD:-not-needed-for-diagnostics}
     compose ps -a >"$dir/compose-ps.txt" 2>&1 || true
   else
     : >"$dir/compose-ps.txt"
@@ -693,9 +800,8 @@ cmd_down() {
   fi
 
   if [[ -n ${COMPOSE_FILE:-} && -n ${COMPOSE_PROJECT_NAME:-} ]]; then
-    # The files are parsed again, so every variable they require must be set; none of them matters
-    # for removal.
-    export IT_SA_PASSWORD=${IT_SA_PASSWORD:-not-needed-for-down}
+    # The files are parsed again with the variables up recorded (the state file, $GITHUB_ENV in CI), the stacks'
+    # env entries among them; the env files they name are removed only after this.
     log "down: project $COMPOSE_PROJECT_NAME (down -v --remove-orphans --timeout $DOWN_TIMEOUT)"
     compose down -v --remove-orphans --timeout "$DOWN_TIMEOUT" \
       || warn "compose down failed; removing by label instead"
@@ -704,7 +810,8 @@ cmd_down() {
   fi
   prune_by_labels
   if [[ -n ${STATE_FILE:-} ]]; then
-    rm -f "$STATE_FILE" "${STATE_FILE%.env}.local-ports.yml" "${STATE_FILE%.env}.app-no-ports.yml" "${STATE_FILE%.env}.compose.env"
+    rm -f "$STATE_FILE" "${STATE_FILE%.env}.local-ports.yml" "${STATE_FILE%.env}.app-no-ports.yml" "${STATE_FILE%.env}.compose.env" \
+      "${STATE_FILE%.env}.it-runner.env" "${STATE_FILE%.env}.host.env"
   fi
 
   local leftovers

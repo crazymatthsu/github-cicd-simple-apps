@@ -2,7 +2,7 @@
 
 | | |
 |---|---|
-| Status | Accepted |
+| Status | Accepted. Rule 2 superseded in part by [ADR-0034](0034-main-runs-the-test-stages-the-repository-has.md) |
 | Date | 2026-10-04 |
 | Applies to | `main.yml`, on `main` and `hotfix/**` |
 | Enforced by | the job graph of `main.yml`; `_integration-test.yml` (digest-pinned image required); `_docker-publish.yml` (refuses to move an immutable tag); `release.yml` (releases only a commit whose `main.yml` run succeeded) |

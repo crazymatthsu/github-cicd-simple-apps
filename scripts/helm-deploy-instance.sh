@@ -156,9 +156,9 @@ platform_list() { # <key>
     }
     END { if (bad) exit 2; if (!found) exit 1 }' "$PLATFORM_FILE"
 }
-read_platform_list() { # <key> <variable>
+read_platform_list() { # <key> <variable> [empty-ok]: only dev_envs may be [] (ADR-0035)
     local words
-    if ! words="$(platform_list "$1")" || [ -z "$words" ]; then
+    if ! words="$(platform_list "$1")" || { [ -z "$words" ] && [ "${3:-}" != empty-ok ]; }; then
         die "$EXIT_CONFIG" "platform.yml: $1 must be a one-line list at the top level, e.g. '$1: [a, b]' (ADR-0030)"
     fi
     printf -v "$2" '%s' "$words"
@@ -169,7 +169,7 @@ REGIONS="" STAGES="" FLOWS="" DEV_ENVS=""
 read_platform_list regions REGIONS
 read_platform_list stages STAGES
 read_platform_list flows FLOWS
-read_platform_list dev_envs DEV_ENVS
+read_platform_list dev_envs DEV_ENVS empty-ok # [] (ADR-0035): local only
 # local, or <region>-<stage> with a region and a stage of platform.yml (ADR-0003).
 if [ "$ENV_NAME" != local ]; then
     region="${ENV_NAME%%-*}" stage="${ENV_NAME#*-}"

@@ -12,16 +12,20 @@ outputs:
     description: The project, projects[0].name (ADR-0002).
     value: ${{ steps.read.outputs.project }}
   dev-envs:
-    description: JSON list of the dev envs this repository configures and deploys, dev_envs (ADR-0004).
+    description: >-
+      JSON list of the dev envs this repository configures and deploys, dev_envs (ADR-0004). `[]` when it deploys no
+      env yet (ADR-0035): the callers then skip every job that runs per dev env.
     value: ${{ steps.read.outputs.dev-envs }}
   reference-app:
-    description: The app of the system test, the kind deployment test and the teardown drill, projects[0].reference_app.
+    description: >-
+      The app of the system test, the kind deployment test and the teardown drill, projects[0].reference_app. Empty
+      when platform.yml declares none (ADR-0035): the callers then skip those jobs.
     value: ${{ steps.read.outputs.reference-app }}
   reference-project:
-    description: The Gradle path of the reference app, :<AppName>.
+    description: The Gradle path of the reference app, :<AppName>; empty without a reference app.
     value: ${{ steps.read.outputs.reference-project }}
   reference-image:
-    description: The reference app's image without a tag, <registry>/<project>/<AppName> (ADR-0010).
+    description: The reference app's image without a tag, <registry>/<project>/<AppName> (ADR-0010); empty without a reference app.
     value: ${{ steps.read.outputs.reference-image }}
 runs:
   using: composite
@@ -37,13 +41,14 @@ runs:
         registry=$(yq '.registry // ""' "$file")
         project=$(yq '.projects[0].name // ""' "$file")
         app=$(yq '.projects[0].reference_app // ""' "$file")
-        dev_envs=$(yq -o=json -I=0 '.dev_envs // []' "$file")
+        dev_envs=$(yq -o=json -I=0 '.dev_envs' "$file")
         token='^[a-z0-9]([a-z0-9-]*[a-z0-9])?$'
         problems=()
         [[ $registry =~ ^[a-z0-9.-]+(:[0-9]+)?(/[a-z0-9._-]+)*$ ]] || problems+=("registry '$registry'")
         [[ $project =~ $token ]] || problems+=("projects[0].name '$project'")
-        [[ $app =~ $token ]] || problems+=("projects[0].reference_app '$app'")
-        jq -e 'type == "array" and length > 0 and all(.[]; type == "string" and test("^[a-z]{2}-dev$"))' <<<"$dev_envs" >/dev/null ||
+        # Both may be empty (ADR-0035): dev_envs [] deploys no env, and no reference_app means no reference scenario.
+        [[ -z $app || $app =~ $token ]] || problems+=("projects[0].reference_app '$app'")
+        jq -e 'type == "array" and all(.[]; type == "string" and test("^[a-z]{2}-dev$"))' <<<"$dev_envs" >/dev/null ||
           problems+=("dev_envs $dev_envs")
         if [[ ${#problems[@]} -gt 0 ]]; then
           echo "::error::platform.yml: not valid: ${problems[*]} (ADR-0030; ./gradlew help reports every problem of the file)"
@@ -54,6 +59,6 @@ runs:
           echo "project=$project"
           echo "dev-envs=$dev_envs"
           echo "reference-app=$app"
-          echo "reference-project=:$app"
-          echo "reference-image=$registry/$project/$app"
+          echo "reference-project=${app:+:$app}"
+          echo "reference-image=${app:+$registry/$project/$app}"
         } >> "$GITHUB_OUTPUT"

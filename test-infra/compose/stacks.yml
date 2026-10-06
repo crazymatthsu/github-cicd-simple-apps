@@ -1,13 +1,54 @@
-# test-infra/compose/stacks.yml: the dependency stacks each Gradle subproject declares (ADR-0025).
+# test-infra/compose/stacks.yml: the dependency stacks each Gradle subproject declares (ADR-0025), and what each
+# stack publishes to the tests (ADR-0038).
 #
 # Key: the project name, i.e. the last segment of the Gradle path (:source-database -> source-database;
 # apps/<AppName> are top-level projects, ADR-0006). Each stack is a file <stack>.yml in this directory and a service of the same
 # name. `stack.sh up --project <gradle path>` merges base.yml, these files and it-runner.yml, plus the
 # shared docker/docker-compose.yml and the app's overrides when APP_IMAGE is set (ADR-0025), plus local-ports.yml with --local.
 #
-# stack.sh reads this file without yq, so keep one flow-style line per project.
+# `stacks:` (a reserved key, never a project) declares, per stack and all optional (ADR-0038):
+#   seed       a command run in the stack's service (compose exec -T <stack>) once the stacks are healthy
+#   env        KEY=value for the tests as a JVM on the stack network (it-runner) sees the stack; stack.sh also
+#              exports them, so <stack>.yml and the app's overrides can interpolate them. ${NAME} and
+#              ${NAME:-default} expand from the entries above and the environment. KEY=<generated-secret> is a
+#              throwaway secret, generated at the first up of the project and reused on a re-run.
+#   local_env  KEY=value for a test JVM on the host (Gradle, --local): replaces the env entry of the same key.
+#
+# stack.sh reads this file without yq, so keep one flow-style line per project, and the block style below for
+# `stacks:`, two spaces per level.
 source-database: [deephaven, sqlserver]
 source-kafka: [deephaven, kafka]
 # AMPS has no public image: the stub sink stands in until the licence for CI is confirmed.
 source-amps: [deephaven]
 connectors-framework: [deephaven]
+
+stacks:
+  deephaven:
+    env:
+      - IT_DEEPHAVEN_HOST=deephaven
+      - IT_DEEPHAVEN_PORT=10000
+    local_env:
+      - IT_DEEPHAVEN_HOST=localhost
+      - IT_DEEPHAVEN_PORT=${DEEPHAVEN_HOST_PORT:-10000}
+  sqlserver:
+    # The generic helpers of test-infra/seed/sqlserver (the databases), mounted at /seed by sqlserver.yml.
+    seed: bash /seed/apply.sh
+    env:
+      - IT_SQLSERVER_HOST=sqlserver
+      - IT_SQLSERVER_PORT=1433
+      # The sa password (ADR-0013): MSSQL_SA_PASSWORD in sqlserver.yml, and the login of the app and the tests
+      # under the Spring property names the app binds.
+      - IT_SA_PASSWORD=<generated-secret>
+      - SPRING_DATASOURCE_USERNAME=sa
+      - SPRING_DATASOURCE_PASSWORD=${IT_SA_PASSWORD}
+    local_env:
+      - IT_SQLSERVER_HOST=localhost
+      - IT_SQLSERVER_PORT=${SQLSERVER_HOST_PORT:-1433}
+  kafka:
+    env:
+      - IT_KAFKA_HOST=kafka
+      - IT_KAFKA_PORT=9092
+    local_env:
+      # The PLAINTEXT_HOST listener (kafka.yml).
+      - IT_KAFKA_HOST=localhost
+      - IT_KAFKA_PORT=${KAFKA_HOST_PORT:-9092}

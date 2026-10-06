@@ -9,7 +9,7 @@ disagree with Gradle. Standard library only and no Gradle: CI reads it before an
 
     python3 scripts/ci/projects.py                  # {":<name>": {"dir": ..., "image": ..., "it": ...}, ...}
     python3 scripts/ci/projects.py --images         # JSON list of the projects that produce images
-    python3 scripts/ci/projects.py --reference-dir  # the directory of platform.yml's reference_app
+    python3 scripts/ci/projects.py --reference-dir  # the directory of platform.yml's reference_app; empty without one
 
 Exit codes: 0 success, 2 platform.yml, a module or the reference app is not as the build expects.
 """
@@ -33,8 +33,9 @@ def fail(message: str) -> None:
     sys.exit(2)
 
 
-def platform_value(root: str, key: str) -> str:
-    """A plain value of platform.yml (`<key>: <value>`), as the build validated it; no YAML parser needed."""
+def platform_value(root: str, key: str, default: str | None = None) -> str:
+    """A plain value of platform.yml (`<key>: <value>`), as the build validated it; no YAML parser needed. Without the
+    key: [default], or a failure when there is none."""
     path = os.path.join(root, PLATFORM_FILE)
     try:
         with open(path, encoding="utf-8") as handle:
@@ -43,6 +44,8 @@ def platform_value(root: str, key: str) -> str:
         fail(f"cannot read {path}: {error}")
     match = re.search(rf"^\s*(?:-\s+)?{re.escape(key)}:\s*([^\s#]+)", text, re.MULTILINE)
     if not match:
+        if default is not None:
+            return default
         fail(f"{PLATFORM_FILE} has no `{key}` (ADR-0030)")
     return match.group(1)
 
@@ -77,7 +80,10 @@ def derive(root: str) -> dict[str, dict]:
 
 
 def reference_dir(root: str, index: dict[str, dict]) -> str:
-    app = platform_value(root, "reference_app")
+    """The reference app's directory, or "" when platform.yml declares no reference_app (ADR-0035)."""
+    app = platform_value(root, "reference_app", default="")
+    if not app:
+        return ""
     entry = index.get(f":{app}")
     if entry is None or not entry["image"]:
         fail(f"{PLATFORM_FILE}: reference_app '{app}' is not an app with an image (ADR-0030)")
@@ -89,7 +95,8 @@ def main() -> None:
     parser.add_argument("--root", default=".", help="the repository root (default: the current directory)")
     what = parser.add_mutually_exclusive_group()
     what.add_argument("--images", action="store_true", help="print the JSON list of the projects that produce images")
-    what.add_argument("--reference-dir", action="store_true", help="print the directory of platform.yml's reference_app")
+    what.add_argument("--reference-dir", action="store_true",
+                      help="print the directory of platform.yml's reference_app (an empty line without one)")
     args = parser.parse_args()
     index = derive(args.root)
     if args.images:

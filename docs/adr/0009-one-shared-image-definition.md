@@ -2,7 +2,7 @@
 
 | | |
 |---|---|
-| Status | Accepted |
+| Status | Accepted. Rules 3 and 6 superseded in part by [ADR-0033](0033-public-base-image-fallback.md) |
 | Date | 2026-10-04 |
 | Applies to | every app image |
 | Enforced by | hadolint in the `lint` job (warnings fail, trusted registries only); `ContainerEnginesTest`; `buildImage` fails in CI when no engine is usable |

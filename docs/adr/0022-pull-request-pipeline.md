@@ -2,7 +2,7 @@
 
 | | |
 |---|---|
-| Status | Accepted. Rule 2 superseded in part by [ADR-0031](0031-ci-derives-the-projects-from-the-build-files.md) |
+| Status | Accepted. Rule 2 superseded in part by [ADR-0031](0031-ci-derives-the-projects-from-the-build-files.md). Rule 1 superseded in part by [ADR-0033](0033-public-base-image-fallback.md) |
 | Date | 2026-10-04 |
 | Applies to | `pr.yml`, `config-lint.yml`, `.github/affected-map.yml`, `scripts/ci/affected.py` |
 | Enforced by | `pr-gate` (the only required check, [ADR-0020](0020-branching-protection-and-merge-rules.md)); `affected.py` (an unmapped path counts as shared) |

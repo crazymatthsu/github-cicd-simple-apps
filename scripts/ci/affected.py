@@ -4,8 +4,8 @@
 Maps the paths changed between two commits onto Gradle projects and prints what the PR workflow must build and
 test. The projects, and the directory that selects each one, are derived from the build files (projects.py,
 ADR-0031); .github/affected-map.yml holds only the path classes (docs, config, shared) and the flags. The
-reference app's directory (platform.yml) also raises `deploy-test`. Standard library only; the YAML map is
-converted with `yq` (preinstalled on GitHub-hosted runners) or PyYAML when available.
+reference app's directory (platform.yml, when it declares one: ADR-0035) also raises `deploy-test`. Standard library
+only; the YAML map is converted with `yq` (preinstalled on GitHub-hosted runners) or PyYAML when available.
 
     python3 scripts/ci/affected.py --base origin/main            # what CI does for this branch
     python3 scripts/ci/affected.py --files a/b.java docs/x.md    # classify explicit paths
@@ -112,11 +112,12 @@ def validate_map(cfg: dict) -> None:
 
 def add_projects(cfg: dict, root: str) -> dict:
     """The derived part of the map (ADR-0031): every project, the directory that selects it, and the reference app's
-    directory as a `deploy-test` path (the kind deployment test deploys that app)."""
+    directory as a `deploy-test` path (the kind deployment test deploys that app; no path without one, ADR-0035)."""
     index = project_index.derive(root)
     cfg["projects"] = {path: {"image": entry["image"], "it": entry["it"]} for path, entry in index.items()}
     cfg["paths"] = [{"glob": f"{entry['dir']}/**", "projects": [path]} for path, entry in index.items()]
-    cfg["deploy-test"] = [*cfg.get("deploy-test", []), f"{project_index.reference_dir(root, index)}/**"]
+    reference = project_index.reference_dir(root, index)
+    cfg["deploy-test"] = [*cfg.get("deploy-test", []), *([f"{reference}/**"] if reference else [])]
     return cfg
 
 

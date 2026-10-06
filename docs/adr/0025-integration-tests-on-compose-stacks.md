@@ -2,7 +2,7 @@
 
 | | |
 |---|---|
-| Status | Accepted |
+| Status | Accepted. Rules 2, 5 and 7 superseded in part by [ADR-0038](0038-stacks-publish-their-test-environment.md); rule 4 superseded in part by [ADR-0033](0033-public-base-image-fallback.md); rule 6 superseded in part by [ADR-0034](0034-main-runs-the-test-stages-the-repository-has.md) |
 | Date | 2026-10-04 |
 | Applies to | every app with integration tests; `test-infra/compose/`; `buildlogic.integration-test` |
 | Enforced by | `_integration-test.yml` (requires a digest-pinned app image); `stack.sh` (readiness, exit codes); the leak check ([ADR-0024](0024-ephemeral-ci-environments.md)) |

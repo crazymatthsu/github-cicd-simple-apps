@@ -19,15 +19,19 @@ The four-argument form is how run-compose.sh health calls it.
 Checks one running instance through its actuator:
   1. GET <base-url>/actuator/health/readiness answers 200 with status UP (polled for SMOKE_TIMEOUT seconds).
   2. GET <base-url>/actuator/info carries the identity APP_ENV / APP_FLOW / APP_NAME / APP_INSTANCE: its
-     connector section has env, flow, app and instance set (never the "none" marker), app is the subproject,
-     and each part equals the arguments, else the APP_* variable of that name when set.
+     app section, else its connector section (the framework's name, ADR-0037), has env, flow, app and instance
+     set (never the "none" marker), app is the subproject, and each part equals the arguments, else the APP_*
+     variable of that name when set. When both sections are present, they must agree. When neither is, the app
+     does not publish its identity: check 2 is skipped with a warning, and check 1 alone decides.
+     Without jq, a section's identity is its "tuple" (<env>/<flow>/<app>/<instance>).
 
 <base-url> defaults to http://localhost:<port>: ACTUATOR_HOST_PORT when set, else the instance's
 _docker-compose.instance.env when the identity is given (the only layer that may set it, ADR-0012), else 18080.
 
 Environment: SMOKE_TIMEOUT (seconds, default 60), ACTUATOR_HOST_PORT, APP_ENV, APP_FLOW, APP_NAME,
 APP_INSTANCE, CONFIG_ROOT (default <repo>/config). jq is used when present.
-Exit codes: 0 every check passed, 1 a check failed or the instance did not answer, 2 usage.
+Exit codes: 0 every check passed (or check 2 was skipped), 1 a check failed or the instance did not answer,
+2 usage.
 EOF2
 }
 
@@ -36,6 +40,7 @@ REPO_ROOT=$(cd "$SCRIPT_DIR/.." && pwd -P)
 POLL_INTERVAL=3
 
 log() { printf 'smoke: %s\n' "$*"; }
+warn() { printf 'smoke: warning: %s\n' "$*" >&2; }
 fail() {
   printf 'smoke: FAIL %s\n' "$*" >&2
   exit 1
@@ -139,14 +144,37 @@ log "readiness UP ($readiness_url)"
 info_url=$base_url/actuator/info
 info=$(curl -fsS --max-time 5 "$info_url" 2>&1) || fail "$info_url: $info"
 if have_jq; then
-  identity=$(jq -r '.connector | [.env, .flow, .app, .instance] | map(. // "") | join("/")' <<<"$info" 2>/dev/null) \
-    || fail "$info_url did not answer JSON with a connector section: $info"
-else
-  # Compact JSON from the actuator: the connector section's "tuple" is <env>/<flow>/<app>/<instance>.
-  identity=$(printf '%s' "$info" | sed -n 's/.*"tuple":"\([^"]*\)".*/\1/p')
+  jq -e 'type == "object"' <<<"$info" >/dev/null 2>&1 || fail "$info_url did not answer a JSON object: $info"
+fi
+# The identity <env>/<flow>/<app>/<instance> in section $1 of the info document; status 1 when the section is absent
+# or holds none of the identity fields (e.g. an app section of other info.app.* properties). Without jq: the
+# section's "tuple", read from the actuator's compact JSON (an identity section holds no nested object).
+section_identity() {
+  local found
+  if have_jq; then
+    found=$(jq -r --arg s "$1" '.[$s] | objects | select([has("env", "flow", "app", "instance", "tuple")] | any)
+      | [.env, .flow, .app, .instance] | map(. // "" | tostring) | join("/")' <<<"$info")
+  else
+    found=$(printf '%s' "$info" | sed -n "s/.*\"$1\":{\\([^{}]*\\)}.*/\\1/p" | sed -n 's/.*"tuple":"\([^"]*\)".*/\1/p')
+  fi
+  [[ -n $found ]] && printf '%s' "$found"
+}
+# The generic app section first, then the framework's connector section (ADR-0037); both present must agree.
+section='' identity='' problems=''
+for name in app connector; do
+  found=$(section_identity "$name") || continue
+  if [[ -z $section ]]; then
+    section=$name identity=$found
+  elif [[ $found != "$identity" ]]; then
+    problems="$problems; the $name section says '$found', the $section section '$identity'"
+  fi
+done
+if [[ -z $section ]]; then
+  warn "$info_url has no app or connector section with the identity: check 2 is skipped (ADR-0037)"
+  log "OK $THIS_APP at $base_url (readiness only)"
+  exit 0
 fi
 IFS=/ read -r got_env got_flow got_app got_instance got_rest <<<"$identity"
-problems=''
 for part in "env=$got_env" "flow=$got_flow" "app=$got_app" "instance=$got_instance"; do
   case ${part#*=} in '' | none) problems="$problems; ${part%%=*} is not set" ;; esac
 done
@@ -157,5 +185,5 @@ for pair in "env:$got_env:$want_env" "flow:$got_flow:$want_flow" "instance:$got_
   if [[ -n $want && $got != "$want" ]]; then problems="$problems; $name is '$got', expected '$want'"; fi
 done
 [[ -z $problems ]] || fail "$info_url identity '${identity:-<none>}':${problems#;}"
-log "identity $identity ($info_url)"
+log "identity $identity ($info_url, $section section)"
 log "OK $THIS_APP at $base_url"

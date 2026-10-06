@@ -2,7 +2,7 @@
 
 | | |
 |---|---|
-| Status | Accepted |
+| Status | Accepted. Rule 5 superseded in part by [ADR-0035](0035-dev-envs-and-reference-app-are-optional.md) |
 | Date | 2026-10-04 |
 | Applies to | every compose stack and kind cluster a workflow creates |
 | Enforced by | the `leak-check` steps of `compose-stack` and `kind-cluster` (fail the job when anything of the run remains); the nightly teardown drill |

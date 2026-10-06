@@ -17,4 +17,12 @@ dependencies {
     testImplementation(libs.spring.boot.starter.test)
     testImplementation(testFixtures(project(":connectors-framework")))
     integrationTestImplementation(testFixtures(project(":connectors-framework")))
+    // The tests assert through the Deephaven Java client: a Flight session uploads, snapshots and releases (ADR-0038).
+    integrationTestImplementation(libs.deephaven.java.client.flight.dagger)
+}
+
+// Arrow, under the Deephaven Flight client, reads direct buffers reflectively: JDK 16+ needs java.nio opened, or
+// MemoryUtil fails to initialise (ADR-0038).
+tasks.named<Test>("integrationTest") {
+    jvmArgs("--add-opens=java.base/java.nio=ALL-UNNAMED")
 }

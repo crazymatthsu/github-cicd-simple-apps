@@ -4,6 +4,7 @@
 #   retention              GHCR sweep (scripts/ci/retention.sh). Dry run unless DRY_RUN=false
 #                          (workflow_dispatch input) or, for scheduled runs, the repository variable
 #                          RETENTION_DRY_RUN=false.
+#   platform               reads the reference app of platform.yml; without one the drills are skipped (ADR-0035)
 #   teardown-drill-fail    starts the reference stack, fails a test on purpose; teardown + leak check
 #                          must still leave the runner clean (the failing-run proof of ADR-0024)
 #   teardown-drill-cancel  dispatches a second run of this workflow (drill=cancel-target) that cancels
@@ -74,8 +75,28 @@ jobs:
           DRY_RUN: ${{ github.event_name == 'workflow_dispatch' && format('{0}', inputs.DRY_RUN) || vars.RETENTION_DRY_RUN || 'true' }}
         run: scripts/ci/retention.sh
 
-  teardown-drill-fail:
+  platform:
+    # The reference app of platform.yml (ADR-0030). Without one there is no reference scenario, so no drill runs
+    # (ADR-0035); retention runs either way.
+    name: platform.yml
     if: inputs.drill != 'cancel-target'
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    outputs:
+      reference-app: ${{ steps.platform.outputs.reference-app }}
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          sparse-checkout: |
+            .github
+            scripts/ci
+
+      - id: platform
+        uses: ./.github/actions/platform-manifest
+
+  teardown-drill-fail:
+    needs: platform
+    if: inputs.drill != 'cancel-target' && needs.platform.outputs.reference-app != ''
     runs-on: ubuntu-latest
     timeout-minutes: 30
     # The failure is the point of the drill: it must not turn the nightly red by itself.
@@ -168,7 +189,8 @@ jobs:
           command: leak-check
 
   teardown-drill-cancel:
-    if: inputs.drill != 'cancel-target'
+    needs: platform
+    if: inputs.drill != 'cancel-target' && needs.platform.outputs.reference-app != ''
     runs-on: ubuntu-latest
     timeout-minutes: 45
     permissions:
@@ -306,8 +328,8 @@ jobs:
           command: leak-check
 
   teardown-drill-report:
-    needs: [teardown-drill-fail, teardown-drill-cancel]
-    if: always() && inputs.drill != 'cancel-target'
+    needs: [platform, teardown-drill-fail, teardown-drill-cancel]
+    if: always() && inputs.drill != 'cancel-target' && needs.platform.outputs.reference-app != ''
     runs-on: ubuntu-latest
     timeout-minutes: 5
     steps:

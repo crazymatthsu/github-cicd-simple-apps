@@ -1,8 +1,9 @@
 #!/usr/bin/env bash
 # affected-test.sh — scripts/ci/projects.py and scripts/ci/affected.py on a fixture repository (ADR-0022, ADR-0031):
 # the projects are derived from the build files of apps_dir and framework/, each project's directory selects it, the
-# reference app's directory raises deploy-test, and a map that still lists projects is refused. The fixture uses this
-# repository's real .github/affected-map.yml. Needs python3, and yq or PyYAML to read the map.
+# reference app's directory raises deploy-test (no directory does without one), and a map that still lists projects is
+# refused. The fixture uses this repository's real .github/affected-map.yml. Needs python3, and yq or PyYAML to read
+# the map.
 # The lint job runs it with the other scripts/test/*-test.sh. Exit codes: 0 every case passed · 1 a case failed ·
 # 2 a missing tool.
 set -euo pipefail
@@ -91,6 +92,14 @@ try:
     check("a directory without a build file is unmapped: everything", decision is not None and decision["full"], err)
     decision, rc, err = affected("docs/guide.md")
     check("documentation builds nothing", decision is not None and decision["docs-only"], err)
+
+    # Without reference_app there is no reference scenario (ADR-0035): an empty directory, and no deploy-test from it.
+    write("platform.yml", "platform: v1\nprojects:\n  - name: demo\n    apps_dir: services   # the apps\n")
+    rc, out, err = run(PROJECTS, "--root", work, "--reference-dir")
+    check("--reference-dir is empty without a reference app", rc == 0 and out.strip() == "", f"exit {rc}: {out}{err}")
+    decision, rc, err = affected("services/ledger/src/main/java/Ledger.java")
+    check("without a reference app, no app's directory raises deploy-test",
+          decision is not None and decision["projects"] == [":ledger"] and not decision["deploy-test"], err)
 
     with open(MAP, encoding="utf-8") as handle:
         stale = handle.read() + '\nprojects:\n  ":ledger": { image: true, it: true }\n'
