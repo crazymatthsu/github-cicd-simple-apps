@@ -52,7 +52,8 @@ SHA256 (yq_linux_amd64.tar.gz) = e68a456f90c577af3fe4960184b3a3cf5c461e0348407c1
 SHA256 (yq_linux_arm64) = 189088da0c6429ec5178dfaab1a114805f6cab0b61b165ab236efedf1d57a71b
 EOF
 }
-# A yq on PATH: "mikefarah <version>" or "python" (the wrapper) or "none".
+# The yq first on PATH: "mikefarah <version>" or "python" (the wrapper). Every case stubs one, so the host's own yq —
+# on a runner, the pinned one that setup-yq just installed — never decides a case.
 with_yq() {
     rm -f "$STUBS/yq"
     case $1 in
@@ -103,7 +104,7 @@ run "another mikefarah version on PATH" 0 "PATH has mikefarah yq v4.0.0" --versi
 [ -x "$WORK/bin/yq" ] && pass "installed over the older version" || fail "no executable at $WORK/bin/yq"
 
 # 4. A checksum mismatch, or no SHA-256 line at all: nothing is installed.
-with_yq none
+with_yq python
 checksums 0000000000000000000000000000000000000000000000000000000000000000 >"$FIXTURES/checksums-bsd"
 rm -rf "${WORK:?}/bin"
 run "checksum mismatch" 1 "checksum mismatch" --version "$WANT"
