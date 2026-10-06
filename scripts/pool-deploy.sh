@@ -581,7 +581,7 @@ build_bundle() { # <out> <tag>
     [ ! -f "$KNOWN_HOSTS" ] || cp -p "$KNOWN_HOSTS" "$OUT_DIR/config/$ENV_NAME/known_hosts"
 
     # The commit the bundle was built from; -dirty when a bundled file differs from it.
-    git_sha="$(git -C "$REPO_ROOT" rev-parse HEAD 2>/dev/null || echo unknown)"
+    git_sha="$(git -C "$REPO_ROOT" rev-parse --verify HEAD 2>/dev/null || echo unknown)" # --verify: no commit yet prints nothing, not "HEAD"
     if [ "$git_sha" != unknown ]; then
         paths=(platform.yml scripts/run-compose.sh scripts/smoke.sh docker/docker-compose.yml "$(rel "$ENV_DIR/$FLOW")" "$(rel "$KNOWN_HOSTS")")
         for rel in ${app_rels[@]+"${app_rels[@]}"}; do
