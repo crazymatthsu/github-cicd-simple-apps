@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.7.0](https://github.com/crazymatthsu/github-cicd-simple-apps/compare/v0.6.0...v0.7.0) (2026-10-06)
+
+
+### Features
+
+* **template:** a repository built from this one passes its first main run: the remaining day-one blockers (ADR-0033 to ADR-0038) ([#26](https://github.com/crazymatthsu/github-cicd-simple-apps/issues/26)) ([e5e42bd](https://github.com/crazymatthsu/github-cicd-simple-apps/commit/e5e42bd95b6293bcd99aac047649a4f9dad19a4d))
+
 ## [0.6.0](https://github.com/crazymatthsu/github-cicd-simple-apps/compare/v0.5.0...v0.6.0) (2026-10-06)
 
 
