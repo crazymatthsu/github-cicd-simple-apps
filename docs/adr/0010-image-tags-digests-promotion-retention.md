@@ -2,7 +2,7 @@
 
 | | |
 |---|---|
-| Status | Accepted |
+| Status | Accepted. Rule 7 superseded in part by [ADR-0032](0032-registry-credentials.md) |
 | Date | 2026-10-04 |
 | Applies to | every image the pipeline builds, tests, publishes, deploys or deletes |
 | Enforced by | `scripts/ci/retag-image.sh` (refuses to move an immutable tag, exit 3; verifies every write); `pushImage` (refuses a local build); `_integration-test.yml` (requires a digest-pinned image); config-lint check 10 (tag policy); `scripts/ci/retention.sh` |

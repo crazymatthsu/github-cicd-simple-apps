@@ -25,6 +25,12 @@ concurrency:
 permissions:
   contents: read
 
+# Behind the company's JFrog, the repository variable YQ_DOWNLOAD_BASE names the generic remote of the GitHub releases
+# that setup-yq fetches yq from (ADR-0021); a composite action cannot read `vars`, so the workflow hands it on. Unset:
+# github.com.
+env:
+  YQ_DOWNLOAD_BASE: ${{ vars.YQ_DOWNLOAD_BASE }}
+
 jobs:
   detect-affected:
     name: detect affected
@@ -67,6 +73,9 @@ jobs:
     steps:
       - uses: actions/checkout@v7
 
+      # The script tests need mikefarah yq v4 (pool-deploy-test.sh); the pin of .github/versions.env.
+      - uses: ./.github/actions/setup-yq
+
       - name: Install linters (pinned)
         run: |
           set -euo pipefail
@@ -108,6 +117,9 @@ jobs:
     needs: detect-affected
     if: needs.detect-affected.outputs.docs-only != 'true' && needs.detect-affected.outputs.projects != '[]'
     uses: ./.github/workflows/_gradle-build.yml
+    secrets:
+      REGISTRY_USER: ${{ secrets.REGISTRY_USER }}
+      REGISTRY_TOKEN: ${{ secrets.REGISTRY_TOKEN }}
     permissions:
       contents: read
       packages: write
@@ -137,6 +149,9 @@ jobs:
       matrix:
         project: ${{ fromJSON(needs.detect-affected.outputs.matrix) }}
     uses: ./.github/workflows/_integration-test.yml
+    secrets:
+      REGISTRY_USER: ${{ secrets.REGISTRY_USER }}
+      REGISTRY_TOKEN: ${{ secrets.REGISTRY_TOKEN }}
     permissions:
       contents: read
       packages: read
@@ -163,6 +178,9 @@ jobs:
       matrix:
         env: ${{ fromJSON(needs.detect-affected.outputs.dev-envs) }}
     uses: ./.github/workflows/_kind-deploy.yml
+    secrets:
+      REGISTRY_USER: ${{ secrets.REGISTRY_USER }}
+      REGISTRY_TOKEN: ${{ secrets.REGISTRY_TOKEN }}
     permissions:
       contents: read
       packages: read

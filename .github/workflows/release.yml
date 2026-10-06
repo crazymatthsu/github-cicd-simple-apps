@@ -38,6 +38,12 @@ concurrency:
 permissions:
   contents: read
 
+# Behind the company's JFrog, the repository variable YQ_DOWNLOAD_BASE names the generic remote of the GitHub releases
+# that setup-yq fetches yq from (ADR-0021); a composite action cannot read `vars`, so the workflow hands it on. Unset:
+# github.com.
+env:
+  YQ_DOWNLOAD_BASE: ${{ vars.YQ_DOWNLOAD_BASE }}
+
 jobs:
   resolve:
     name: resolve tested digests
@@ -141,6 +147,11 @@ jobs:
           done
 
       - uses: ./.github/actions/registry-login
+        with:
+          username: ${{ secrets.REGISTRY_USER }}
+          password: ${{ secrets.REGISTRY_TOKEN }}
+
+      - uses: ./.github/actions/setup-yq
 
       - name: Resolve the tested images and the release tag set
         id: images
@@ -191,6 +202,9 @@ jobs:
   promote:
     needs: resolve
     uses: ./.github/workflows/_docker-publish.yml
+    secrets:
+      REGISTRY_USER: ${{ secrets.REGISTRY_USER }}
+      REGISTRY_TOKEN: ${{ secrets.REGISTRY_TOKEN }}
     permissions:
       contents: read
       packages: write
@@ -230,8 +244,8 @@ jobs:
       - uses: anchore/sbom-action@v0
         with:
           image: ${{ steps.target.outputs.image }}
-          registry-username: ${{ github.actor }}
-          registry-password: ${{ secrets.GITHUB_TOKEN }}
+          registry-username: ${{ secrets.REGISTRY_USER || github.actor }}
+          registry-password: ${{ secrets.REGISTRY_TOKEN || secrets.GITHUB_TOKEN }}
           format: cyclonedx-json
           output-file: ${{ runner.temp }}/sbom/${{ steps.target.outputs.slug }}.cdx.json
           upload-artifact: false
@@ -295,6 +309,8 @@ jobs:
       - uses: actions/checkout@v7
         with:
           ref: ${{ github.event.repository.default_branch }}
+
+      - uses: ./.github/actions/setup-yq # set-image-tag.sh reads the Helm values with it
 
       - name: Open the bump PR
         env:

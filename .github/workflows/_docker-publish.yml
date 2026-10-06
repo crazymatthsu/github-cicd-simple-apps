@@ -9,6 +9,13 @@ name: _docker-publish
 
 on:
   workflow_call:
+    secrets:
+      REGISTRY_USER:
+        description: "Registry user name when the registry of platform.yml is not GHCR (ADR-0032). Empty: GITHUB_TOKEN."
+        required: false
+      REGISTRY_TOKEN:
+        description: "Its token (ADR-0032). Empty: GITHUB_TOKEN."
+        required: false
     inputs:
       images:
         description: JSON object Gradle project → image pinned by digest (repository[:tag]@sha256:...).
@@ -44,6 +51,9 @@ jobs:
             scripts/ci
 
       - uses: ./.github/actions/registry-login
+        with:
+          username: ${{ secrets.REGISTRY_USER }}
+          password: ${{ secrets.REGISTRY_TOKEN }}
 
       - name: Retag by digest
         id: retag

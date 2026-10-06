@@ -18,6 +18,13 @@ name: _kind-deploy
 
 on:
   workflow_call:
+    secrets:
+      REGISTRY_USER:
+        description: "Registry user name when the registry of platform.yml is not GHCR (ADR-0032). Empty: GITHUB_TOKEN."
+        required: false
+      REGISTRY_TOKEN:
+        description: "Its token (ADR-0032). Empty: GITHUB_TOKEN."
+        required: false
     inputs:
       env:
         description: Config env whose instances are deployed (local or a dev env of platform.yml).
@@ -46,6 +53,12 @@ on:
 
 permissions:
   contents: read
+
+# Behind the company's JFrog, the repository variable YQ_DOWNLOAD_BASE names the generic remote of the GitHub releases
+# that setup-yq fetches yq from (ADR-0021); a composite action cannot read `vars`, so the workflow hands it on. Unset:
+# github.com.
+env:
+  YQ_DOWNLOAD_BASE: ${{ vars.YQ_DOWNLOAD_BASE }}
 
 jobs:
   kind-deploy:
@@ -132,6 +145,9 @@ jobs:
           } >> "$GITHUB_STEP_SUMMARY"
 
       - uses: ./.github/actions/registry-login
+        with:
+          username: ${{ secrets.REGISTRY_USER }}
+          password: ${{ secrets.REGISTRY_TOKEN }}
         if: steps.check.outputs.skip != 'true'
 
       - name: Kubernetes tools (test-infra/kind/versions.env)

@@ -2,7 +2,7 @@ name: platform-manifest
 description: >-
   The project values of platform.yml (ADR-0030) for the workflows, so none of them is hard-coded: the registry,
   the project, the dev envs and the reference app. Needs a checkout holding platform.yml (a sparse checkout
-  includes the root files) and mikefarah yq (preinstalled on GitHub-hosted runners). The Gradle build validates
+  includes the root files, and scripts/ci) and mikefarah yq, which the setup-yq action puts on PATH first. The Gradle build validates
   the whole file (the buildlogic.platform settings plugin); this action checks only the values it hands on.
 outputs:
   registry:
@@ -26,6 +26,8 @@ outputs:
 runs:
   using: composite
   steps:
+    - uses: ./.github/actions/setup-yq
+
     - id: read
       shell: bash
       run: |

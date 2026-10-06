@@ -2,7 +2,7 @@
 
 | | |
 |---|---|
-| Status | Accepted |
+| Status | Accepted. Rule 8 superseded in part by [ADR-0032](0032-registry-credentials.md) |
 | Date | 2026-10-04 |
 | Applies to | every repository built from this one (its branches, tags and repository settings) |
 | Enforced by | GitHub rulesets (repository settings, below); the required check `pr-gate`; CODEOWNERS reviews; no workflow job holds `contents: write` on a protected branch |

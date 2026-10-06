@@ -45,6 +45,12 @@ permissions:
 # stacks, i.e. containers, named volumes and a network that could leak. Its image is <registry>/<project>/<AppName>
 # (ADR-0010) at the `main` tag main.yml publishes; each drill job reads these values with the platform-manifest action.
 
+# Behind the company's JFrog, the repository variable YQ_DOWNLOAD_BASE names the generic remote of the GitHub releases
+# that setup-yq fetches yq from (ADR-0021); a composite action cannot read `vars`, so the workflow hands it on. Unset:
+# github.com.
+env:
+  YQ_DOWNLOAD_BASE: ${{ vars.YQ_DOWNLOAD_BASE }}
+
 jobs:
   retention:
     if: inputs.drill != 'cancel-target'
@@ -57,6 +63,8 @@ jobs:
       deployments: read # the last successful Deployment of each dev env names the tags in use (ADR-0027)
     steps:
       - uses: actions/checkout@v7
+
+      - uses: ./.github/actions/setup-yq
 
       - name: Sweep GHCR (ADR-0010)
         env:
@@ -92,6 +100,9 @@ jobs:
         uses: ./.github/actions/platform-manifest
 
       - uses: ./.github/actions/registry-login
+        with:
+          username: ${{ secrets.REGISTRY_USER }}
+          password: ${{ secrets.REGISTRY_TOKEN }}
 
       - name: Image under test (the last published main build)
         id: image
@@ -177,6 +188,9 @@ jobs:
         uses: ./.github/actions/platform-manifest
 
       - uses: ./.github/actions/registry-login
+        with:
+          username: ${{ secrets.REGISTRY_USER }}
+          password: ${{ secrets.REGISTRY_TOKEN }}
 
       - name: Dispatch the self-cancelling drill and judge it
         id: judge
@@ -246,6 +260,9 @@ jobs:
         uses: ./.github/actions/platform-manifest
 
       - uses: ./.github/actions/registry-login
+        with:
+          username: ${{ secrets.REGISTRY_USER }}
+          password: ${{ secrets.REGISTRY_TOKEN }}
 
       - name: Image under test
         env:

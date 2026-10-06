@@ -56,6 +56,7 @@ flowchart LR
 | how an instance is operated and rolled back on a host | [ADR-0017](0017-run-compose-operations-cli-and-runtime-posture.md), [ADR-0018](0018-on-prem-host-layout-versioned-bundles.md), [ADR-0028](0028-host-pool-deployment.md) |
 | what CI does with a pull request and with `main` | [ADR-0021](0021-ci-layering.md) to [ADR-0024](0024-ephemeral-ci-environments.md) |
 | how a release reaches prod | [ADR-0010](0010-image-tags-digests-promotion-retention.md), [ADR-0029](0029-release-and-promotion.md) |
+| how a job logs in to the registry, on GHCR or on Artifactory | [ADR-0032](0032-registry-credentials.md) |
 
 ## The ADRs
 
@@ -73,7 +74,7 @@ flowchart LR
 | [0007](0007-gradle-build-with-convention-plugins.md) | Convention plugins in `build-logic/`, one version catalog and the Spring Boot BOM give reproducible, cached builds; a module declares only its plugins and dependencies. | Accepted; rule 3 superseded in part by ADR-0030 |
 | [0008](0008-versions-derived-from-git.md) | Versions come from git tags and Conventional Commits on every build. No version file exists. | Accepted |
 | [0009](0009-one-shared-image-definition.md) | One Dockerfile and a three-file build context for every app; images are non-root and layered, and Gradle builds them with docker or podman. | Accepted |
-| [0010](0010-image-tags-digests-promotion-retention.md) | Images are `<registry>/<project>/<AppName>` with immutable version and sha tags. They move by digest, are promoted by re-tagging, and the retention sweep keeps everything in use. | Accepted |
+| [0010](0010-image-tags-digests-promotion-retention.md) | Images are `<registry>/<project>/<AppName>` with immutable version and sha tags. They move by digest, are promoted by re-tagging, and the retention sweep keeps everything in use. | Accepted; rule 7 superseded in part by ADR-0032 |
 | **Configuration** | | |
 | [0011](0011-configuration-tree-and-spring-layers.md) | Spring layers apply jar < flow < app < instance < secrets. Layers are files named by level, only `application.<layer>.yml` reaches the container, and nothing is shared above the flow. | Accepted |
 | [0012](0012-compose-template-and-generated-env.md) | One compose template plus structural overrides. The env layers merge into one generated, annotated env per instance, from allow-listed variables. | Accepted |
@@ -86,13 +87,14 @@ flowchart LR
 | [0018](0018-on-prem-host-layout-versioned-bundles.md) | Hosts keep `/apps/<user>/versions/<project>/<version>/` per deploy, with `current` the live one. Activation is atomic, and rollback points `current` back. | Accepted; rule 2 superseded in part by ADR-0030 |
 | [0019](0019-kubernetes-and-helm-are-provisional.md) | Charts, Helm values, the Helm deploy script, check 12 and the kind tier are kept working, not extended, until the EKS design. | Accepted; rule 2 superseded in part by ADR-0030 |
 | **Source control** | | |
-| [0020](0020-branching-protection-and-merge-rules.md) | `main` and `hotfix/*` change only by squash-merged pull request with `pr-gate` green. Pull-request titles are Conventional Commits, and no workflow writes to protected branches. | Accepted |
+| [0020](0020-branching-protection-and-merge-rules.md) | `main` and `hotfix/*` change only by squash-merged pull request with `pr-gate` green. Pull-request titles are Conventional Commits, and no workflow writes to protected branches. | Accepted; rule 8 superseded in part by ADR-0032 |
 | **CI** | | |
 | [0021](0021-ci-layering.md) | Thin trigger workflows call reusable stage workflows, then composite actions, then scripts and Gradle tasks that run on a laptop. Least privilege, and JSON between stages. | Accepted |
 | [0022](0022-pull-request-pipeline.md) | Affected projects come from the changed paths, classified by `affected-map.yml` and the projects' own directories: a fast tier on push, a full tier on pull requests and the merge queue. `pr-gate` is the only required check. | Accepted; rule 2 superseded in part by ADR-0031 |
 | [0023](0023-main-pipeline-build-once-test-publish.md) | Build once, run the component and system tests on those digests, then publish, then deploy dev. | Accepted |
 | [0024](0024-ephemeral-ci-environments.md) | Each job gets its own labelled stack or cluster, torn down in `always()` steps; a leak check and a nightly drill prove the teardown. | Accepted |
 | [0031](0031-ci-derives-the-projects-from-the-build-files.md) | CI derives the projects — which build an image, which have integration tests, which directory selects each — from the build files, with the build's own rules; the affected map keeps only path classes. | Accepted |
+| [0032](0032-registry-credentials.md) | Two optional secrets, `REGISTRY_USER` and `REGISTRY_TOKEN`, log every job in to the registry of `platform.yml`; without them, `GITHUB_TOKEN` on GHCR. The retention sweep is GHCR-only, and the boxes of a pool hold their own read credentials. | Accepted |
 | **Testing** | | |
 | [0025](0025-integration-tests-on-compose-stacks.md) | One `stack.sh` serves laptops and CI. Stacks are declared per project, the app under test runs as deployed, and tests run at a component and a system level. | Accepted |
 | [0026](0026-integration-test-data-and-comparison.md) | Test cases are `test-infra/testdata/<AppName>/<case>/`: a manifest, inputs, and canonical JSON Lines, compared by shared comparators with explicit tolerances. | Accepted |
@@ -176,7 +178,14 @@ flowchart LR
      `group`, `apps_dir`, `kinds` and `reference_app`; `dev_envs`; `regions`, `stages` and `flows`;
    - `component` in `release-please-config.json`;
    - the registry paths in the package rules of `renovate.json`;
-   - a GitHub Environment named after each dev env.
+   - a GitHub Environment named after each dev env;
+   - when the registry is not GHCR: the repository secrets `REGISTRY_USER` and `REGISTRY_TOKEN`
+     ([ADR-0032](0032-registry-credentials.md)), the base images under `<registry>/base/`, and read credentials for
+     the registry on every box of a pool;
+   - `IMAGE_REPO` in each `config/<env>/<flow>/_docker-compose.flow.env` (known gap G24);
+   - a self-hosted runner: Linux (amd64 or arm64) with bash 4, git, curl, docker with buildx, jq and python3 3.8+.
+     The `setup-yq` action installs yq itself, behind JFrog from the generic remote named by the repository
+     variable `YQ_DOWNLOAD_BASE` ([ADR-0021](0021-ci-layering.md)).
 3. Replace the project files with the new project's own:
    - `apps/`, the domain code under `framework/`, `config/`;
    - `test-infra/testdata/`, the dependency stacks, `versions.env`, `stacks.yml`;
@@ -210,6 +219,7 @@ that opens a gap adds a row.
 | G20 | Config-lint checks 7 (merged configuration against metadata) and 8 (parity across envs) are not implemented. | [0014](0014-config-lint-enforces-the-config-contract.md) |
 | G22 | Nothing checks that a derived repository's shared tooling is unchanged. | [0005](0005-repository-layout-and-shared-tooling.md) |
 | G23 | The merge queue is not enabled on `main`. Without it, a pull request from a fork merges with no integration test before the merge (`main.yml` still runs them after it). | [0020](0020-branching-protection-and-merge-rules.md), [0022](0022-pull-request-pipeline.md) |
+| G24 | `IMAGE_REPO` in every flow's `_docker-compose.flow.env` restates the registry and the project of `platform.yml`; `run-compose.sh` cannot derive it, so a new repository edits one line per env and flow. | [0030](0030-platform-yml-declares-every-project-value.md) |
 
 ## Open decisions
 
