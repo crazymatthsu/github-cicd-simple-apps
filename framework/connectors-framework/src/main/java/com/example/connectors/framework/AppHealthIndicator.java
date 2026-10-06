@@ -4,18 +4,18 @@ import org.springframework.boot.health.contributor.Health;
 import org.springframework.boot.health.contributor.HealthIndicator;
 
 /**
- * Health contributor {@code connector}, member of the readiness group (jar defaults:
- * {@code management.endpoint.health.group.readiness.include=readinessState,connector}). The hello-world
+ * Health contributor {@code app} (the bean {@code appHealthIndicator}), member of the readiness group (jar defaults:
+ * {@code management.endpoint.health.group.readiness.include=readinessState,app}). The hello-world
  * connectors have no pipeline yet, so it reports UP with the identity and the sink; a real pipeline reports
  * its source and sink connections here, so that {@code start --wait} and {@code helm --atomic} wait for a
- * working pipeline (ADR-0015).
+ * working pipeline (ADR-0015, ADR-0040).
  */
-public class ConnectorHealthIndicator implements HealthIndicator {
+public class AppHealthIndicator implements HealthIndicator {
 
     private final ConnectorIdentity identity;
     private final ConnectorProperties properties;
 
-    public ConnectorHealthIndicator(ConnectorIdentity identity, ConnectorProperties properties) {
+    public AppHealthIndicator(ConnectorIdentity identity, ConnectorProperties properties) {
         this.identity = identity;
         this.properties = properties;
     }

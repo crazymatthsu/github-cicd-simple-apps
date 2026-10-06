@@ -4,7 +4,7 @@ The Kubernetes test tier of the provisional Helm path ([ADR-0019](../../docs/adr
 [kind](https://kind.sigs.k8s.io/) cluster runs one Helm release per AppInstance, waits for readiness,
 runs `helm test` and a smoke comparison of two instances, and is then deleted. It is a deployment test
 of the chart and the config tree, not an integration test. The apps become ready without a reachable
-database or Deephaven, because readiness is `readinessState` plus the connector indicator. The same
+database or Deephaven, because readiness is `readinessState` plus the `app` indicator. The same
 cluster type is the `deploy-dev` target `cluster: kind-ci` (`config/us-dev/cash/workflows-config.yml`, one inventory per flow) until a dev
 cluster exists.
 

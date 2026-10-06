@@ -14,7 +14,7 @@ class ConnectorPropertiesTest {
     private final ApplicationContextRunner runner = new ApplicationContextRunner()
             .withConfiguration(AutoConfigurations.of(
                     org.springframework.boot.validation.autoconfigure.ValidationAutoConfiguration.class,
-                    ConnectorFrameworkAutoConfiguration.class))
+                    AppRuntimeAutoConfiguration.class))
             .withPropertyValues("spring.application.name=source-database");
 
     @Test
@@ -69,7 +69,7 @@ class ConnectorPropertiesTest {
                 .run(context -> {
                     assertThat(context.getBean(ConnectorIdentity.class).tuple())
                             .isEqualTo("us-dev/cash/source-database/positions-db-to-deephaven");
-                    assertThat(context.getBean(ConnectorHealthIndicator.class).health().getDetails())
+                    assertThat(context.getBean(AppHealthIndicator.class).health().getDetails())
                             .containsEntry("sink", "stub");
                 });
     }

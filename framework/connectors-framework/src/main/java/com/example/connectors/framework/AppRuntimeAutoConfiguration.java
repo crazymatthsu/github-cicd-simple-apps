@@ -15,13 +15,13 @@ import org.springframework.context.annotation.Configuration;
 import org.springframework.core.env.ConfigurableEnvironment;
 
 /**
- * Wires the framework into every connector app: identity, {@code connector.*} binding and validation,
- * the start-up summary, identity tags on every meter, the readiness indicator {@code connector}, the
- * identity in {@code /actuator/info} and the {@code connectorconfig} endpoint.
+ * Wires the framework into every app built on it: identity, {@code connector.*} binding and validation,
+ * the start-up summary, identity tags on every meter, the readiness indicator {@code app}, the
+ * identity in the {@code app} section of {@code /actuator/info} and the {@code appconfig} endpoint (ADR-0040).
  */
 @AutoConfiguration
 @EnableConfigurationProperties(ConnectorProperties.class)
-public class ConnectorFrameworkAutoConfiguration {
+public class AppRuntimeAutoConfiguration {
 
     @Bean
     @ConditionalOnMissingBean
@@ -49,9 +49,10 @@ public class ConnectorFrameworkAutoConfiguration {
     @ConditionalOnClass(HealthIndicator.class)
     static class HealthConfiguration {
 
+        /** The bean name gives the contributor its name: {@code app}, in the readiness group (ADR-0040). */
         @Bean
-        ConnectorHealthIndicator connectorHealthIndicator(ConnectorIdentity identity, ConnectorProperties properties) {
-            return new ConnectorHealthIndicator(identity, properties);
+        AppHealthIndicator appHealthIndicator(ConnectorIdentity identity, ConnectorProperties properties) {
+            return new AppHealthIndicator(identity, properties);
         }
     }
 
@@ -60,13 +61,13 @@ public class ConnectorFrameworkAutoConfiguration {
     static class ActuatorConfiguration {
 
         @Bean
-        ConnectorInfoContributor connectorInfoContributor(ConnectorIdentity identity) {
-            return new ConnectorInfoContributor(identity);
+        AppInfoContributor appInfoContributor(ConnectorIdentity identity) {
+            return new AppInfoContributor(identity);
         }
 
         @Bean
-        ConnectorConfigEndpoint connectorConfigEndpoint(ConfigurableEnvironment environment, ConnectorIdentity identity) {
-            return new ConnectorConfigEndpoint(environment, identity);
+        AppConfigEndpoint appConfigEndpoint(ConfigurableEnvironment environment, ConnectorIdentity identity) {
+            return new AppConfigEndpoint(environment, identity);
         }
     }
 }

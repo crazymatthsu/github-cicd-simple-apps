@@ -59,8 +59,8 @@ renders every instance (check 12, [ADR-0014](../../docs/adr/0014-config-lint-enf
 
 ## Actuator (port 8080)
 
-`/actuator/health/liveness`, `/actuator/health/readiness` (includes the `connector` indicator),
+`/actuator/health/liveness`, `/actuator/health/readiness` (includes the `app` indicator),
 `/actuator/health` (adds `sourceDatabase` and `db`), `/actuator/info` (identity, version, git sha),
-`/actuator/prometheus` (tags `env`, `flow`, `app`, `instance`), `/actuator/connectorconfig` (the masked
+`/actuator/prometheus` (tags `env`, `flow`, `app`, `instance`), `/actuator/appconfig` (the masked
 configuration summary). `java -jar build/libs/source-database.jar --print-config` prints the summary and
 exits without connecting.

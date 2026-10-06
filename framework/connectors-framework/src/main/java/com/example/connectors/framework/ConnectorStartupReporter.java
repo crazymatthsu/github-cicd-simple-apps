@@ -22,7 +22,7 @@ public class ConnectorStartupReporter implements ApplicationListener<Application
     public void onApplicationEvent(ApplicationReadyEvent event) {
         ConnectorMdc.put(identity);
         ConfigurableEnvironment environment = event.getApplicationContext().getEnvironment();
-        if (environment.getProperty(ConnectorApplication.PRINT_CONFIG_PROPERTY, Boolean.class, false)) {
+        if (environment.getProperty(PlatformApplication.PRINT_CONFIG_PROPERTY, Boolean.class, false)) {
             return; // --print-config prints the summary itself
         }
         log.info("Started {}", identity.tuple());

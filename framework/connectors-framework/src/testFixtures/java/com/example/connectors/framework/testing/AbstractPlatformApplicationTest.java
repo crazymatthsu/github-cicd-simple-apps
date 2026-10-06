@@ -8,6 +8,7 @@ import java.net.http.HttpResponse;
 import java.time.Duration;
 import java.util.Map;
 
+import org.assertj.core.api.InstanceOfAssertFactories;
 import org.junit.jupiter.api.Test;
 
 import org.springframework.beans.factory.annotation.Value;
@@ -16,14 +17,14 @@ import org.springframework.boot.test.context.SpringBootTest;
 import static org.assertj.core.api.Assertions.assertThat;
 
 /**
- * The actuator contract every connector app honours (ADR-0015), as a reusable Spring Boot test: extend it
- * from the app's test package and the whole application starts on a random port with the identity
+ * The actuator contract every app on the framework honours (ADR-0015, ADR-0040), as a reusable Spring Boot test:
+ * extend it from the app's test package and the whole application starts on a random port with the identity
  * {@code local/cash/<app>/unit-test}.
  */
 @SpringBootTest(webEnvironment = SpringBootTest.WebEnvironment.RANDOM_PORT, properties = {
         "APP_ENV=local", "APP_FLOW=cash", "APP_INSTANCE=unit-test",
         "connector.amps.password=not-a-real-secret-1234" })
-public abstract class AbstractConnectorApplicationTest {
+public abstract class AbstractPlatformApplicationTest {
 
     private static final HttpClient HTTP = HttpClient.newBuilder().connectTimeout(Duration.ofSeconds(5)).build();
 
@@ -64,19 +65,23 @@ public abstract class AbstractConnectorApplicationTest {
     }
 
     @Test
-    void readinessIsUpAndIncludesTheConnectorIndicator() {
+    void readinessIsUpAndIncludesTheAppIndicator() {
         Map<String, Object> readiness = getJson("/actuator/health/readiness");
         assertThat(readiness).containsEntry("status", "UP");
-        assertThat(readiness.get("components")).asString().contains("connector").contains(expectedTuple());
+        assertThat(readiness.get("components")).as("the readiness group is readinessState,app (ADR-0040)")
+                .asInstanceOf(InstanceOfAssertFactories.map(String.class, Object.class))
+                .containsOnlyKeys("readinessState", "app");
+        assertThat(readiness.get("components")).asString().contains(expectedTuple());
     }
 
     @Test
     void infoShowsIdentityAndBuild() {
         Map<String, Object> info = getJson("/actuator/info");
-        assertThat(info.get("connector")).asString().contains(expectedTuple());
-        assertThat(info.get("app")).as("the generic identity section carries the connector section's values (ADR-0037)")
-                .isNotNull().isEqualTo(info.get("connector"));
-        assertThat(info).containsKey("build");
+        assertThat(info.get("app")).as("the identity section of /actuator/info (ADR-0037, ADR-0040)")
+                .asInstanceOf(InstanceOfAssertFactories.map(String.class, Object.class))
+                .containsEntry("tuple", expectedTuple()).containsEntry("complete", true);
+        assertThat(info).as("the framework publishes the identity under app only (ADR-0040)")
+                .doesNotContainKey("connector").containsKey("build");
     }
 
     @Test
@@ -86,8 +91,8 @@ public abstract class AbstractConnectorApplicationTest {
     }
 
     @Test
-    void connectorConfigEndpointMasksSecrets() {
-        String body = get("/actuator/connectorconfig");
+    void appConfigEndpointMasksSecrets() {
+        String body = get("/actuator/appconfig");
         assertThat(body).contains(expectedTuple()).contains("connector.amps.password")
                 .doesNotContain("not-a-real-secret-1234");
     }

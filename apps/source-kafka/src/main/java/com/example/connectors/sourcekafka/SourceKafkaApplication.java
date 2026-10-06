@@ -2,7 +2,7 @@ package com.example.connectors.sourcekafka;
 
 import org.springframework.boot.autoconfigure.SpringBootApplication;
 
-import com.example.connectors.framework.ConnectorApplication;
+import com.example.connectors.framework.PlatformApplication;
 
 /**
  * source-kafka: Kafka -> Deephaven / AMPS. Hello world: on start-up it logs its identity and the masked effective configuration
@@ -13,6 +13,6 @@ import com.example.connectors.framework.ConnectorApplication;
 public class SourceKafkaApplication {
 
     public static void main(String[] args) {
-        ConnectorApplication.run(SourceKafkaApplication.class, args);
+        PlatformApplication.run(SourceKafkaApplication.class, args);
     }
 }

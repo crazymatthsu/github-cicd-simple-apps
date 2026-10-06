@@ -127,7 +127,7 @@ class SqlServerToDeephavenIT {
                 ItEnvironment.value("APP_FLOW", "cash"), CONNECTOR, testCase.instance());
         Map<String, Object> info = actuator.info();
         assertThat(info).as("/actuator/info of %s", app.get())
-                .extractingByKey("connector", InstanceOfAssertFactories.map(String.class, Object.class))
+                .extractingByKey("app", InstanceOfAssertFactories.map(String.class, Object.class))
                 .containsEntry("tuple", tuple)
                 .containsEntry("app", CONNECTOR)
                 .containsEntry("instance", testCase.instance())

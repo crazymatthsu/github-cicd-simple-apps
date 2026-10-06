@@ -41,8 +41,9 @@ Commands (ADR-0017):
   down [--volumes]      down --remove-orphans; --volumes adds -v (on *-dev hosts also needs --force)
   restart               stop, then start (picks up env layer, image and mount changes)
   config                the rendered compose configuration, secrets masked
-  app-config [--offline]  the app's masked configuration summary: /actuator/appconfig, else the framework's
-                        /actuator/connectorconfig (ADR-0037); --offline: run the image with --print-config
+  app-config [--offline]  the app's masked configuration summary: /actuator/appconfig, else the
+                        /actuator/connectorconfig of an image built before ADR-0040 (ADR-0037); --offline: run
+                        the image with --print-config
   printenv              the resolved environment (paths, identity, engine, the combined env), secrets masked
   compose-env           write the combined env (below) and print its path
   health                container running and /actuator/health/readiness UP; 1 otherwise
@@ -1154,8 +1155,8 @@ cmd_record_tag() {
 }
 
 # The masked configuration summary (ADR-0016) from the running instance: the generic endpoint appconfig, else the
-# framework's connectorconfig (ADR-0037). --offline runs the image with --print-config, which only an app on the
-# framework understands.
+# connectorconfig of an image built before ADR-0040 (ADR-0037). --offline runs the image with --print-config, which
+# only an app on the framework understands.
 cmd_app_config() {
     local rc base endpoint body
     if [ "$OFFLINE" -eq 1 ]; then

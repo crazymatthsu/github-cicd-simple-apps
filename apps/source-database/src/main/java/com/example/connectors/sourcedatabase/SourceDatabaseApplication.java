@@ -2,7 +2,7 @@ package com.example.connectors.sourcedatabase;
 
 import org.springframework.boot.autoconfigure.SpringBootApplication;
 
-import com.example.connectors.framework.ConnectorApplication;
+import com.example.connectors.framework.PlatformApplication;
 
 /**
  * source-database: JDBC (SQL Server) -> AMPS / Deephaven. Hello world: on start-up it logs its identity and the masked effective configuration
@@ -13,6 +13,6 @@ import com.example.connectors.framework.ConnectorApplication;
 public class SourceDatabaseApplication {
 
     public static void main(String[] args) {
-        ConnectorApplication.run(SourceDatabaseApplication.class, args);
+        PlatformApplication.run(SourceDatabaseApplication.class, args);
     }
 }

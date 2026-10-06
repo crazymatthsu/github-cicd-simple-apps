@@ -9,18 +9,18 @@ import org.springframework.boot.WebApplicationType;
 import org.springframework.context.ConfigurableApplicationContext;
 
 /**
- * {@code main} of every connector app. Besides a normal start it supports {@value #PRINT_CONFIG}: resolve the
- * configuration exactly as a start would, print the masked summary on stdout and exit without serving or
+ * {@code main} of every app on the framework (ADR-0040). Besides a normal start it supports {@value #PRINT_CONFIG}:
+ * resolve the configuration exactly as a start would, print the masked summary on stdout and exit without serving or
  * connecting — what {@code run-compose.sh ... app-config --offline} runs (ADR-0016).
  */
-public final class ConnectorApplication {
+public final class PlatformApplication {
 
     public static final String PRINT_CONFIG = "--print-config";
 
     /** Set while printing the configuration: components that would connect somewhere stay idle. */
     public static final String PRINT_CONFIG_PROPERTY = "connectors.framework.print-config";
 
-    private ConnectorApplication() {
+    private PlatformApplication() {
     }
 
     public static ConfigurableApplicationContext run(Class<?> primarySource, String... args) {

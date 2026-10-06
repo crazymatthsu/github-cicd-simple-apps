@@ -19,7 +19,7 @@ import org.springframework.core.env.PropertySource;
 
 /**
  * The effective configuration of a connector as every app prints it at start-up, as
- * {@code --print-config} prints it and as {@code /actuator/connectorconfig} returns it (ADR-0016): the
+ * {@code --print-config} prints it and as {@code /actuator/appconfig} returns it (ADR-0016): the
  * identity, the configuration layers that were found, and every property under {@link #PREFIXES} with its
  * effective value — secrets masked by {@link SecretMasker}.
  */

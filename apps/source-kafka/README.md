@@ -49,5 +49,5 @@ renders every instance (check 12, [ADR-0014](../../docs/adr/0014-config-lint-enf
 ## Actuator (port 8080)
 
 `/actuator/health/liveness`, `/actuator/health/readiness`, `/actuator/info` (identity, version, git sha),
-`/actuator/prometheus` (tags `env`, `flow`, `app`, `instance`), `/actuator/connectorconfig`.
+`/actuator/prometheus` (tags `env`, `flow`, `app`, `instance`), `/actuator/appconfig`.
 `--print-config` prints the masked configuration and exits.

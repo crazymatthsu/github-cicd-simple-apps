@@ -207,13 +207,14 @@ EOF
 cat >"$DOCKER_BIN/curl" <<'EOF'
 #!/usr/bin/env bash
 # Stub curl for run-compose.sh health and smoke.sh: with STUB_HEALTHY set, the actuator of a ready instance
-# (readiness UP, the identity of STUB_INSTANCE, default inst-one); otherwise nothing listens.
+# (readiness UP, the identity of STUB_INSTANCE, default inst-one, in the app section, ADR-0040); otherwise nothing
+# listens.
 printf 'curl %s\n' "$*" >>"$STUB_LOG"
 [ -n "${STUB_HEALTHY:-}" ] || { echo "curl: (7) Failed to connect" >&2; exit 7; }
 case "${!#}" in
     */actuator/health/readiness) echo '{"status":"UP"}' ;;
     */actuator/info)
-        printf '{"connector":{"env":"eu-dev","flow":"alpha","app":"demo-app","instance":"%s"}}\n' \
+        printf '{"app":{"env":"eu-dev","flow":"alpha","app":"demo-app","instance":"%s"}}\n' \
             "${STUB_INSTANCE:-inst-one}" ;;
     *) echo "curl: (22) The requested URL returned error: 404" >&2; exit 22 ;;
 esac
