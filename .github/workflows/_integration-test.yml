@@ -11,6 +11,13 @@ name: _integration-test
 
 on:
   workflow_call:
+    secrets:
+      REGISTRY_USER:
+        description: "Registry user name when the registry of platform.yml is not GHCR (ADR-0032). Empty: GITHUB_TOKEN."
+        required: false
+      REGISTRY_TOKEN:
+        description: "Its token (ADR-0032). Empty: GITHUB_TOKEN."
+        required: false
     inputs:
       project:
         description: Gradle project path, e.g. :source-database.
@@ -92,6 +99,9 @@ jobs:
           echo "diagnostics=it-diagnostics-${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}-${IT_LEVEL}-${slug}" >> "$GITHUB_OUTPUT"
 
       - uses: ./.github/actions/registry-login
+        with:
+          username: ${{ secrets.REGISTRY_USER }}
+          password: ${{ secrets.REGISTRY_TOKEN }}
 
       - name: Build environment (Gradle cache for it-runner, ci-build image)
         uses: ./.github/actions/setup-build-env

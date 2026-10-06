@@ -92,6 +92,9 @@ jobs:
         uses: ./.github/actions/platform-manifest
 
       - uses: ./.github/actions/registry-login
+        with:
+          username: ${{ secrets.REGISTRY_USER }}
+          password: ${{ secrets.REGISTRY_TOKEN }}
 
       - name: Image under test (the last published main build)
         id: image
@@ -177,6 +180,9 @@ jobs:
         uses: ./.github/actions/platform-manifest
 
       - uses: ./.github/actions/registry-login
+        with:
+          username: ${{ secrets.REGISTRY_USER }}
+          password: ${{ secrets.REGISTRY_TOKEN }}
 
       - name: Dispatch the self-cancelling drill and judge it
         id: judge
@@ -246,6 +252,9 @@ jobs:
         uses: ./.github/actions/platform-manifest
 
       - uses: ./.github/actions/registry-login
+        with:
+          username: ${{ secrets.REGISTRY_USER }}
+          password: ${{ secrets.REGISTRY_TOKEN }}
 
       - name: Image under test
         env:

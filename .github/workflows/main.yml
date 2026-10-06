@@ -44,6 +44,9 @@ jobs:
 
   build:
     uses: ./.github/workflows/_gradle-build.yml
+    secrets:
+      REGISTRY_USER: ${{ secrets.REGISTRY_USER }}
+      REGISTRY_TOKEN: ${{ secrets.REGISTRY_TOKEN }}
     permissions:
       contents: read
       packages: write
@@ -65,6 +68,9 @@ jobs:
       matrix:
         project: ${{ fromJSON(needs.build.outputs.it-projects) }}
     uses: ./.github/workflows/_integration-test.yml
+    secrets:
+      REGISTRY_USER: ${{ secrets.REGISTRY_USER }}
+      REGISTRY_TOKEN: ${{ secrets.REGISTRY_TOKEN }}
     permissions:
       contents: read
       packages: read
@@ -78,6 +84,9 @@ jobs:
   system-test:
     needs: [platform, build, integration-test]
     uses: ./.github/workflows/_integration-test.yml
+    secrets:
+      REGISTRY_USER: ${{ secrets.REGISTRY_USER }}
+      REGISTRY_TOKEN: ${{ secrets.REGISTRY_TOKEN }}
     permissions:
       contents: read
       packages: read
@@ -93,6 +102,9 @@ jobs:
   publish:
     needs: [build, system-test, config-lint]
     uses: ./.github/workflows/_docker-publish.yml
+    secrets:
+      REGISTRY_USER: ${{ secrets.REGISTRY_USER }}
+      REGISTRY_TOKEN: ${{ secrets.REGISTRY_TOKEN }}
     permissions:
       contents: read
       packages: write
@@ -113,6 +125,9 @@ jobs:
       matrix:
         env: ${{ fromJSON(needs.platform.outputs.dev-envs) }}
     uses: ./.github/workflows/_kind-deploy.yml
+    secrets:
+      REGISTRY_USER: ${{ secrets.REGISTRY_USER }}
+      REGISTRY_TOKEN: ${{ secrets.REGISTRY_TOKEN }}
     permissions:
       contents: read
       packages: read
@@ -140,4 +155,6 @@ jobs:
       env: ${{ matrix.env }}
       tag: ${{ needs.build.outputs.version }}
       images: ${{ needs.build.outputs.images }}
+    # inherit, not a list: DEV_DEPLOY_SSH_KEY is an Environment secret, and an Environment secret resolves only in
+    # the called job that names the Environment. The registry secrets of ADR-0032 ride along.
     secrets: inherit

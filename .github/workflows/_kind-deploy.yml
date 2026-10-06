@@ -18,6 +18,13 @@ name: _kind-deploy
 
 on:
   workflow_call:
+    secrets:
+      REGISTRY_USER:
+        description: "Registry user name when the registry of platform.yml is not GHCR (ADR-0032). Empty: GITHUB_TOKEN."
+        required: false
+      REGISTRY_TOKEN:
+        description: "Its token (ADR-0032). Empty: GITHUB_TOKEN."
+        required: false
     inputs:
       env:
         description: Config env whose instances are deployed (local or a dev env of platform.yml).
@@ -132,6 +139,9 @@ jobs:
           } >> "$GITHUB_STEP_SUMMARY"
 
       - uses: ./.github/actions/registry-login
+        with:
+          username: ${{ secrets.REGISTRY_USER }}
+          password: ${{ secrets.REGISTRY_TOKEN }}
         if: steps.check.outputs.skip != 'true'
 
       - name: Kubernetes tools (test-infra/kind/versions.env)

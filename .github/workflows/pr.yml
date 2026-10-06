@@ -108,6 +108,9 @@ jobs:
     needs: detect-affected
     if: needs.detect-affected.outputs.docs-only != 'true' && needs.detect-affected.outputs.projects != '[]'
     uses: ./.github/workflows/_gradle-build.yml
+    secrets:
+      REGISTRY_USER: ${{ secrets.REGISTRY_USER }}
+      REGISTRY_TOKEN: ${{ secrets.REGISTRY_TOKEN }}
     permissions:
       contents: read
       packages: write
@@ -137,6 +140,9 @@ jobs:
       matrix:
         project: ${{ fromJSON(needs.detect-affected.outputs.matrix) }}
     uses: ./.github/workflows/_integration-test.yml
+    secrets:
+      REGISTRY_USER: ${{ secrets.REGISTRY_USER }}
+      REGISTRY_TOKEN: ${{ secrets.REGISTRY_TOKEN }}
     permissions:
       contents: read
       packages: read
@@ -163,6 +169,9 @@ jobs:
       matrix:
         env: ${{ fromJSON(needs.detect-affected.outputs.dev-envs) }}
     uses: ./.github/workflows/_kind-deploy.yml
+    secrets:
+      REGISTRY_USER: ${{ secrets.REGISTRY_USER }}
+      REGISTRY_TOKEN: ${{ secrets.REGISTRY_TOKEN }}
     permissions:
       contents: read
       packages: read

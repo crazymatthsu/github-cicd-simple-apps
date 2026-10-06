@@ -141,6 +141,9 @@ jobs:
           done
 
       - uses: ./.github/actions/registry-login
+        with:
+          username: ${{ secrets.REGISTRY_USER }}
+          password: ${{ secrets.REGISTRY_TOKEN }}
 
       - name: Resolve the tested images and the release tag set
         id: images
@@ -191,6 +194,9 @@ jobs:
   promote:
     needs: resolve
     uses: ./.github/workflows/_docker-publish.yml
+    secrets:
+      REGISTRY_USER: ${{ secrets.REGISTRY_USER }}
+      REGISTRY_TOKEN: ${{ secrets.REGISTRY_TOKEN }}
     permissions:
       contents: read
       packages: write
@@ -230,8 +236,8 @@ jobs:
       - uses: anchore/sbom-action@v0
         with:
           image: ${{ steps.target.outputs.image }}
-          registry-username: ${{ github.actor }}
-          registry-password: ${{ secrets.GITHUB_TOKEN }}
+          registry-username: ${{ secrets.REGISTRY_USER || github.actor }}
+          registry-password: ${{ secrets.REGISTRY_TOKEN || secrets.GITHUB_TOKEN }}
           format: cyclonedx-json
           output-file: ${{ runner.temp }}/sbom/${{ steps.target.outputs.slug }}.cdx.json
           upload-artifact: false

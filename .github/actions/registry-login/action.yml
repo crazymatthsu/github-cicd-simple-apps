@@ -1,8 +1,9 @@
 name: registry-login
 description: >-
-  Logs the container engine in to the image registry (ADR-0021). Demo: GHCR with the workflow's
-  GITHUB_TOKEN (the calling job needs `packages: read` to pull, `packages: write` to push).
-  Enterprise: JFrog Artifactory through GitHub OIDC (ADR-0021) — stubbed below.
+  Logs the container engine in to the image registry (ADR-0021, ADR-0032). With the username and password
+  inputs (the REGISTRY_USER / REGISTRY_TOKEN secrets of a repository on JFrog Artifactory) it logs in with them;
+  without them it uses the workflow's GITHUB_TOKEN, which is what GHCR needs (the calling job then needs
+  `packages: read` to pull, `packages: write` to push). JFrog through GitHub OIDC is stubbed below.
 inputs:
   registry:
     description: >-
@@ -15,13 +16,13 @@ inputs:
     required: false
     default: token
   username:
-    description: User name for token mode.
+    description: "User name for token mode (secret REGISTRY_USER, ADR-0032). Empty: github.actor."
     required: false
-    default: ${{ github.actor }}
+    default: ''
   password:
-    description: Password or token for token mode.
+    description: "Password or token for token mode (secret REGISTRY_TOKEN, ADR-0032). Empty: the workflow's GITHUB_TOKEN."
     required: false
-    default: ${{ github.token }}
+    default: ''
 runs:
   using: composite
   steps:
@@ -68,5 +69,5 @@ runs:
       uses: docker/login-action@v4
       with:
         registry: ${{ steps.host.outputs.registry }}
-        username: ${{ inputs.username }}
-        password: ${{ inputs.password }}
+        username: ${{ inputs.username || github.actor }}
+        password: ${{ inputs.password || github.token }}

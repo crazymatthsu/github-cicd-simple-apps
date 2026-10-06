@@ -33,6 +33,18 @@ name: _deploy-dev
 
 on:
   workflow_call:
+    secrets:
+      REGISTRY_USER:
+        description: "Registry user name when the registry of platform.yml is not GHCR (ADR-0032). Empty: GITHUB_TOKEN."
+        required: false
+      REGISTRY_TOKEN:
+        description: "Its token (ADR-0032). Empty: GITHUB_TOKEN."
+        required: false
+      DEV_DEPLOY_SSH_KEY:
+        description: >-
+          The env's deploy key, held by its GitHub Environment (ADR-0020, ADR-0027). An Environment secret resolves
+          only in the job that names the Environment, so main.yml calls this workflow with `secrets: inherit`.
+        required: false
     inputs:
       env:
         description: Config env to deploy (a dev env of platform.yml).
@@ -386,6 +398,9 @@ jobs:
       - name: Registry login (this run's images)
         if: steps.helm-plan.outputs.kind == 'true'
         uses: ./.github/actions/registry-login
+        with:
+          username: ${{ secrets.REGISTRY_USER }}
+          password: ${{ secrets.REGISTRY_TOKEN }}
 
       - name: kind cluster up (cluster kind-ci)
         if: steps.helm-plan.outputs.kind == 'true'

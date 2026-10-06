@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# retention.sh — GHCR image retention (ADR-0010). Dry run by default.
+# retention.sh — GHCR image retention (ADR-0010). Dry run by default. Another registry: exit 0 with a notice (ADR-0032).
 #
 # Usage: retention.sh [--dry-run | --delete] [--owner <owner>] [--repo <owner/repo>] [--package <name>]...
 #   --package   container package, e.g. github-cicd-simple-apps/source-database (repeatable). Default: every
@@ -52,6 +52,17 @@ config_dir=${CONFIG_DIR:-config}
 for n in "$grace_days" "$rc_keep" "$rc_min_age_days"; do
   [[ $n =~ ^[0-9]+$ ]] || { echo "retention.sh: PR_GRACE_DAYS, RC_KEEP and RC_MIN_AGE_DAYS must be integers" >&2; exit 2; }
 done
+
+# GHCR only (ADR-0032): the sweep works through the GitHub Packages API. Another registry (platform.yml) keeps
+# its own retention policy, so the sweep says so and does nothing.
+if [[ -f platform.yml ]]; then
+  # A plain top-level line, read without yq (ADR-0030 rule 2).
+  registry=$(awk '/^registry:/ { sub(/^registry:[ \t]*/, ""); sub(/#.*$/, ""); sub(/[ \t]+$/, ""); print; exit }' platform.yml)
+  if [[ -n $registry && ${registry%%/*} != ghcr.io ]]; then
+    echo "::notice title=retention::the registry of platform.yml is $registry, not GHCR: retention is the registry's own policy (ADR-0032); nothing to sweep"
+    exit 0
+  fi
+fi
 
 if [[ ${#packages[@]} -eq 0 ]]; then
   # The package is the image path without the registry, <project>/<AppName> (ADR-0010): for a top-level app

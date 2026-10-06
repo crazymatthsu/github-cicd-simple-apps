@@ -13,6 +13,13 @@ name: _gradle-build
 
 on:
   workflow_call:
+    secrets:
+      REGISTRY_USER:
+        description: "Registry user name when the registry of platform.yml is not GHCR (ADR-0032). Empty: GITHUB_TOKEN."
+        required: false
+      REGISTRY_TOKEN:
+        description: "Its token (ADR-0032). Empty: GITHUB_TOKEN."
+        required: false
     inputs:
       projects:
         description: "'all' or a JSON list of Gradle project paths (affected-matrix output `projects`)."
@@ -85,6 +92,9 @@ jobs:
       - uses: actions/checkout@v7
 
       - uses: ./.github/actions/registry-login
+        with:
+          username: ${{ secrets.REGISTRY_USER }}
+          password: ${{ secrets.REGISTRY_TOKEN }}
 
       # The registry of every image, base images included (ADR-0010, ADR-0030).
       - id: platform
@@ -182,9 +192,9 @@ jobs:
     # (ADR-0021). On a runner whose user is not 1001, use `--user root` instead.
     container:
       image: ${{ needs.probe.outputs.ci-build-image }}
-      credentials:
-        username: ${{ github.actor }}
-        password: ${{ secrets.GITHUB_TOKEN }}
+      credentials: # the registry's secrets, else GITHUB_TOKEN on GHCR (ADR-0032)
+        username: ${{ secrets.REGISTRY_USER || github.actor }}
+        password: ${{ secrets.REGISTRY_TOKEN || secrets.GITHUB_TOKEN }}
       options: --group-add ${{ needs.probe.outputs.docker-gid }}
     # A job container gets `sh` as its default shell (the runner cannot probe the image for bash); the run
     # steps below use bash syntax, and both the ci-build image (Ubuntu) and the runner host have bash.
@@ -218,6 +228,9 @@ jobs:
           fi
 
       - uses: ./.github/actions/registry-login
+        with:
+          username: ${{ secrets.REGISTRY_USER }}
+          password: ${{ secrets.REGISTRY_TOKEN }}
         if: env.IMAGE_BUILD_TASKS != ''
 
       - uses: ./.github/actions/setup-build-env
@@ -320,6 +333,9 @@ jobs:
             scripts/ci
 
       - uses: ./.github/actions/registry-login
+        with:
+          username: ${{ secrets.REGISTRY_USER }}
+          password: ${{ secrets.REGISTRY_TOKEN }}
 
       - name: Resolve digests and the ADR-0010 tag set
         id: collect
