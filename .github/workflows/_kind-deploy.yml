@@ -7,7 +7,7 @@
 #   across the releases → diagnostics on failure → kind down and leak check on success, failure AND
 #   cancel (always(), ADR-0024).
 # A deployment test of the chart and the config tree, not an integration test: the apps become ready
-# without a reachable database or Deephaven (readiness = readinessState + the app indicator, ADR-0040).
+# without any reachable dependency (readiness = readinessState + the app indicator, ADR-0040).
 #
 # Image: `images` pins the app image by digest (<repo>:<tag>@sha256:...). kind-cluster `load` pulls
 # that digest, tags it <repo>:<tag> and loads it into the node (kind load docker-image); every release is

@@ -15,7 +15,7 @@ projects:
     group: __GROUP__                # the Gradle (Maven) group of every module
     apps_dir: __APPS_DIR__          # apps live in <apps_dir>/<AppName>/ (ADR-0006)
     kinds: __KINDS__                # the runtimes a deploy target may name (workflows-config.yml `kind`): [compose] or [compose, helm]
-    # reference_app: <AppName>      # the app of the system test, the kind deployment test and the nightly teardown drill;
+    # reference_app: <AppName>      # the app of the kind deployment test and the nightly teardown drill;
                                     # left out until the repository has that scenario (ADR-0035)
 dev_envs: __DEV_ENVS__              # the envs this repository configures and deploys, <region>-dev each, or [] until the
                                     # first dev env has boxes and a GitHub Environment (ADR-0035); the promoted envs live

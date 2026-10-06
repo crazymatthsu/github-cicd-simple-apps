@@ -18,7 +18,7 @@ outputs:
     value: ${{ steps.read.outputs.dev-envs }}
   reference-app:
     description: >-
-      The app of the system test, the kind deployment test and the teardown drill, projects[0].reference_app. Empty
+      The app of the kind deployment test and the teardown drill, projects[0].reference_app. Empty
       when platform.yml declares none (ADR-0035): the callers then skip those jobs.
     value: ${{ steps.read.outputs.reference-app }}
   reference-project:

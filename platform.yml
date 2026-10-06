@@ -15,7 +15,7 @@ projects:
     group: com.example.connectors   # the Gradle (Maven) group of every module
     apps_dir: apps                  # apps live in <apps_dir>/<AppName>/ (ADR-0006)
     kinds: [compose, helm]          # the runtimes a deploy target may name (workflows-config.yml `kind`)
-    reference_app: source-database  # the app of the system test, the kind deployment test and the nightly teardown drill
+    reference_app: source-database  # the app of the kind deployment test and the nightly teardown drill
 dev_envs: [us-dev]                  # the envs this repository configures and deploys; the promoted envs live in the
                                     # configuration repository (ADR-0004)
 # The identity vocabulary (ADR-0003): an env is `local` or <region>-<stage>; every stage but dev is promoted (ADR-0004).

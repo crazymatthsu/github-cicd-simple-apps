@@ -25,11 +25,10 @@
       "groupName": "Spring Boot"
     },
     {
-      "description": "The Deephaven server images pinned for the ITs (upstream, and the platform's own for the system test) and the Deephaven Java client stay on one version (test-infra/compose/versions.env, gradle/libs.versions.toml).",
+      "description": "The Deephaven server image pinned for the ITs and the Deephaven Java client stay on one version (test-infra/compose/versions.env, gradle/libs.versions.toml).",
       "matchPackageNames": [
         "io.deephaven:**",
-        "ghcr.io/deephaven/server",
-        "ghcr.io/crazymatthsu/deephaven-server"
+        "ghcr.io/deephaven/server"
       ],
       "groupName": "Deephaven"
     },

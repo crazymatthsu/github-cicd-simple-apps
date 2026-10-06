@@ -1,16 +1,15 @@
-# Main pipeline (ADR-0023, ADR-0034).
+# Main pipeline (ADR-0023, ADR-0034, ADR-0044).
 #
-#   build (all, images pushed with the pre-release tags) ─┬─ integration-test (component, every app that has them)
+#   build (all, images pushed with the pre-release tags) ─┬─ integration-test (every app that has them, ADR-0025)
 #                                                         └─ config-lint
-#   integration-test → system-test (the reference app with the platform's Deephaven server image, ADR-0023)
-#   → publish (verify + `main` tag) → kind-deploy (ADR-0019: per dev env, one Helm release per instance of the
-#     reference app in a throwaway kind cluster, readiness, helm test, smoke diff) → deploy-dev (per dev env, its
-#     Environment, main only: compose pools + Helm into kind-ci) → GitHub Deployment record
-# A test stage runs only when the repository has what it needs (ADR-0034): integration-test when a project has
-# integration tests, system-test when test-infra/compose/versions.env declares DEEPHAVEN_SERVER_IMAGE. publish
-# follows the stages that ran and passed, and never a failed or cancelled one.
-# The dev envs and the reference app are the project values of platform.yml (ADR-0030), read by the platform job,
-# which also reads the system image from versions.env.
+#   integration-test + config-lint → publish (verify + `main` tag) → kind-deploy (ADR-0019: per dev env, one Helm
+#     release per instance of the reference app in a throwaway kind cluster, readiness, helm test, smoke diff)
+#     → deploy-dev (per dev env, its Environment, main only: compose pools + Helm into kind-ci)
+#     → GitHub Deployment record
+# The integration-test stage runs only when a project has integration tests (ADR-0034), against the dependency
+# images pinned in test-infra/compose/versions.env (ADR-0044). publish follows the stages that ran and passed, and
+# never a failed or cancelled one.
+# The dev envs and the reference app are the project values of platform.yml (ADR-0030), read by the platform job.
 #
 # No workflow writes to main (ADR-0020, ADR-0027): the dev tree declares `main`, the Deployment record names the literal
 # version, and no job here holds `contents: write` — so no loop guard is needed.
@@ -44,26 +43,15 @@ jobs:
       dev-envs: ${{ steps.platform.outputs.dev-envs }}
       reference-app: ${{ steps.platform.outputs.reference-app }}
       reference-project: ${{ steps.platform.outputs.reference-project }}
-      system-image: ${{ steps.system.outputs.system-image }}
     steps:
       - uses: actions/checkout@v7
         with:
           sparse-checkout: |
             .github
             scripts/ci
-            test-infra/compose
 
       - id: platform
         uses: ./.github/actions/platform-manifest
-
-      # The switch of the system test (ADR-0034): DEEPHAVEN_SERVER_IMAGE, read as _integration-test.yml reads it.
-      # No file, no line or an empty value: an empty output, and no system test.
-      - id: system
-        name: System image (versions.env)
-        run: |
-          versions=test-infra/compose/versions.env
-          image=$(if [[ -f $versions ]]; then sed -n 's/^DEEPHAVEN_SERVER_IMAGE=//p' "$versions" | tail -n 1; fi)
-          echo "system-image=$image" >> "$GITHUB_OUTPUT"
 
   build:
     uses: ./.github/workflows/_gradle-build.yml
@@ -102,47 +90,20 @@ jobs:
     with:
       project: ${{ matrix.project }}
       images: ${{ needs.build.outputs.images }}
-      level: component
-      ci-build-image: ${{ needs.build.outputs.ci-build-image }}
-      retention-days: 14
-
-  system-test:
-    # Only when versions.env declares the system image (ADR-0034) and platform.yml a reference app (ADR-0035). The if
-    # names no status function, so the implicit success() over the needs still applies: a failed or skipped
-    # integration-test skips this job too. That is intended (the system test runs the reference app's integration
-    # tests); do not add always() or !failure().
-    needs: [platform, build, integration-test]
-    if: needs.platform.outputs.system-image != '' && needs.platform.outputs.reference-app != ''
-    uses: ./.github/workflows/_integration-test.yml
-    secrets:
-      REGISTRY_USER: ${{ secrets.REGISTRY_USER }}
-      REGISTRY_TOKEN: ${{ secrets.REGISTRY_TOKEN }}
-    permissions:
-      contents: read
-      packages: read
-    with:
-      # The reference scenario (ADR-0023): the reference app of platform.yml against this run's images and the
-      # platform's Deephaven server image (DEEPHAVEN_SERVER_IMAGE in test-infra/compose/versions.env, ADR-0025).
-      project: ${{ needs.platform.outputs.reference-project }}
-      images: ${{ needs.build.outputs.images }}
-      level: system
       ci-build-image: ${{ needs.build.outputs.ci-build-image }}
       retention-days: 14
 
   publish:
-    # Never after a failed or cancelled stage (ADR-0034). It runs in three cases:
-    #   - the integration tests ran and passed, and the system test ran and passed;
-    #   - the integration tests ran and passed, and no system image is declared, so no system test;
-    #   - no project has integration tests, so neither test stage ran.
-    # A skipped test stage is accepted only with platform and build passed: then those are the only reasons left for
-    # the skip. platform and integration-test are needs for that check: a failure of either skips system-test, which
-    # alone would look like the second case.
-    needs: [platform, build, integration-test, system-test, config-lint]
+    # Never after a failed or cancelled stage (ADR-0034, ADR-0044). It runs in two cases:
+    #   - the integration tests ran and passed;
+    #   - no project has integration tests, so the stage was skipped.
+    # A skipped integration-test is accepted only with platform and build passed: then an empty it-projects list is
+    # the only reason left for the skip.
+    needs: [platform, build, integration-test, config-lint]
     if: >-
       ${{ !cancelled() && needs.platform.result == 'success' && needs.build.result == 'success'
       && needs.config-lint.result == 'success'
-      && contains(fromJSON('["success","skipped"]'), needs.integration-test.result)
-      && contains(fromJSON('["success","skipped"]'), needs.system-test.result) }}
+      && contains(fromJSON('["success","skipped"]'), needs.integration-test.result) }}
     uses: ./.github/workflows/_docker-publish.yml
     secrets:
       REGISTRY_USER: ${{ secrets.REGISTRY_USER }}
@@ -152,7 +113,7 @@ jobs:
       packages: write
     with:
       # The build job pushed the ADR-0010 set (<next>-rc.<n>, sha-<sha7>, main) so the IT jobs on other
-      # runners can pull the digests. After the system test, publish re-asserts every tag on exactly
+      # runners can pull the digests. After the tests, publish re-asserts every tag on exactly
       # the tested digests (a tag pointing elsewhere is moved if convenience, refused if immutable);
       # deploy-dev and release.yml consume nothing before this gate has passed.
       images: ${{ needs.build.outputs.images }}

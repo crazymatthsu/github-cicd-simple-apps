@@ -2,7 +2,7 @@
 
 | | |
 |---|---|
-| Status | Accepted. Supersedes in part rules 1 and 3 of ADR-0030, rule 5 of ADR-0024, rule 1 of ADR-0027 and rule 5 of ADR-0034 (rule 7) |
+| Status | Accepted. Supersedes in part rules 1 and 3 of ADR-0030, rule 5 of ADR-0024, rule 1 of ADR-0027 and rule 5 of ADR-0034 (rule 7). Rule 4 superseded in part by [ADR-0044](0044-no-system-test-one-integration-test-level.md) |
 | Date | 2026-10-06 |
 | Applies to | every repository built from this one; every reader of `dev_envs` and `projects[0].reference_app` in `platform.yml` |
 | Enforced by | the `buildlogic.platform` settings plugin (`PlatformManifestTest`); config-lint check 1 (`ConfigLinterTest`); the env checks of `run-compose.sh`, `helm-deploy-instance.sh` and `pool-deploy.sh` (`scripts/test/env-vocabulary-test.sh`); `scripts/ci/projects.py` and `affected.py` (`scripts/test/affected-test.sh`); the `platform-manifest` action; the job conditions of `pr.yml`, `main.yml` and `nightly.yml`; `pr-gate` |
@@ -46,6 +46,10 @@ its rules limit this repository to `local` and its dev envs, however many there 
    `needs.<platform job>.outputs.dev-envs != '[]'`. A job of the reference scenario MUST carry
    `needs.<platform job>.outputs.reference-app != ''`. Each condition is a plain `&&` term, so it combines with
    others, such as the system image of `test-infra/compose/versions.env`. What each switch turns off:
+
+   > **Superseded in part by [ADR-0044](0044-no-system-test-one-integration-test-level.md) rule 5.** There is no
+   > `system-test` row: `reference_app` switches the kind deployment test, the nightly teardown drill and the
+   > `public-base` job, and no condition of `main.yml` reads `versions.env`.
 
    | Job | `dev_envs: []` | no `reference_app` |
    |---|---|---|

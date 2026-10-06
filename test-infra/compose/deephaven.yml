@@ -1,7 +1,7 @@
 # test-infra/compose/deephaven.yml: the Deephaven CI profile (ADR-0025).
 #
-# Image: upstream ghcr.io/deephaven/server for component ITs, pinned in versions.env. System ITs set
-# DEEPHAVEN_IMAGE to the platform's own Deephaven server image (DEEPHAVEN_SERVER_IMAGE in versions.env, ADR-0025).
+# Image: DEEPHAVEN_IMAGE, pinned in versions.env (upstream ghcr.io/deephaven/server here; a repository that tests
+# against its own build of the server pins that build instead, ADR-0044).
 # Port 10000 is never published here; only local-ports.yml publishes it, on localhost.
 x-ci-labels: &ci-labels
   - "${LABEL_PREFIX:?run through test-infra/compose/stack.sh}.ci.run=${CI_RUN_ID:-local}"
