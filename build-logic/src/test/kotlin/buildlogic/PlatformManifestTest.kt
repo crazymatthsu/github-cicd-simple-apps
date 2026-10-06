@@ -21,6 +21,8 @@ class PlatformManifestTest {
         regions: [us, jp]
         stages: [dev, qa, prod]
         flows: [cash]
+        property_prefixes: [payments, ledger-feed.sink]
+        secret_properties: [payments.feed.username, payments.kafka.sasl]  # and every key below them
     """.trimIndent()
 
     private fun problems(text: String): String = assertThrows<IllegalArgumentException> { PlatformManifest.parse(text) }.message!!
@@ -30,10 +32,41 @@ class PlatformManifestTest {
         val manifest = PlatformManifest.parse(valid)
         assertEquals(PlatformManifest("v1", "app", "ghcr.io/acme", "payments-apps", "com.acme.payments", "services",
             listOf("compose"), "ledger-feed", listOf("us-dev", "jp-dev"), listOf("us", "jp"), listOf("dev", "qa", "prod"),
-            listOf("cash")), manifest)
+            listOf("cash"), listOf("payments", "ledger-feed.sink"), listOf("payments.feed.username", "payments.kafka.sasl")),
+            manifest)
         assertEquals(mapOf("registry" to "ghcr.io/acme", "project" to "payments-apps", "group" to "com.acme.payments",
             "appsDir" to "services", "kinds" to "compose", "referenceApp" to "ledger-feed", "devEnvs" to "us-dev,jp-dev",
-            "regions" to "us,jp", "stages" to "dev,qa,prod", "flows" to "cash"), manifest.asProperties())
+            "regions" to "us,jp", "stages" to "dev,qa,prod", "flows" to "cash",
+            "propertyPrefixes" to "payments,ledger-feed.sink",
+            "secretProperties" to "payments.feed.username,payments.kafka.sasl"), manifest.asProperties())
+    }
+
+    @Test
+    fun `the property roots and the secret properties are dotted lower-case names on one top-level line`() {
+        // ADR-0042: property_prefixes is non-empty, secret_properties may be [] (Spring's names are built in).
+        val none = PlatformManifest.parse(valid.replace(Regex("(?m)^secret_properties:.*$"), "secret_properties: []"))
+        assertEquals(emptyList<String>(), none.secretProperties)
+        assertEquals("", none.asProperties()["secretProperties"])
+        val messages = problems(valid
+            .replace("property_prefixes: [payments, ledger-feed.sink]", "property_prefixes: []")
+            .replace(Regex("(?m)^secret_properties:.*$"),
+                "secret_properties: [payments.feed_user, 9lives.token, payments., payments.kafka.sasl, payments.kafka.sasl]"))
+        for (expected in listOf(
+            "property_prefixes is required (a non-empty list)",
+            "secret_properties: 'payments.feed_user' is not valid",
+            "secret_properties: '9lives.token' is not valid",
+            "secret_properties: 'payments.' is not valid",
+            "secret_properties: 'payments.kafka.sasl' is listed twice",
+        )) {
+            assertTrue(messages.contains(expected), "missing '$expected' in:\n$messages")
+        }
+        // Both keys are required, and run-compose.sh reads them without a YAML parser.
+        val missing = problems(valid.replace(Regex("(?m)^secret_properties:.*$"), "")
+            .replace("property_prefixes: [payments, ledger-feed.sink]", "property_prefixes:\n  - Payments"))
+        assertTrue(missing.contains("secret_properties is required (a list)"), missing)
+        assertTrue(missing.contains("secret_properties must be a one-line list"), missing)
+        assertTrue(missing.contains("property_prefixes: 'Payments' is not valid"), missing)
+        assertTrue(missing.contains("property_prefixes must be a one-line list of unquoted words"), missing)
     }
 
     @Test

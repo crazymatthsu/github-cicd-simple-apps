@@ -52,9 +52,13 @@ class ConfigLinterTest {
     private fun kubeconform(valid: Int, skipped: Int = 0, resources: String = "") =
         "{\n  \"resources\": [$resources],\n  \"summary\": {\"valid\": $valid, \"invalid\": 0, \"errors\": 0, \"skipped\": $skipped}\n}\n"
 
-    /** The vocabulary of this repository's platform.yml; `envs = null` as in the configuration repository, which holds every env. */
+    /**
+     * The vocabulary of this repository's platform.yml; `envs = null` as in the configuration repository, which holds
+     * every env. The property roots and secret properties are the test's own (ADR-0042).
+     */
     private val everyEnv = LintScope(regions = setOf("us", "jp"), stages = setOf("dev", "qa", "uat", "prod", "parallel"),
-        flows = setOf("cash", "deriv", "swap"), kinds = setOf("compose", "helm"), envs = null)
+        flows = setOf("cash", "deriv", "swap"), kinds = setOf("compose", "helm"), envs = null,
+        propertyPrefixes = listOf("connector"), secretProperties = listOf("connector.feed.username"))
 
     private val helmRequests = mutableListOf<HelmRequest>()
     private val helmOk = HelmRunner { request -> helmRequests += request; CommandResult(0, "") }
@@ -158,6 +162,46 @@ class ConfigLinterTest {
         assertTrue(messages.contains("'spring.datasource.password' is a secret property"), messages)
         assertTrue(messages.contains("IMAGE_TAG 'latest' in us-prod must be an immutable release tag"), messages)
         assertTrue(messages.contains("image.tag 'latest' in us-prod must be an immutable release tag"), messages)
+    }
+
+    // --- platform.yml (ADR-0042): the app's own property roots and the project's secret properties -------------------
+
+    @Test
+    fun `check 9 takes the secret properties from platform_yml, and Spring's datasource credentials are built in`() {
+        validInstance("local", "trades-db-to-amps")
+        write("local/cash/source-database/trades-db-to-amps/application.instance.yml",
+            "orders:\n  feed:\n    username: svc-orders\n  kafka:\n    sasl:\n      mechanism: PLAIN\n" +
+                "spring:\n  datasource:\n    username: sa\n")
+        val orders = everyEnv.copy(propertyPrefixes = listOf("orders"),
+            secretProperties = listOf("orders.feed.username", "orders.kafka.sasl"))
+        val messages = lint(scope = orders).filter { it.check == 9 }.text()
+        assertTrue(messages.contains("'orders.feed.username' is a secret property"), messages)
+        assertTrue(messages.contains("'orders.kafka.sasl.mechanism' is a secret property"), messages)
+        assertTrue(messages.contains("'spring.datasource.username' is a secret property"), messages)
+        // An empty secret_properties leaves the built-in names: another project's names are no secrets here.
+        val none = lint(scope = orders.copy(secretProperties = emptyList())).filter { it.check == 9 }
+        assertEquals(listOf("'spring.datasource.username' is a secret property"),
+            none.map { it.message.substringBefore(" (ADR-") }, none.text())
+    }
+
+    @Test
+    fun `checks 4 and 5 forbid the environment-variable form of every property_prefixes entry, and Spring's roots`() {
+        val scope = everyEnv.copy(propertyPrefixes = listOf("orders", "acme.billing-svc"))
+        assertEquals(listOf("SPRING_", "LOGGING_", "MANAGEMENT_", "ORDERS_", "ACME_BILLINGSVC_"), scope.forbiddenPrefixes)
+        validInstance("local", "trades-db-to-amps")
+        write("local/cash/source-database/trades-db-to-amps/_docker-compose.instance.env",
+            composeEnv("local", "cash", "source-database", "trades-db-to-amps",
+                "ORDERS_FEED_URL=x\nACME_BILLINGSVC_URL=y\nMANAGEMENT_PORT=1\nCONNECTOR_SOURCE_HOST=db\n"))
+        write("local/cash/source-database/trades-db-to-amps/_helm-values.instance.yaml",
+            instanceValues("local", "trades-db-to-amps", extraEnv = "  ORDERS_FEED_URL: x\n"))
+        val messages = lint(scope = scope).text()
+        for (key in listOf("ORDERS_FEED_URL", "ACME_BILLINGSVC_URL", "MANAGEMENT_PORT")) {
+            assertTrue(messages.contains("$key is forbidden in an env layer " +
+                "(SPRING_/LOGGING_/MANAGEMENT_/ORDERS_/ACME_BILLINGSVC_ belong in YAML"), messages)
+        }
+        assertTrue(messages.contains("env.ORDERS_FEED_URL is forbidden: SPRING_/LOGGING_/MANAGEMENT_/ORDERS_/"), messages)
+        // Another project's root is no Spring root here, only a variable that no env layer allows.
+        assertTrue(messages.contains("CONNECTOR_SOURCE_HOST is not an allowed compose variable"), messages)
     }
 
     // --- platform.yml (ADR-0030): the vocabulary, the runtimes and the envs of this repository ------------------------

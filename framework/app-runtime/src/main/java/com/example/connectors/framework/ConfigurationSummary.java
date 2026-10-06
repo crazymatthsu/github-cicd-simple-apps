@@ -5,6 +5,7 @@ import java.util.Collections;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Properties;
 import java.util.SortedMap;
 import java.util.TreeMap;
 
@@ -25,30 +26,53 @@ import org.springframework.core.env.PropertySource;
  */
 public record ConfigurationSummary(ConnectorIdentity identity, List<String> layers, SortedMap<String, String> properties) {
 
-    /** The prefixes shown: the connector contract and the datasource (to prove its credentials are masked). */
-    public static final List<String> PREFIXES = List.of("connector", "spring.datasource");
+    /** Spring's datasource root, always shown, to prove its credentials are masked (ADR-0016, ADR-0042). */
+    public static final String DATASOURCE_PREFIX = "spring.datasource";
+
+    /**
+     * The property roots shown: the app's own, platform.yml {@code property_prefixes}, which the build writes into
+     * every jar, then {@value #DATASOURCE_PREFIX} (ADR-0042).
+     */
+    public static final List<String> PREFIXES =
+            prefixes(PlatformResource.read(ConfigurationSummary.class.getClassLoader()));
 
     public ConfigurationSummary {
         layers = List.copyOf(layers);
         properties = Collections.unmodifiableSortedMap(new TreeMap<>(properties));
     }
 
+    /**
+     * The {@code property_prefixes} of the platform resource {@code platform}, then {@value #DATASOURCE_PREFIX};
+     * the datasource only when there is none (a unit test of a module whose jar was not built).
+     */
+    static List<String> prefixes(Properties platform) {
+        List<String> prefixes = new ArrayList<>(PlatformResource.list(platform, PlatformResource.PROPERTY_PREFIXES));
+        prefixes.add(DATASOURCE_PREFIX);
+        return prefixes.stream().distinct().toList();
+    }
+
     public static ConfigurationSummary capture(ConfigurableEnvironment environment, ConnectorIdentity identity) {
+        return capture(environment, identity, PREFIXES);
+    }
+
+    /** {@link #capture(ConfigurableEnvironment, ConnectorIdentity)} of the properties under {@code prefixes}. */
+    static ConfigurationSummary capture(ConfigurableEnvironment environment, ConnectorIdentity identity,
+            List<String> prefixes) {
+        List<ConfigurationPropertyName> roots = prefixes.stream().map(ConfigurationPropertyName::of).toList();
         Binder binder = Binder.get(environment);
         SortedMap<String, String> properties = new TreeMap<>();
         for (ConfigurationPropertySource source : ConfigurationPropertySources.get(environment)) {
             if (!(source instanceof IterableConfigurationPropertySource iterable)) {
                 continue;
             }
-            iterable.stream().filter(ConfigurationSummary::isShown).forEach(name -> properties.computeIfAbsent(
+            iterable.stream().filter(name -> isShown(roots, name)).forEach(name -> properties.computeIfAbsent(
                     name.toString(), key -> SecretMasker.mask(key, effectiveValue(binder, name))));
         }
         return new ConfigurationSummary(identity, configLayers(environment), properties);
     }
 
-    private static boolean isShown(ConfigurationPropertyName name) {
-        for (String prefix : PREFIXES) {
-            ConfigurationPropertyName root = ConfigurationPropertyName.of(prefix);
+    private static boolean isShown(List<ConfigurationPropertyName> roots, ConfigurationPropertyName name) {
+        for (ConfigurationPropertyName root : roots) {
             if (root.isAncestorOf(name)) {
                 return true;
             }
@@ -119,7 +143,7 @@ public record ConfigurationSummary(ConnectorIdentity identity, List<String> laye
                 .append(layers.isEmpty() ? "none (jar defaults only)" : String.join(", ", layers));
         text.append("\n  effective configuration (secrets masked):");
         if (properties.isEmpty()) {
-            text.append("\n    (no connector.* properties)");
+            text.append("\n    (no property under ").append(String.join(", ", PREFIXES)).append(')');
         }
         properties.forEach((key, value) -> text.append("\n    ").append(key).append(" = ").append(value));
         return text.toString();

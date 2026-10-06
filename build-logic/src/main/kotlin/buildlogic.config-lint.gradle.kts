@@ -45,6 +45,9 @@ tasks.register<ConfigLintTask>("configLint") {
     flows = platformList("flows")
     kinds = platformList("kinds")
     devEnvs = platformList("devEnvs")
+    // The apps' own property roots and the project's secret properties (ADR-0042): checks 4, 5 and 9.
+    propertyPrefixes = platformList("propertyPrefixes")
+    secretProperties = platformList("secretProperties")
     template = layout.projectDirectory.file("docker/docker-compose.yml")
     appOverrides = overrideFiles.map { files -> files.mapValues { it.value.absolutePath } }
     appOverrideFiles.from(overrideFiles.map { it.values })

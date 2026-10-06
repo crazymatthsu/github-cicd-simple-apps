@@ -64,6 +64,8 @@ dev_envs: [eu-dev]
 regions: [eu, ap]
 stages: [dev, qa, uat, prod, parallel]
 flows: [alpha, beta]
+property_prefixes: [demo]
+secret_properties: []
 EOF
     for app in demo-app other-app; do
         mkdir -p "$FIX/apps/$app/docker"

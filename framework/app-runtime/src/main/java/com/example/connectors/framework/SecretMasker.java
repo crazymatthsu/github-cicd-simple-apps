@@ -1,25 +1,27 @@
 package com.example.connectors.framework;
 
+import java.util.ArrayList;
 import java.util.List;
 import java.util.Locale;
+import java.util.Properties;
 import java.util.regex.Pattern;
 
 /**
- * Decides which configuration values are printed as {@value #MASK} (ADR-0013): every key under the
- * secret property names below (usernames included, they rotate with their password) and every key with a
- * secret-looking segment ({@code password}, {@code secret}, {@code token}, {@code credential}, {@code *key}).
- * Credentials embedded in URLs are masked in the value itself.
+ * Decides which configuration values are printed as {@value #MASK} (ADR-0013): every key under a secret property
+ * name (usernames included, they rotate with their password) and every key with a secret-looking segment
+ * ({@code password}, {@code secret}, {@code token}, {@code credential}, {@code *key}). Credentials embedded in URLs
+ * are masked in the value itself.
+ *
+ * <p>The secret property names are Spring's datasource credentials, built in, and the project's own: platform.yml
+ * {@code secret_properties}, which the build writes into every jar (ADR-0042). The segment rule is built in.
  */
 public final class SecretMasker {
 
     public static final String MASK = "******";
 
-    /** The secret properties of the connectors (ADR-0013), in normalised form. */
-    private static final List<String> SECRET_PROPERTIES = List.of(
-            "spring.datasource.username", "spring.datasource.password",
-            "connector.amps.username", "connector.amps.password",
-            "connector.kafka.sasl", "connector.deephaven.token",
-            "connector.tls.keystore.password");
+    /** Spring's own secret properties, built in (ADR-0042): the datasource credentials of any Spring Boot app. */
+    static final List<String> BUILT_IN_SECRET_PROPERTIES =
+            List.of("spring.datasource.username", "spring.datasource.password");
 
     private static final Pattern SECRET_SEGMENT = Pattern.compile(
             "^(.*(password|passwd|secret|token|credential).*|pwd|.*key)$");
@@ -30,10 +32,36 @@ public final class SecretMasker {
     private SecretMasker() {
     }
 
+    /** The secret property names of this app, read once from the jar's platform resource. */
+    private static final class Platform {
+        static final List<String> SECRET_PROPERTIES =
+                secretProperties(PlatformResource.read(SecretMasker.class.getClassLoader()));
+    }
+
+    /** The secret property names this app masks: Spring's datasource credentials, then platform.yml's. */
+    public static List<String> secretProperties() {
+        return Platform.SECRET_PROPERTIES;
+    }
+
+    /**
+     * The built-in names followed by the {@code secret_properties} of the platform resource {@code platform}; the
+     * built-in names only when there is none (a unit test of a module whose jar was not built).
+     */
+    static List<String> secretProperties(Properties platform) {
+        List<String> names = new ArrayList<>(BUILT_IN_SECRET_PROPERTIES);
+        names.addAll(PlatformResource.list(platform, PlatformResource.SECRET_PROPERTIES));
+        return names.stream().distinct().toList();
+    }
+
     /** True when the value of {@code key} (dotted, relaxed or environment-variable form) must not be shown. */
     public static boolean isSecret(String key) {
+        return isSecret(key, Platform.SECRET_PROPERTIES);
+    }
+
+    /** {@link #isSecret(String)} against the secret property names {@code secretProperties}. */
+    static boolean isSecret(String key, List<String> secretProperties) {
         String normalised = normalise(key);
-        for (String property : SECRET_PROPERTIES) {
+        for (String property : secretProperties) {
             String secret = normalise(property);
             if (normalised.equals(secret) || normalised.startsWith(secret + ".")) {
                 return true;
