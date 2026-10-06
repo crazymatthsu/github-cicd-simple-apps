@@ -76,16 +76,17 @@ flowchart LR
 | [0009](0009-one-shared-image-definition.md) | One Dockerfile and a three-file build context for every app; images are non-root and layered, and Gradle builds them with docker or podman. | Accepted |
 | [0010](0010-image-tags-digests-promotion-retention.md) | Images are `<registry>/<project>/<AppName>` with immutable version and sha tags. They move by digest, are promoted by re-tagging, and the retention sweep keeps everything in use. | Accepted; rule 7 superseded in part by ADR-0032 |
 | **Configuration** | | |
-| [0011](0011-configuration-tree-and-spring-layers.md) | Spring layers apply jar < flow < app < instance < secrets. Layers are files named by level, only `application.<layer>.yml` reaches the container, and nothing is shared above the flow. | Accepted |
+| [0011](0011-configuration-tree-and-spring-layers.md) | Spring layers apply jar < flow < app < instance < secrets. Layers are files named by level, only `application.<layer>.yml` reaches the container, and nothing is shared above the flow. | Accepted; rule 5 superseded in part by ADR-0036 |
 | [0012](0012-compose-template-and-generated-env.md) | One compose template plus structural overrides. The env layers merge into one generated, annotated env per instance, from allow-listed variables. | Accepted |
 | [0013](0013-secrets.md) | Secrets never enter git, the layers, the images or the bundles. They are passed through from the shell or mounted at `/secrets/`, masked wherever printed, and scanned for. | Accepted |
-| [0014](0014-config-lint-enforces-the-config-contract.md) | `./gradlew configLint` enforces the configuration rules with numbered checks, the same on a laptop and in CI. | Accepted |
+| [0014](0014-config-lint-enforces-the-config-contract.md) | `./gradlew configLint` enforces the configuration rules with numbered checks, the same on a laptop and in CI. | Accepted; rule 2 superseded in part by ADR-0036 |
+| [0036](0036-helm-checks-only-when-kinds-include-helm.md) | config-lint requires a chart per app and the Helm values of every instance, and renders them, only when `platform.yml` `kinds` includes `helm`; a values file that exists is checked either way. | Accepted |
 | **Runtime operations** | | |
 | [0015](0015-actuator-health-and-metrics-contract.md) | Every app exposes `health`, `info`, `prometheus` and `connectorconfig` on port 8080. Readiness is `readinessState` plus `connector`, the identity is on every meter, and one test checks all of it. | Accepted |
 | [0016](0016-logging-and-startup-configuration-summary.md) | Logs go to stdout with the identity on every line. The masked effective configuration is available at start-up, from an endpoint, and offline. | Accepted |
 | [0017](0017-run-compose-operations-cli-and-runtime-posture.md) | `run-compose.sh` operates every compose-run instance of this repository — laptop, CI, dev host — with safety rules and an audit line; the shared template hardens every container. | Accepted; rule 5 superseded in part by ADR-0030 |
 | [0018](0018-on-prem-host-layout-versioned-bundles.md) | Hosts keep `/apps/<user>/versions/<project>/<version>/` per deploy, with `current` the live one. Activation is atomic, and rollback points `current` back. | Accepted; rule 2 superseded in part by ADR-0030 |
-| [0019](0019-kubernetes-and-helm-are-provisional.md) | Charts, Helm values, the Helm deploy script, check 12 and the kind tier are kept working, not extended, until the EKS design. | Accepted; rule 2 superseded in part by ADR-0030 |
+| [0019](0019-kubernetes-and-helm-are-provisional.md) | Charts, Helm values, the Helm deploy script, check 12 and the kind tier are kept working, not extended, until the EKS design. | Accepted; rule 2 superseded in part by ADR-0030 and ADR-0036, rule 5 in part by ADR-0036 |
 | **Source control** | | |
 | [0020](0020-branching-protection-and-merge-rules.md) | `main` and `hotfix/*` change only by squash-merged pull request with `pr-gate` green. Pull-request titles are Conventional Commits, and no workflow writes to protected branches. | Accepted; rule 8 superseded in part by ADR-0032 |
 | **CI** | | |
@@ -141,17 +142,19 @@ flowchart LR
 3. The main class calls `ConnectorApplication.run(<Main>.class, args)`. One unit test extends
    `AbstractConnectorApplicationTest`.
 4. Configuration in `local`:
-   - `config/local/<flow>/<AppName>/application.app.yml` and `_helm-values.app.yaml`;
-   - one instance directory with `application.instance.yml`, `_helm-values.instance.yaml` and
-     `_docker-compose.instance.env`. The env file holds `IMAGE_TAG=local`, the identity restating the path, and a
-     free `ACTUATOR_HOST_PORT`.
-5. In each dev env: the same files, with `IMAGE_TAG=main`, plus a target in the flow's `workflows-config.yml`.
+   - `config/local/<flow>/<AppName>/application.app.yml`, and `_helm-values.app.yaml` when `kinds` includes `helm`;
+   - one instance directory with `application.instance.yml`, `_docker-compose.instance.env`, and
+     `_helm-values.instance.yaml` when `kinds` includes `helm`. The env file holds `IMAGE_TAG=local`, the identity
+     restating the path, and a free `ACTUATOR_HOST_PORT`.
+5. In each dev env: the same files (the Helm values when `kinds` includes `helm`), with `IMAGE_TAG=main`, plus a
+   target in the flow's `workflows-config.yml`.
 6. Declare its dependency stacks in `test-infra/compose/stacks.yml` (known gap G10). CI finds the app itself,
    from its build file ([ADR-0031](0031-ci-derives-the-projects-from-the-build-files.md)).
 7. Integration tests in `src/integrationTest/java`, and a test case in `test-infra/testdata/<AppName>/<case>/`
    ([ADR-0025](0025-integration-tests-on-compose-stacks.md), [ADR-0026](0026-integration-test-data-and-comparison.md)).
-8. A chart: copy `apps/<other>/helm/<other>/` to `apps/<AppName>/helm/<AppName>/` and rename it. Required while Helm
-   is provisional ([ADR-0019](0019-kubernetes-and-helm-are-provisional.md)).
+8. When `kinds` includes `helm`, a chart: copy `apps/<other>/helm/<other>/` to `apps/<AppName>/helm/<AppName>/` and
+   rename it. Required while Helm is provisional ([ADR-0019](0019-kubernetes-and-helm-are-provisional.md),
+   [ADR-0036](0036-helm-checks-only-when-kinds-include-helm.md)).
 9. Only if needed:
    - `docker/docker-compose.override.yml` for secret pass-through ([ADR-0013](0013-secrets.md));
    - `scripts/smoke.sh` for app-specific smoke checks.
@@ -163,11 +166,12 @@ flowchart LR
 
 ### Add an instance ([ADR-0003](0003-identity-tuple-names-every-instance.md), [ADR-0011](0011-configuration-tree-and-spring-layers.md))
 
-1. Create `config/<env>/<flow>/<AppName>/<AppInstance>/` with three files:
+1. Create `config/<env>/<flow>/<AppName>/<AppInstance>/` with these files:
    - `application.instance.yml`;
    - `_docker-compose.instance.env`: the identity restating the path, `IMAGE_TAG`, and an `ACTUATOR_HOST_PORT` that
      is free on the instance's boxes;
-   - `_helm-values.instance.yaml`.
+   - `_helm-values.instance.yaml`, when `kinds` includes `helm`
+     ([ADR-0036](0036-helm-checks-only-when-kinds-include-helm.md)).
 2. In a dev env: add a target for it to the flow's `workflows-config.yml`.
 3. Verify: `./gradlew configLint`, then `scripts/run-compose.sh <env> <flow> <AppName> <AppInstance> start --dry-run`.
 

@@ -189,16 +189,17 @@ abstract class ConfigLintTask : DefaultTask() {
             }
         }
         val rendered = renderDir.get().asFile.apply { deleteRecursively(); mkdirs() }
+        val scope = LintScope(
+            regions = regions.get().toSet(),
+            stages = stages.get().toSet(),
+            flows = flows.get().toSet(),
+            kinds = kinds.get().toSet(),
+            envs = devEnvs.get().toSet(),
+        )
         val linter = ConfigLinter(
             configRoot = configRoot,
             apps = apps.get(),
-            scope = LintScope(
-                regions = regions.get().toSet(),
-                stages = stages.get().toSet(),
-                flows = flows.get().toSet(),
-                kinds = kinds.get().toSet(),
-                envs = devEnvs.get().toSet(),
-            ),
+            scope = scope,
             template = template.orNull?.asFile,
             appOverrides = appOverrides.get().mapValues { File(it.value) },
             completeEnvs = completeEnvs.get(),
@@ -212,9 +213,15 @@ abstract class ConfigLintTask : DefaultTask() {
         val findings = linter.lint()
         val errors = findings.count { it.severity == Severity.ERROR }
         val warnings = findings.count { it.severity == Severity.WARN }
+        // Without helm in platform.yml kinds the Helm checks are skipped, and the summary says so once (ADR-0036).
+        val helmChecks = if (scope.helmEnabled) {
+            ", helm ${helmVersion() ?: "none"}, kubeconform ${if (kubeconform != null) "yes" else "none"}"
+        } else {
+            "; Helm checks skipped (platform.yml kinds: ${kinds.get().joinToString()}): no chart or _helm-values file " +
+                "required, no helm lint / helm template / kubeconform (ADR-0036)"
+        }
         val header = "config-lint: ${findings.size} finding(s): $errors error(s), $warnings warning(s); " +
-            "render with ${compose?.joinToString(" ") ?: "no compose CLI"}, helm ${helmVersion() ?: "none"}, " +
-            "kubeconform ${if (kubeconform != null) "yes" else "none"}"
+            "render with ${compose?.joinToString(" ") ?: "no compose CLI"}$helmChecks"
         val report = (listOf(header) + findings.map { it.toString() }).joinToString("\n", postfix = "\n")
         reportFile.get().asFile.apply { parentFile.mkdirs() }.writeText(report)
         findings.forEach { if (it.severity == Severity.ERROR) logger.error(it.toString()) else logger.lifecycle(it.toString()) }

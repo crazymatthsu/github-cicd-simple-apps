@@ -77,9 +77,13 @@ data class LintScope(
     /** Every stage but dev is promoted, so its tags are immutable (ADR-0004, ADR-0010). */
     fun isPromoted(env: String): Boolean = env != LOCAL && env.substringAfter('-', "") != DEV_STAGE
 
+    /** Helm is a runtime of the project (`kinds` includes `helm`): only then do the Helm checks run (ADR-0036). */
+    val helmEnabled: Boolean get() = HELM in kinds
+
     companion object {
         const val LOCAL = "local"
         const val DEV_STAGE = "dev"
+        const val HELM = "helm"
     }
 }
 
@@ -224,8 +228,8 @@ class ConfigLinter(
     /** AppName -> its `<subproject>/docker/docker-compose.override.yml`, for the apps that have one. */
     private val appOverrides: Map<String, File> = emptyMap(),
     /**
-     * Envs in which every deployable app must have configuration (check 2, "vice versa") and a Helm chart
-     * (check 12: ERROR there, WARN elsewhere).
+     * Envs in which every deployable app must have configuration (check 2, "vice versa") and, when Helm is a runtime,
+     * a Helm chart (check 12: ERROR there, WARN elsewhere).
      */
     private val completeEnvs: Set<String> = setOf("local"),
     private val renderer: ComposeRenderer? = null,
@@ -242,6 +246,11 @@ class ConfigLinter(
 ) {
     private val findings = mutableListOf<Finding>()
     private val yaml = Yaml(SafeConstructor(LoaderOptions()))
+    /**
+     * `helm` is one of platform.yml `kinds` (ADR-0036). Without it no chart and no `_helm-values.*.yaml` is required and
+     * check 12 renders nothing; a values file that exists is still checked (checks 3, 4, 10).
+     */
+    private val helmEnabled = scope.helmEnabled
     private var helmSkipped = false
     private var unvalidated = 0
 
@@ -394,7 +403,7 @@ class ConfigLinter(
             val app = appDir.name
             appsSeen += app
             checkAppName(appDir)
-            if (app in apps && app !in charts) {
+            if (helmEnabled && app in apps && app !in charts) {
                 val message = "no Helm chart for '$app': expected <subproject>/helm/$app/Chart.yaml (ADR-0019)"
                 if (env in completeEnvs) error(12, appDir, message) else warn(12, appDir, message)
             }
@@ -403,7 +412,7 @@ class ConfigLinter(
             val values = File(appDir, ConfigRules.helmValues(ConfigRules.Layer.APP))
             if (!appYml.isFile) error(3, appYml, "required file missing")
             var commonEnv: Map<String, String> = emptyMap()
-            if (!values.isFile) error(3, values, "required file missing (Helm values layer 2, ADR-0019)")
+            if (!values.isFile) { if (helmEnabled) error(3, values, "required file missing (Helm values layer 2, ADR-0019)") }
             else loadValues(values)?.let { commonEnv = checkCommonValues(values, it) }
             val commonComplete = appYml.isFile && values.isFile
             val appEnv = envLayer(appDir, ConfigRules.Layer.APP)
@@ -481,12 +490,12 @@ class ConfigLinter(
         }
         var values: Map<*, *>? = null
         if (!valuesFile.isFile) {
-            error(3, valuesFile, "required file missing (Helm values layer 3, ADR-0019)")
+            if (helmEnabled) error(3, valuesFile, "required file missing (Helm values layer 3, ADR-0019)")
         } else {
             values = loadValues(valuesFile)
             values?.let { checkInstanceValues(valuesFile, it, commonEnv, vars, env, flow, app, instance) }
         }
-        if (nameProblem == null && commonComplete && appYml.isFile && valuesFile.isFile) {
+        if (helmEnabled && nameProblem == null && commonComplete && appYml.isFile && valuesFile.isFile) {
             helmRender(dir, env, flow, app, instance, renderTag(values, vars))
         }
     }

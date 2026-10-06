@@ -15,10 +15,12 @@ config/<env>/<flow>/                                the flow (one cluster, ADR-0
     application.flow.yml                            optional
     _docker-compose.flow.env  _docker-compose.flow.yml          optional
 config/<env>/<flow>/<AppName>/                      the app in this flow
-    application.app.yml  _helm-values.app.yaml      required
+    application.app.yml                             required
+    _helm-values.app.yaml                           required when platform.yml kinds includes helm (ADR-0036)
     _docker-compose.app.env  _docker-compose.app.yml            optional
 config/<env>/<flow>/<AppName>/<AppInstance>/        one instance
-    application.instance.yml  _docker-compose.instance.env  _helm-values.instance.yaml   required
+    application.instance.yml  _docker-compose.instance.env      required
+    _helm-values.instance.yaml                      required when platform.yml kinds includes helm (ADR-0036)
     _docker-compose.instance.yml                    optional
 ```
 
@@ -44,7 +46,7 @@ config/<env>/<flow>/<AppName>/<AppInstance>/        one instance
 | `application.<layer>.yml` | endpoints, topics, table names, poll intervals, log levels | secrets ([ADR-0013](../docs/adr/0013-secrets.md)) |
 | `_docker-compose.<layer>.env` | any layer: `IMAGE_REPO`, `JAVA_OPTS`, `TZ`, `LOG_LEVEL_ROOT`, `MEM_LIMIT`, `LOGS_DIR` and `DATA_DIR` (absolute host paths; each instance mounts its `<AppName>/<AppInstance>` below them, [ADR-0018](../docs/adr/0018-on-prem-host-layout-versioned-bundles.md)); the instance layer only: `IMAGE_TAG`, the identity (`APP_ENV`, `APP_FLOW`, `APP_NAME`, `APP_INSTANCE`, restating the path), `*_HOST_PORT` | `SPRING_*`, `LOGGING_*`, `MANAGEMENT_*`, `CONNECTOR_*`, the variables `run-compose.sh` sets, secrets |
 | `_docker-compose.<layer>.yml` | compose structure for the flow, the app or the instance | relative paths, secrets |
-| `_helm-values.<layer>.yaml` (Helm, [ADR-0019](../docs/adr/0019-kubernetes-and-helm-are-provisional.md)) | `app`: `resources`, `env: {TZ}`; `instance`: `image.tag` (= `IMAGE_TAG`), `identity` (= the directory path), `env: {APP_ENV, APP_FLOW, APP_NAME, APP_INSTANCE, JAVA_OPTS, LOG_LEVEL_ROOT}` | `IMAGE_*`, `*_HOST_PORT`, `MEM_LIMIT`, `LOGS_DIR`, `DATA_DIR`, `SPRING_*`, `CONNECTOR_*_PASSWORD`, secrets |
+| `_helm-values.<layer>.yaml` (Helm, [ADR-0019](../docs/adr/0019-kubernetes-and-helm-are-provisional.md); required when `kinds` includes `helm`, checked whenever it exists, [ADR-0036](../docs/adr/0036-helm-checks-only-when-kinds-include-helm.md)) | `app`: `resources`, `env: {TZ}`; `instance`: `image.tag` (= `IMAGE_TAG`), `identity` (= the directory path), `env: {APP_ENV, APP_FLOW, APP_NAME, APP_INSTANCE, JAVA_OPTS, LOG_LEVEL_ROOT}` | `IMAGE_*`, `*_HOST_PORT`, `MEM_LIMIT`, `LOGS_DIR`, `DATA_DIR`, `SPRING_*`, `CONNECTOR_*_PASSWORD`, secrets |
 | `<flow>/workflows-config.yml` (every flow of a `*-dev` env; [ADR-0027](../docs/adr/0027-continuous-deployment-to-dev-and-the-deployment-record.md)) | `env` and `flow` (= the path); `pool: {hosts, user, keep}` — the flow's bare-metal boxes, SSH user (default `deploy`; the versions live under `/apps/<user>/versions/<project>/`, [ADR-0018](../docs/adr/0018-on-prem-host-layout-versioned-bundles.md)) and the versions kept per box (default 5, [ADR-0018](../docs/adr/0018-on-prem-host-layout-versioned-bundles.md)); `defaults`; `targets`: one entry per instance directory of the flow — `instance: <AppName>/<AppInstance>`, `kind: compose \| helm`, `host` (compose: the box; with a pool optional — one of `pool.hosts` — the deploy resolves it and records it in the GitHub Deployment, [ADR-0027](../docs/adr/0027-continuous-deployment-to-dev-and-the-deployment-record.md)), `user`, `cluster`, `namespace` (default: the flow) | secrets; an env-level `config/<env>/workflows-config.yml` (config-lint check 11 rejects it); a box in two flows' pools (a box serves one `<env>/<flow>`, [ADR-0018](../docs/adr/0018-on-prem-host-layout-versioned-bundles.md)); `pool.root` (the layout is fixed, [ADR-0018](../docs/adr/0018-on-prem-host-layout-versioned-bundles.md)) |
 | `known_hosts` (in `config/<env>/`) | the reviewed `ssh-keyscan` lines of every box (see [Pinned host keys](#pinned-host-keys-configenvknown_hosts)); the ssh transport of `scripts/pool-deploy.sh` and the pool guard trust no other host key | private keys: the deploy key is the Environment `us-dev` secret `DEV_DEPLOY_SSH_KEY` |
 
@@ -140,6 +142,6 @@ secret, and it changes only through a reviewed pull request: no script writes it
 config-lint check 11 fails a pull request when a box of a pool has no matching line; a `@cert-authority` pattern
 counts, a `@revoked` line does not. While the file is missing, because no box exists yet, it only warns.
 
-`./gradlew configLint` checks the tree ([ADR-0014](../docs/adr/0014-config-lint-enforces-the-config-contract.md), including `helm lint` / `helm template` per instance when Helm 4 is
-installed); `scripts/run-compose.sh <env> <flow> <AppName> <AppInstance> validate` checks one instance;
+`./gradlew configLint` checks the tree ([ADR-0014](../docs/adr/0014-config-lint-enforces-the-config-contract.md), including `helm lint` / `helm template` per instance when `kinds`
+includes `helm` and Helm 4 is installed); `scripts/run-compose.sh <env> <flow> <AppName> <AppInstance> validate` checks one instance;
 `scripts/helm-deploy-instance.sh <env> <flow> <AppName> <AppInstance> --tag <tag> --mode template` renders its release.

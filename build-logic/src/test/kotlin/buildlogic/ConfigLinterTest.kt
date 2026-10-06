@@ -548,6 +548,55 @@ class ConfigLinterTest {
         assertTrue(helmRequests.isEmpty(), "nothing to render without a chart: $helmRequests")
     }
 
+    // --- ADR-0036: the Helm checks run only when platform.yml kinds includes helm ---------------------------------------
+
+    private val composeOnly = everyEnv.copy(kinds = setOf("compose"))
+
+    /** An instance as a repository without Helm holds it: no `_helm-values.*.yaml`. */
+    private fun composeInstance(env: String, instance: String, tag: String = "local") {
+        validInstance(env, instance, tag)
+        File(config, "$env/cash/source-database/_helm-values.app.yaml").delete()
+        File(config, "$env/cash/source-database/$instance/_helm-values.instance.yaml").delete()
+    }
+
+    private fun composeTarget(env: String, instance: String) = write("$env/cash/workflows-config.yml",
+        "env: $env\nflow: cash\ntargets:\n  - instance: source-database/$instance\n    kind: compose\n    host: h\n")
+
+    @Test
+    fun `without helm in kinds no chart and no Helm values are required, and nothing is rendered with Helm`() {
+        composeInstance("local", "trades-db-to-amps")
+        composeInstance("us-dev", "trades-db-to-amps")
+        composeTarget("us-dev", "trades-db-to-amps")
+        val composeOk = ComposeRenderer { CommandResult(0, "") }
+        // CI: requireRender, no Helm, no chart.
+        val findings = linter(renderer = composeOk, helm = null, charts = emptyMap(), completeEnvs = setOf("local"),
+            requireRender = true, scope = composeOnly).lint().filter { it.severity != Severity.TODO }
+        assertEquals(emptyList<Finding>(), findings, findings.text())
+        // A chart and Helm on the PATH change nothing: check 12 renders no instance.
+        val withChart = linter(renderer = composeOk, completeEnvs = setOf("local"), scope = composeOnly).lint()
+            .filter { it.severity != Severity.TODO }
+        assertEquals(emptyList<Finding>(), withChart, withChart.text())
+        assertTrue(helmRequests.isEmpty(), "no helm run without helm in kinds: $helmRequests")
+        // With helm in kinds the same tree fails: the chart (check 12) and both values files (check 3).
+        val helm = linter(renderer = composeOk, charts = emptyMap(), completeEnvs = setOf("local")).lint()
+            .filter { it.severity == Severity.ERROR }
+        assertEquals(listOf(3, 3, 3, 3, 12), helm.map { it.check }.sorted(), helm.text())
+        assertTrue(helm.text().contains("local/cash/source-database: no Helm chart for 'source-database'"), helm.text())
+    }
+
+    @Test
+    fun `without helm in kinds a Helm values file that exists is still checked, so a stale image_tag fails check 4`() {
+        composeInstance("us-dev", "trades-db-to-amps", tag = "0.1.0-rc.39")
+        composeTarget("us-dev", "trades-db-to-amps")
+        write("us-dev/cash/source-database/trades-db-to-amps/_helm-values.instance.yaml",
+            instanceValues("us-dev", "trades-db-to-amps", tag = "0.1.0-rc.38"))
+        val errors = linter(charts = emptyMap(), scope = composeOnly).lint().filter { it.severity == Severity.ERROR }
+        assertEquals(listOf(4), errors.map { it.check }, errors.text())
+        assertTrue(errors.single().message.contains("image.tag '0.1.0-rc.38' differs from IMAGE_TAG '0.1.0-rc.39' in " +
+            "_docker-compose.instance.env"), errors.text())
+        assertTrue(helmRequests.isEmpty(), "checked, never rendered: $helmRequests")
+    }
+
     // --- host pools (ADR-0028): check 11 on config/<env>/<flow>/workflows-config.yml ------------------------------------
 
     private fun flowTargets(pool: String, targets: String, flow: String = "cash") =
