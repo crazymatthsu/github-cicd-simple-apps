@@ -1,12 +1,11 @@
-# Reusable: one integration-test job for one Gradle project (ADR-0025).
+# Reusable: one integration-test job for one Gradle project (ADR-0025, ADR-0044).
 #
-# Start the project's compose stack (Deephaven + the dependencies it declares + the app image built
-# in this run, by digest) → run the tests in the `it-runner` service (the ci-build image, else its public
-# fallback, ADR-0033; on the stack network, no published ports) → diagnostics on failure → teardown and leak
-# check on success, failure AND cancel (`always()`, ADR-0024). `level: system` runs the same stack with the
-# platform's own Deephaven server image instead of the upstream one (ADR-0025): the one built in this run when the
-# repository builds it (`:deephaven-server` in `images`), else the published release pinned as
-# DEEPHAVEN_SERVER_IMAGE in test-infra/compose/versions.env.
+# Start the project's compose stack (the dependency stacks it declares in test-infra/compose/stacks.yml, on the
+# images pinned in test-infra/compose/versions.env, + the app image built in this run, by digest) → run the tests in
+# the `it-runner` service (the ci-build image, else its public fallback, ADR-0033; on the stack network, no
+# published ports) → diagnostics on failure → teardown and leak check on success, failure AND cancel (`always()`,
+# ADR-0024). This workflow names no dependency (ADR-0038, ADR-0044): which images a stack runs on is the stack's
+# own declaration.
 name: _integration-test
 
 on:
@@ -27,10 +26,6 @@ on:
         description: JSON object Gradle project → image pinned by digest (the _gradle-build `images` output).
         type: string
         required: true
-      level:
-        description: "'component' (upstream Deephaven) or 'system' (the platform's deephaven-server image: from `images`, else versions.env)."
-        type: string
-        default: component
       ci-build-image:
         description: "ci-build image for the it-runner service ('' → probe the registry; unpublished: the public fallback, ADR-0033)."
         type: string
@@ -49,9 +44,9 @@ permissions:
 
 jobs:
   it:
-    name: ${{ inputs.level }} (${{ inputs.project }})
+    name: integration tests (${{ inputs.project }})
     runs-on: ubuntu-latest
-    timeout-minutes: ${{ inputs.level == 'system' && 45 || 30 }}
+    timeout-minutes: 30
     permissions:
       contents: read
       packages: read
@@ -63,7 +58,6 @@ jobs:
       # The image under test is the digest built in this run, never a floating tag.
       APP_IMAGE: ${{ fromJSON(inputs.images)[inputs.project] }}
       IT_PROJECT: ${{ inputs.project }}
-      IT_LEVEL: ${{ inputs.level }}
     outputs:
       diagnostics-artifact: ${{ steps.check.outputs.diagnostics }}
     steps:
@@ -73,30 +67,15 @@ jobs:
 
       - name: Check inputs
         id: check
-        env:
-          IMAGES: ${{ inputs.images }}
         run: |
           set -euo pipefail
-          case "$IT_LEVEL" in
-            component | system) ;;
-            *) echo "::error::level must be component or system, got '$IT_LEVEL'"; exit 2 ;;
-          esac
           if [[ ! $APP_IMAGE =~ @sha256:[0-9a-f]{64}$ ]]; then
             echo "::error::no digest-pinned image for $IT_PROJECT in the images input (got '${APP_IMAGE}')"
             exit 2
           fi
-          if [[ $IT_LEVEL == system ]]; then
-            # The platform's Deephaven server image (ADR-0025): built in this run when this repository builds it,
-            # else the published release pinned in versions.env (a project repository, ADR-0002).
-            server=$(jq -r '.[":deephaven-server"] // empty' <<<"$IMAGES")
-            [[ -n $server ]] || server=$(sed -n 's/^DEEPHAVEN_SERVER_IMAGE=//p' test-infra/compose/versions.env | tail -n 1)
-            [[ $server =~ @sha256:[0-9a-f]{64}$ ]] ||
-              { echo "::error::system level needs a digest-pinned deephaven-server image: :deephaven-server in the images input, or DEEPHAVEN_SERVER_IMAGE in test-infra/compose/versions.env (got '$server')"; exit 2; }
-            echo "DEEPHAVEN_IMAGE=$server" >> "$GITHUB_ENV"   # replaces the upstream pin in versions.env
-          fi
           slug=$(sed 's/^://; s/:/-/g' <<<"$IT_PROJECT")
           echo "slug=$slug" >> "$GITHUB_OUTPUT"
-          echo "diagnostics=it-diagnostics-${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}-${IT_LEVEL}-${slug}" >> "$GITHUB_OUTPUT"
+          echo "diagnostics=it-diagnostics-${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}-${slug}" >> "$GITHUB_OUTPUT"
 
       - uses: ./.github/actions/registry-login
         with:
@@ -157,13 +136,13 @@ jobs:
 
       - name: Test summary
         if: always()
-        run: scripts/ci/junit-summary.sh "Integration tests — ${IT_LEVEL} (${IT_PROJECT})"
+        run: scripts/ci/junit-summary.sh "Integration tests (${IT_PROJECT})"
 
       - name: Upload test results
         if: always() && steps.check.outcome == 'success'
         uses: actions/upload-artifact@v7
         with:
-          name: it-results-${{ github.run_id }}-${{ github.run_attempt }}-${{ inputs.level }}-${{ steps.check.outputs.slug }}
+          name: it-results-${{ github.run_id }}-${{ github.run_attempt }}-${{ steps.check.outputs.slug }}
           path: '**/build/test-results/integrationTest/**'
           if-no-files-found: ignore
           retention-days: ${{ inputs.retention-days }}

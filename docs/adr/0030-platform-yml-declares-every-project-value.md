@@ -2,7 +2,7 @@
 
 | | |
 |---|---|
-| Status | Accepted. Supersedes rule 5 of ADR-0002, and in part rule 3 of ADR-0004, rules 5 and 6 of ADR-0005, rule 6 of ADR-0006, rule 3 of ADR-0007, rule 5 of ADR-0017, rule 2 of ADR-0018 and rule 2 of ADR-0019 (rule 7). Rules 1 and 3 superseded in part by [ADR-0035](0035-dev-envs-and-reference-app-are-optional.md). Rules 1, 2 and 4 superseded in part by [ADR-0041](0041-every-label-prefix-derives-from-the-group.md) and [ADR-0042](0042-property-roots-and-secret-properties-in-platform-yml.md) |
+| Status | Accepted. Supersedes rule 5 of ADR-0002, and in part rule 3 of ADR-0004, rules 5 and 6 of ADR-0005, rule 6 of ADR-0006, rule 3 of ADR-0007, rule 5 of ADR-0017, rule 2 of ADR-0018 and rule 2 of ADR-0019 (rule 7). Rules 1 and 3 superseded in part by [ADR-0035](0035-dev-envs-and-reference-app-are-optional.md). Rules 1, 2 and 4 superseded in part by [ADR-0041](0041-every-label-prefix-derives-from-the-group.md) and [ADR-0042](0042-property-roots-and-secret-properties-in-platform-yml.md). Rule 1 superseded in part by [ADR-0044](0044-no-system-test-one-integration-test-level.md) |
 | Date | 2026-10-05 |
 | Applies to | every repository built from this one; every part of the shared tooling that needs a project value |
 | Enforced by | the `buildlogic.platform` settings plugin (validates the file on every Gradle run; `PlatformManifestTest`); config-lint checks 1, 10 and 11 (`ConfigLinterTest`); `ConnectorIdentity` (the app refuses to start; `ConnectorIdentityTest`); the argument checks of `run-compose.sh`, `pool-deploy.sh` and `helm-deploy-instance.sh` (`scripts/test/env-vocabulary-test.sh`, `scripts/test/pool-deploy-test.sh`); the `platform-manifest` action; the guard of `_deploy-dev.yml` |
@@ -47,6 +47,10 @@ the job container of the build, may have neither: they have bash and awk. A runn
    > **Superseded in part by [ADR-0041](0041-every-label-prefix-derives-from-the-group.md) rule 6.**
    > `projects[0].group` is also the prefix of every label, so it is lower-case words of letters and digits joined by
    > dots, each starting with a letter and at most 63 characters long.
+
+   > **Superseded in part by [ADR-0044](0044-no-system-test-one-integration-test-level.md) rule 5.**
+   > `projects[0].reference_app` is the app of the kind deployment test and the nightly teardown drill; there is no
+   > system test.
 
    | Key | Meaning | Rules | This repository |
    |---|---|---|---|

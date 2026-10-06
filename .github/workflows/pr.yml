@@ -159,7 +159,6 @@ jobs:
     with:
       project: ${{ matrix.project }}
       images: ${{ needs.build.outputs.images }}
-      level: component
       ci-build-image: ${{ needs.build.outputs.ci-build-image }}
       retention-days: 7
 

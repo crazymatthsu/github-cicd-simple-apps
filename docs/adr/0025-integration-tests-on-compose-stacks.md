@@ -2,7 +2,7 @@
 
 | | |
 |---|---|
-| Status | Accepted. Rules 2, 5 and 7 superseded in part by [ADR-0038](0038-stacks-publish-their-test-environment.md); rule 4 superseded in part by [ADR-0033](0033-public-base-image-fallback.md); rule 6 superseded in part by [ADR-0034](0034-main-runs-the-test-stages-the-repository-has.md) |
+| Status | Accepted. Rules 2, 5 and 7 superseded in part by [ADR-0038](0038-stacks-publish-their-test-environment.md); rule 4 superseded in part by [ADR-0033](0033-public-base-image-fallback.md); rule 6 superseded in part by [ADR-0034](0034-main-runs-the-test-stages-the-repository-has.md) and [ADR-0044](0044-no-system-test-one-integration-test-level.md) |
 | Date | 2026-10-04 |
 | Applies to | every app with integration tests; `test-infra/compose/`; `buildlogic.integration-test` |
 | Enforced by | `_integration-test.yml` (requires a digest-pinned app image); `stack.sh` (readiness, exit codes); the leak check ([ADR-0024](0024-ephemeral-ci-environments.md)) |
@@ -89,6 +89,10 @@ laptop and another in CI. They also do not start the app the way it is deployed.
    > **Superseded in part by [ADR-0034](0034-main-runs-the-test-stages-the-repository-has.md) rule 6.** The system
    > level runs on `main` only when `versions.env` declares the system image and `platform.yml` a reference app
    > ([ADR-0035](0035-dev-envs-and-reference-app-are-optional.md)).
+
+   > **Superseded in part by [ADR-0044](0044-no-system-test-one-integration-test-level.md) rule 5.** The component
+   > level is the only level. Its dependencies are the images pinned in `versions.env`, upstream or the
+   > organisation's own build, and it runs in the full tier of pull requests and on `main` for every app.
 
    | Level | Dependencies | Runs in |
    |---|---|---|

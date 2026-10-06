@@ -1,5 +1,5 @@
 # Nightly (ADR-0010, ADR-0024): image retention and the
-# teardown drill. (Full IT matrix, Deephaven version matrix, Podman parity, soak and scans are later.)
+# teardown drill. (Full IT matrix, dependency version matrix, Podman parity, soak and scans are later.)
 #
 #   retention              GHCR sweep (scripts/ci/retention.sh). Dry run unless DRY_RUN=false
 #                          (workflow_dispatch input) or, for scheduled runs, the repository variable

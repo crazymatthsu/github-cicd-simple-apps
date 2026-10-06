@@ -30,7 +30,7 @@ test should create a throwaway CA for each run instead of reusing this one.
 |---|---|
 | the company `jre21` base image, built outside this repository | build context = this directory; every certificate in the file is imported into `/usr/local/share/ca-certificates/` (then `update-ca-certificates`) and into `$JAVA_HOME/lib/security/cacerts` (first certificate under the alias `demo-root-ca`); verified with `keytool -list` at build time |
 | the company `ci-build` image, built outside this repository | the same steps, so Gradle, `curl`, `git` and the container CLIs in the build image trust it |
-| the platform's `deephaven-server` image, built outside this repository | imports it into the upstream Deephaven image's own JVM trust store; this repository only pins that image for its system test (`DEEPHAVEN_SERVER_IMAGE` in `test-infra/compose/versions.env`) |
+| the platform's `deephaven-server` image, built outside this repository | imports it into the upstream Deephaven image's own JVM trust store; a repository that tests against that image pins it as `DEEPHAVEN_IMAGE` in `test-infra/compose/versions.env` (this one pins the upstream image, ADR-0044) |
 
 ## Rotation
 

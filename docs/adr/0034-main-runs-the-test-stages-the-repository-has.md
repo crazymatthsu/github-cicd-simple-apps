@@ -2,7 +2,7 @@
 
 | | |
 |---|---|
-| Status | Accepted. Supersedes in part rule 2 of ADR-0023 and rule 6 of ADR-0025 (rule 6). Rule 5 superseded in part by [ADR-0035](0035-dev-envs-and-reference-app-are-optional.md) |
+| Status | Accepted. Supersedes in part rule 2 of ADR-0023 and rule 6 of ADR-0025 (rule 6). Rule 5 superseded in part by [ADR-0035](0035-dev-envs-and-reference-app-are-optional.md); rule 2 superseded by [ADR-0044](0044-no-system-test-one-integration-test-level.md), rules 4 and 6 in part by [ADR-0044](0044-no-system-test-one-integration-test-level.md) |
 | Date | 2026-10-06 |
 | Applies to | every repository built from this one; the job conditions of `main.yml`; `test-infra/compose/versions.env` |
 | Enforced by | the job conditions of `main.yml` (actionlint checks them); `_integration-test.yml` (fails a system test whose image is not pinned by digest) |
@@ -35,6 +35,11 @@ So the first `main` run of such a repository failed, and it published and deploy
    `DEEPHAVEN_SERVER_IMAGE` from `versions.env` as `_integration-test.yml` reads it, and hands it on as
    `system-image`. `system-test` MUST run when that value is not empty and the integration tests passed, and MUST
    NOT run otherwise.
+
+   > **Superseded by [ADR-0044](0044-no-system-test-one-integration-test-level.md) rule 5.** There is no system
+   > test. The integration tests run against the images pinned in `versions.env`, and `DEEPHAVEN_SERVER_IMAGE` has
+   > no reader.
+
    - A declared image MUST be pinned by digest; the system test fails on any other value.
    - The system test runs the reference app's integration tests, so a repository that declares the image MUST give
      its reference app integration tests.
@@ -46,6 +51,11 @@ So the first `main` run of such a repository failed, and it published and deploy
 4. **Publish never follows a failure.** `publish` MUST run only when `platform`, `build` and `config-lint` passed and
    each test stage passed or was skipped under rule 1 or 2. A failed or cancelled stage MUST stop it. It needs
    `platform` and `integration-test` directly, because a failure of either also skips `system-test`.
+
+   > **Superseded in part by [ADR-0044](0044-no-system-test-one-integration-test-level.md) rule 4.** `publish`
+   > needs `platform`, `build`, `integration-test` and `config-lint`: the integration tests passed, or were skipped
+   > under rule 1.
+
 5. **The jobs after publish name the job before them.** `kind-deploy` and `deploy-dev` MUST state their condition on
    the result of the job they follow. GitHub applies a skip to every later job of a chain unless its condition says
    otherwise, and a stage skipped by design MUST NOT skip the deploys.
@@ -56,6 +66,9 @@ So the first `main` run of such a repository failed, and it published and deploy
 6. **What this decision supersedes.** In [ADR-0023](0023-main-pipeline-build-once-test-publish.md) rule 2,
    `integration-test` and `system-test` run under rules 1 and 2, and `publish` runs under rule 4. In
    [ADR-0025](0025-integration-tests-on-compose-stacks.md) rule 6, the system level runs on `main` under rule 2.
+
+   > **Superseded in part by [ADR-0044](0044-no-system-test-one-integration-test-level.md) rule 5.** The sentence
+   > on ADR-0025 rule 6 no longer applies: there is no system level.
 
 ## Alternatives considered
 

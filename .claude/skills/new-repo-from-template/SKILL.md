@@ -105,7 +105,7 @@ Collect all of these before writing a file. Ask once, in one message, for the on
 
 "What a new repository may leave out" in `docs/adr/README.md` lists every switch. In short: `dev_envs` from `[]`
 to `[<region>-dev]`, plus the env's tree and its GitHub Environment, turns the dev deploy on (ADR-0035);
-`reference_app` turns the system test, the kind deployment test and the nightly drill on; `helm` in `kinds`
+`reference_app` turns the kind deployment test and the nightly drill on; `helm` in `kinds`
 requires a chart per app and the values files (ADR-0036); the first app that applies
 `buildlogic.integration-test` turns the integration-test stage on (ADR-0034); the company base images are used as
 soon as they are published under `<registry>/base/` (ADR-0033).

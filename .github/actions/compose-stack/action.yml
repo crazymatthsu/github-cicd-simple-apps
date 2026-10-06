@@ -2,8 +2,9 @@ name: compose-stack
 description: >-
   Thin wrapper around test-infra/compose/stack.sh (ADR-0025) so workflows and laptops run the same
   commands. The calling job sets COMPOSE_PROJECT_NAME (ci-<run_id>-<attempt>), CI_RUN_ID,
-  CI_RUN_ATTEMPT and, for `up`, the image variables (APP_IMAGE, optional DEEPHAVEN_IMAGE,
-  CI_BUILD_IMAGE). `up` exports COMPOSE_FILE / COMPOSE_PROJECT_NAME to GITHUB_ENV for later steps.
+  CI_RUN_ATTEMPT and, for `up`, the image variables (APP_IMAGE, CI_BUILD_IMAGE; the dependency images
+  come from test-infra/compose/versions.env). `up` exports COMPOSE_FILE / COMPOSE_PROJECT_NAME to GITHUB_ENV
+  for later steps.
   Use `if: always()` on `down` and `leak-check` so they run on success, failure and cancel (ADR-0024).
 inputs:
   command:

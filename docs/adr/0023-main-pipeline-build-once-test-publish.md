@@ -2,7 +2,7 @@
 
 | | |
 |---|---|
-| Status | Accepted. Rule 2 superseded in part by [ADR-0034](0034-main-runs-the-test-stages-the-repository-has.md) |
+| Status | Accepted. Rule 2 superseded in part by [ADR-0034](0034-main-runs-the-test-stages-the-repository-has.md) and [ADR-0044](0044-no-system-test-one-integration-test-level.md) |
 | Date | 2026-10-04 |
 | Applies to | `main.yml`, on `main` and `hotfix/**` |
 | Enforced by | the job graph of `main.yml`; `_integration-test.yml` (digest-pinned image required); `_docker-publish.yml` (refuses to move an immutable tag); `release.yml` (releases only a commit whose `main.yml` run succeeded) |
@@ -26,6 +26,9 @@ produce different bits. Publishing before the tests would let consumers pick up 
    > **Superseded in part by [ADR-0034](0034-main-runs-the-test-stages-the-repository-has.md) rule 6.**
    > `integration-test` and `system-test` run only when the repository has them, and `publish` follows the stages that
    > ran, never a failed or cancelled one.
+
+   > **Superseded in part by [ADR-0044](0044-no-system-test-one-integration-test-level.md) rule 5.** There is no
+   > `system-test`: `publish` follows `integration-test` and `config-lint`.
 
    - **build:** builds every project and runs the unit tests. Images are pushed with the `main` tag set
      ([ADR-0010](0010-image-tags-digests-promotion-retention.md)). Tags already on `HEAD` are ignored, so the

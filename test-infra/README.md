@@ -52,8 +52,9 @@ anchor, repeated in each file because anchors do not cross files). `<group>` is 
 `platform.yml`, which `stack.sh` exports as `LABEL_PREFIX`
 ([ADR-0041](../docs/adr/0041-every-label-prefix-derives-from-the-group.md)). Image-declared volumes are
 replaced by labelled named volumes (Deephaven) or tmpfs (Kafka), so no unlabelled anonymous volume
-can escape the leak check. A system IT sets `DEEPHAVEN_IMAGE` to the platform's `deephaven-server` image (`DEEPHAVEN_SERVER_IMAGE` in `versions.env`)
-([ADR-0025](../docs/adr/0025-integration-tests-on-compose-stacks.md)).
+can escape the leak check. The tests run against exactly the images `versions.env` pins; a repository that tests
+against its own build of a dependency pins that build there
+([ADR-0044](../docs/adr/0044-no-system-test-one-integration-test-level.md)).
 
 ### What a stack publishes ([ADR-0038](../docs/adr/0038-stacks-publish-their-test-environment.md))
 
@@ -143,7 +144,7 @@ left.
 | Variable | Default | Effect |
 |---|---|---|
 | `COMPOSE_BIN` | `docker compose` if Docker is installed, else `podman compose` | compose command; the engine CLI is its first word |
-| `DEEPHAVEN_IMAGE`, `MSSQL_IMAGE`, `KAFKA_IMAGE`, `CI_BUILD_IMAGE` | `versions.env` | image references; the environment overrides the file (system ITs: the platform's `deephaven-server`, `DEEPHAVEN_SERVER_IMAGE`) |
+| `DEEPHAVEN_IMAGE`, `MSSQL_IMAGE`, `KAFKA_IMAGE`, `CI_BUILD_IMAGE` | `versions.env` | image references; the environment overrides the file |
 | `IT_RUNNER_UID`, `IT_RUNNER_GID` | the caller's `id -u` / `id -g` | user the `it-runner` container runs as |
 | `STACK_WAIT_TIMEOUT` | `180` | seconds for each `up --wait` |
 | `STACK_SKIP_PULL` | unset | `1` skips the pull (offline laptop) |

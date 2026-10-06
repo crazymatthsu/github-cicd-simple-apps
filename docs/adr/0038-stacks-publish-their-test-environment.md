@@ -2,7 +2,7 @@
 
 | | |
 |---|---|
-| Status | Accepted. Supersedes in part rules 2, 5 and 7 of ADR-0025 and rule 3 of ADR-0007 (rule 8) |
+| Status | Accepted. Supersedes in part rules 2, 5 and 7 of ADR-0025 and rule 3 of ADR-0007 (rule 8). Rule 1 superseded in part by [ADR-0044](0044-no-system-test-one-integration-test-level.md) |
 | Date | 2026-10-06 |
 | Applies to | every app with integration tests; `test-infra/compose/stacks.yml`, `stack.sh` and `it-runner.yml`; `buildlogic.integration-test` |
 | Enforced by | `stack.sh up` (refuses a malformed declaration with exit 2); `scripts/test/stack-test.sh` in the `lint` job (stub engine); `StackEnvTest`; the component integration tests of the full tier of pull requests and of `main`; review |
@@ -39,6 +39,11 @@ with other dependencies had to edit shared tooling, which ADR-0005 forbids (know
    and its actuator port, the compose project, `IT_TABLE_PREFIX` and the JUnit wiring. The system level keeps its
    server image override in `_integration-test.yml` (ADR-0025 rule 6): it sets `DEEPHAVEN_IMAGE`, the variable that
    `deephaven.yml` declares for its image.
+
+   > **Superseded in part by [ADR-0044](0044-no-system-test-one-integration-test-level.md) rule 3.** The override
+   > is withdrawn with the system level: `_integration-test.yml`, `main.yml`, `pr.yml` and the `compose-stack`
+   > action name no dependency either.
+
 2. **Each stack declares what it publishes**, in `stacks.yml` under `stacks:`, with the schema below. Every field is
    optional. A stack without a declaration publishes nothing.
 3. **One file per view.** `stack.sh up` resolves the `env` entries of the project's stacks, in their order, and
