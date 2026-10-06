@@ -62,6 +62,9 @@ must not expose secrets.
      ([ADR-0013](0013-secrets.md)).
 5. **The same summary, three ways:**
 
+   > **Superseded in part by [ADR-0037](0037-runtime-scripts-read-generic-actuator-names.md) rule 5.** `run-compose.sh
+   > app-config` reads `/actuator/appconfig`, then `/actuator/connectorconfig`, and says which one answered.
+
    | Where | How | When |
    |---|---|---|
    | log | logged once at start-up | always |

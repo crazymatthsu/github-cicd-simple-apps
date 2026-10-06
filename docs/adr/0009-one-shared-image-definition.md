@@ -44,6 +44,11 @@ so that registry caches hit. And they have to run as a non-root user, with the c
    ```
 
 3. **The image:**
+
+   > **Superseded in part by [ADR-0033](0033-public-base-image-fallback.md) rule 7.** The base is the company image
+   > when it is published, else the public fallback pinned in `.github/versions.env`; the Dockerfile adds the user, the
+   > directories and curl when the base lacks them.
+
    - **Base:** the company JRE 21 image `<registry>/base/jre21`. It carries the CA bundle in both trust stores,
      tzdata, curl and the non-root user `10001`. The Dockerfile never repeats any of it.
    - **Two stages:** the first unpacks the layered jar into its layers
@@ -70,6 +75,9 @@ so that registry caches hit. And they have to run as a non-root user, with the c
    into the same three-file context. It is a documented exception, and review asks why.
 6. **Base images are external inputs.** `<registry>/base/jre21` and `<registry>/base/ci-build` are built and
    published outside this repository. CI resolves them to digests, and Renovate proposes their dated tags.
+
+   > **Superseded in part by [ADR-0033](0033-public-base-image-fallback.md) rule 7.** A base image that is not
+   > published is no longer an error: CI takes the public fallback, by its tag, with a notice.
 
 ## Alternatives considered
 

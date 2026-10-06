@@ -22,6 +22,10 @@ added, renamed or skipped.
 
 1. **Triggers and tiers.** The fast tier builds no images and starts no containers. The full tier adds the images
    and the tests that run them.
+
+   > **Superseded in part by [ADR-0033](0033-public-base-image-fallback.md) rule 7.** The full tier also runs
+   > `public-base`, which builds the reference app on the public base image.
+
    - **Push** to any branch except `main`, `hotfix/**` and merge-queue branches: the **fast tier**. Affected
      detection runs first. Then three jobs run side by side: `lint`, the build and unit tests of the affected
      projects (no images), and config-lint.
@@ -67,6 +71,11 @@ added, renamed or skipped.
 
 2. **Affected detection.** `scripts/ci/affected.py`, through the `affected-matrix` action, classifies each changed
    path with `.github/affected-map.yml`. The first matching section wins:
+
+   > **Superseded in part by [ADR-0031](0031-ci-derives-the-projects-from-the-build-files.md) rule 5.** The last step
+   > classifies a path by the project directories that `projects.py` derives, not by globs in the map; the map holds
+   > only the path classes.
+
    1. `docs` — nothing to build;
    2. `config` — config-lint only;
    3. `shared` — everything: `framework/`, `build-logic/`, Gradle files, `platform.yml`, `docker/`, Dockerfiles,

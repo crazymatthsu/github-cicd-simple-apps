@@ -89,6 +89,9 @@ version. That branch needs the same protection.
    - each flow's directories, `config/*/<flow>/`, to that flow's team.
 8. **Repository settings.** No file can set these, so each repository applies them once:
 
+   > **Superseded in part by [ADR-0032](0032-registry-credentials.md) rule 6.** The table gains the optional secrets
+   > `REGISTRY_USER` and `REGISTRY_TOKEN` (rule 1 there) and the registry read credentials of every box of a pool.
+
    | Setting | Value |
    |---|---|
    | Actions → workflow permissions | allow GitHub Actions to create pull requests (release pull request, version-bump pull request) |

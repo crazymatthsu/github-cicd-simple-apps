@@ -81,7 +81,8 @@ CI must also be reproducible locally, with the same commands.
 7. **Pinned tools.** Actions are pinned by major version. The linters (hadolint, ShellCheck, actionlint) are
    installed at exact versions. The Kubernetes tools are installed at the versions in `test-infra/kind/versions.env`,
    and each one is verified by its sha256.
-8. **The `lint` job** runs on every change that is not docs-only:
+8. **The `lint` job** runs in `pr.yml`, on every pull request, merge-queue run and branch push that is not
+   docs-only. `main` and `hotfix/*` change only by pull request ([ADR-0020](0020-branching-protection-and-merge-rules.md)), so every change to them has passed it:
    - hadolint on every Dockerfile;
    - ShellCheck (severity warning) on every `*.sh`;
    - the plain-bash script tests `scripts/test/*-test.sh`;

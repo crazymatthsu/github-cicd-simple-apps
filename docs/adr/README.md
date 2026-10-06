@@ -63,11 +63,12 @@ flowchart LR
 | ADR | Rule in one line | Status |
 |---|---|---|
 | **Foundations** | | |
-| [0001](0001-adrs-are-the-repository-contract.md) | Decisions are numbered ADRs with MUST/SHOULD rules and an "Enforced by" line. ADR-0001 to ADR-0999 are the shared contract; a repository's own decisions start at ADR-1000. | Accepted |
+| [0001](0001-adrs-are-the-repository-contract.md) | Decisions are numbered ADRs with MUST/SHOULD rules and an "Enforced by" line. ADR-0001 to ADR-0999 are the shared contract; a repository's own decisions start at ADR-1000. | Accepted; rule 4 superseded in part by ADR-0039 |
+| [0039](0039-an-adr-applies-where-its-subject-exists.md) | A contract ADR applies where the subject its *Applies to* row names exists. A repository without the subject (no Helm, no integration test, no dev env, no pool) deviates from nothing and records nothing; the ADR applies from the first subject. | Accepted |
 | [0002](0002-one-repository-one-project-one-release-line.md) | A repository is one project of Spring Boot apps and libraries, released together as `vX.Y.Z`. `platform.yml` declares only what the tree cannot derive. | Accepted; rule 5 superseded by ADR-0030 |
 | [0003](0003-identity-tuple-names-every-instance.md) | `<env>/<flow>/<AppName>/<AppInstance>` is the configuration path and the source of every name. | Accepted |
-| [0004](0004-environments-and-runtimes.md) | Only local and dev are configured and deployed here. qa, uat, prod and parallel are configured and deployed from a separate configuration repository, promoted by pull request. On-prem compose runs every env until EKS. | Accepted |
-| [0005](0005-repository-layout-and-shared-tooling.md) | One skeleton for every repository. Shared tooling is copied unchanged, project files are the project's own, and changes to the tooling are made here first. | Accepted; rule 5 superseded in part by ADR-0030 |
+| [0004](0004-environments-and-runtimes.md) | Only local and dev are configured and deployed here. qa, uat, prod and parallel are configured and deployed from a separate configuration repository, promoted by pull request. On-prem compose runs every env until EKS. | Accepted; rule 3 superseded in part by ADR-0030 |
+| [0005](0005-repository-layout-and-shared-tooling.md) | One skeleton for every repository. Shared tooling is copied unchanged, project files are the project's own, and changes to the tooling are made here first. | Accepted; rules 5 and 6 superseded in part by ADR-0030 |
 | [0006](0006-apps-and-framework-modules.md) | `apps/<AppName>/` holds an app's code and only the infrastructure that differs between apps. `framework/<name>/` holds shared libraries, never deployed. | Accepted; rule 6 superseded in part by ADR-0030 |
 | [0030](0030-platform-yml-declares-every-project-value.md) | `platform.yml` declares every project value: registry, project, group, apps directory, runtimes, reference app, dev envs, regions, stages and flows. The build validates it on every run, and every tool reads it; none hard-codes a value. | Accepted; rules 1 and 3 superseded in part by ADR-0035 |
 | [0035](0035-dev-envs-and-reference-app-are-optional.md) | `dev_envs` may be `[]` and `reference_app` may be left out. No dev env skips the kind deployment test and the dev deploy; no reference app skips the system test, the kind deployment test and the teardown drill. A new repository goes green before its boxes exist. | Accepted |
@@ -183,15 +184,21 @@ flowchart LR
 
 ### Create a repository from this one ([ADR-0005](0005-repository-layout-and-shared-tooling.md))
 
-1. Copy this repository at a release tag. Keep the shared tooling unchanged.
+1. Copy this repository at a release tag: `git clone --branch vX.Y.Z --depth 1 <this repository> <new-name>`, then
+   delete `.git` and run `git init`, so the new repository starts its own history and release line (step 4).
+   GitHub's "Use this template" copies the default branch, not a release: prefer the tag. Keep the shared tooling
+   unchanged.
 2. Set the project values ([ADR-0030](0030-platform-yml-declares-every-project-value.md)):
    - in `platform.yml`: `registry`; `projects[0]` — `name` (the repository name, which the build checks in CI),
      `group`, `apps_dir`, `kinds` and `reference_app`; `dev_envs`; `regions`, `stages` and `flows`.
      `dev_envs` may be `[]` until the first dev env exists, and `reference_app` may be left out: the first pull
      request then goes green before any box, SSH key or GitHub Environment exists, and setting them later turns the
      deploy and the reference scenario on ([ADR-0035](0035-dev-envs-and-reference-app-are-optional.md));
-   - `component` in `release-please-config.json`;
-   - the registry paths in the package rules of `renovate.json`;
+   - `component` in `release-please-config.json`: the project name. The tags stay `vX.Y.Z`, because
+     `include-component-in-tag` is false ([ADR-0029](0029-release-and-promotion.md));
+   - the package rules of `renovate.json` that name this repository's images: `ghcr.io/crazymatthsu/base/**`
+     becomes `<registry>/base/**`, and the Deephaven rule names the repository's own pinned test images, or goes
+     when it has none;
    - a GitHub Environment named after each dev env;
    - when the registry is not GHCR: the repository secrets `REGISTRY_USER` and `REGISTRY_TOKEN`
      ([ADR-0032](0032-registry-credentials.md)), the base images under `<registry>/base/`, and read credentials for
@@ -206,16 +213,38 @@ flowchart LR
 3. Replace the project files with the new project's own:
    - `apps/`, the domain code under `framework/`, `config/`;
    - `test-infra/testdata/`, the dependency stacks, `versions.env`, `stacks.yml`;
-   - `.github/affected-map.yml`, `.github/CODEOWNERS`, `README.md`;
+   - `.github/CODEOWNERS`, `README.md`. `.github/affected-map.yml` holds only the path classes since
+     [ADR-0031](0031-ci-derives-the-projects-from-the-build-files.md) and needs no edit unless the repository adds a path class;
    - without a system image, leave `DEEPHAVEN_SERVER_IMAGE` out of `versions.env`: `main.yml` then runs no system
      test. With no app that has integration tests, it runs no integration-test stage either
      ([ADR-0034](0034-main-runs-the-test-stages-the-repository-has.md)).
-4. Start a new release line: an empty `CHANGELOG.md`, a reset `.release-please-manifest.json`, and no tags.
+4. Start a new release line: an empty `CHANGELOG.md`, `.release-please-manifest.json` holding `{}` (the first release
+   is then the `initial-version` of `release-please-config.json`, `0.1.0`, [ADR-0029](0029-release-and-promotion.md)), and no tags.
 5. Keep `docs/adr/0001-…` to `0999-…` unchanged. Record the repository's own decisions from ADR-1000, and update
-   `docs/README.md`.
+   `docs/README.md`. An ADR whose subject the repository does not have yet is dormant, not a deviation: nothing to
+   record ([ADR-0039](0039-an-adr-applies-where-its-subject-exists.md)).
 6. Apply the repository settings of [ADR-0020](0020-branching-protection-and-merge-rules.md).
-7. Verify: the first pull request gets a green `pr-gate`, and the first `main` run publishes the images and deploys
-   dev.
+7. Verify: the first pull request gets a green `pr-gate`, and the first `main` run publishes the images, and deploys
+   dev when `dev_envs` names one.
+
+### What a new repository may leave out ([ADR-0039](0039-an-adr-applies-where-its-subject-exists.md))
+
+Each row is a switch a new repository starts without. The tooling skips what depends on it, with a notice where a job
+would have run, and the ADRs of the right column apply from the moment the switch is set.
+
+| Left out | What then happens | Decided in |
+|---|---|---|
+| `projects[0].reference_app` in `platform.yml` | no system test, no kind deployment test, no nightly teardown drill, no `public-base` job | [ADR-0035](0035-dev-envs-and-reference-app-are-optional.md) |
+| dev envs (`dev_envs: []`) | no kind deployment test and no dev deploy; config-lint and the scripts accept `local` only | [ADR-0035](0035-dev-envs-and-reference-app-are-optional.md) |
+| `helm` in `projects[0].kinds` | no chart and no `_helm-values` file is required or rendered; a values file that exists is still checked | [ADR-0036](0036-helm-checks-only-when-kinds-include-helm.md) |
+| integration tests (no app applies `buildlogic.integration-test`) | no `integration-test` stage on `main`, none on pull requests | [ADR-0034](0034-main-runs-the-test-stages-the-repository-has.md) |
+| `DEEPHAVEN_SERVER_IMAGE` in `test-infra/compose/versions.env` | no system test | [ADR-0034](0034-main-runs-the-test-stages-the-repository-has.md) |
+| the company base images `<registry>/base/jre21` and `ci-build` | the images build on the public Temurin fallbacks of `.github/versions.env`, with a notice; the Gradle job runs on the runner with `setup-java` | [ADR-0033](0033-public-base-image-fallback.md) |
+| the secrets `REGISTRY_USER` and `REGISTRY_TOKEN` | every login uses `GITHUB_TOKEN`, which GHCR needs | [ADR-0032](0032-registry-credentials.md) |
+| the connector framework (an app not built on it) | `health` passes on readiness alone; `app-config` reads `appconfig`, else `connectorconfig` | [ADR-0037](0037-runtime-scripts-read-generic-actuator-names.md) |
+| a dependency stack | nothing: a stack exists only for the projects that declare it in `stacks.yml` | [ADR-0038](0038-stacks-publish-their-test-environment.md) |
+| host pools (no boxes for a dev flow) | the dev deploy of that flow is a validated dry run (known gap G19) | [ADR-0028](0028-host-pool-deployment.md) |
+| `framework/` | the modules are the directories of `apps_dir` and `framework/` that hold a build file; an absent directory holds none | [ADR-0006](0006-apps-and-framework-modules.md) |
 
 ## Known gaps
 

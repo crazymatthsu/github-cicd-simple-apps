@@ -22,6 +22,11 @@ produce different bits. Publishing before the tests would let consumers pick up 
 1. **Trigger.** A push to `main` or `hotfix/**`, which happens only when a pull request is merged
    ([ADR-0020](0020-branching-protection-and-merge-rules.md)). Runs are serialized per branch and never cancelled.
 2. **The job graph.** The jobs, roughly in the order they run:
+
+   > **Superseded in part by [ADR-0034](0034-main-runs-the-test-stages-the-repository-has.md) rule 6.**
+   > `integration-test` and `system-test` run only when the repository has them, and `publish` follows the stages that
+   > ran, never a failed or cancelled one.
+
    - **build:** builds every project and runs the unit tests. Images are pushed with the `main` tag set
      ([ADR-0010](0010-image-tags-digests-promotion-retention.md)). Tags already on `HEAD` are ignored, so the
      version is always the `-rc` form.

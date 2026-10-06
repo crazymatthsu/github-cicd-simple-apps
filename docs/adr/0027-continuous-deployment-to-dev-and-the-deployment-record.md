@@ -49,6 +49,10 @@ sequenceDiagram
 ```
 
 1. **Every tested `main` commit is deployed.** After `publish` and the kind deployment test (`kind-deploy`),
+
+   > **Superseded in part by [ADR-0035](0035-dev-envs-and-reference-app-are-optional.md) rule 7.** Without a reference
+   > app no kind deployment test runs, and `deploy-dev` follows `publish` alone; without a dev env it is skipped.
+
    `main.yml` runs `_deploy-dev.yml` for the dev envs ([ADR-0023](0023-main-pipeline-build-once-test-publish.md)).
    Configuration-only merges deploy too. Hotfix branches do not deploy dev.
 2. **The deploy inventory.** Each dev flow has one inventory, `config/<env>/<flow>/workflows-config.yml`. It names

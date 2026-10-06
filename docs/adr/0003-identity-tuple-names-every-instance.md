@@ -25,12 +25,12 @@ without a lookup table. And every tool must derive the same names from the same 
    | Part | Meaning | Grammar |
    |---|---|---|
    | `env` | where it runs | `local`, or `<region>-<stage>` |
-   | `flow` | a business flow | one of the project's flows (`cash`, `deriv`, `swap` today) |
+   | `flow` | a business flow | one of the `flows` of `platform.yml` (here `cash`, `deriv`, `swap`) |
    | `AppName` | the app | `^[a-z0-9]([a-z0-9-]*[a-z0-9])?$`, at most 20 characters |
    | `AppInstance` | one configured pipeline of the app in that flow | the same grammar, at most 32 characters |
 
-   - A region is two lower-case letters (`us`, `jp` today). A stage is `dev`, `qa`, `uat`, `prod` or `parallel`
-     ([ADR-0004](0004-environments-and-runtimes.md)).
+   - A region is two lower-case letters, one of the `regions` of `platform.yml` (here `us`, `jp`). A stage is one of
+     its `stages` (here `dev`, `qa`, `uat`, `prod` or `parallel`; [ADR-0004](0004-environments-and-runtimes.md)).
    - One flow in one env is one **cluster**, with its own hosts, deploy inventory and shared endpoints.
    - `AppName` is the app's directory under `apps/`, its Gradle project, its image name and its
      `spring.application.name`.

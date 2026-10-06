@@ -2,7 +2,7 @@
 
 | | |
 |---|---|
-| Status | Accepted. Rule 5 superseded in part by [ADR-0030](0030-platform-yml-declares-every-project-value.md) |
+| Status | Accepted. Rules 5 and 6 superseded in part by [ADR-0030](0030-platform-yml-declares-every-project-value.md) |
 | Date | 2026-10-04 |
 | Applies to | every repository built from this one |
 | Enforced by | review (CODEOWNERS: the shared tooling is owned by the platform maintainers); config-lint for `config/`; settings discovery for `apps/` and `framework/` |
@@ -80,6 +80,12 @@ repository forks the tooling, and every fix has to be found and repeated in each
    - Topic READMEs live next to what they describe (`config/README.md`, `test-infra/README.md`,
      `apps/<AppName>/README.md`). They explain usage and MUST NOT contradict an ADR.
 5. **Shared tooling and project files.** Every file belongs to one of three classes.
+
+   > **Superseded in part by [ADR-0030](0030-platform-yml-declares-every-project-value.md) rule 7.**
+   > `settings.gradle.kts` holds no project value and is shared tooling, copied unchanged. Since
+   > [ADR-0031](0031-ci-derives-the-projects-from-the-build-files.md), `.github/affected-map.yml` holds only the path
+   > classes and rarely needs an edit.
+
    - **Shared tooling.** A repository built from this one copies these files unchanged, and they MUST NOT be edited
      there:
      - `build-logic/`, `gradle/wrapper/`, `gradlew*`, root `build.gradle.kts`, `gradle.properties`;
@@ -100,6 +106,10 @@ repository forks the tooling, and every fix has to be found and repeated in each
    repository, one built from this one, changes shared tooling only by copying a newer release of it. Until the
    hard-coded project values move to `platform.yml` ([ADR-0030](0030-platform-yml-declares-every-project-value.md)), a derived repository may edit exactly those values
    in shared tooling, and nothing else.
+
+   > **Superseded in part by [ADR-0030](0030-platform-yml-declares-every-project-value.md) rule 7.** The project values
+   > have moved to `platform.yml`, so the permission to edit them in shared tooling has lapsed: a derived repository
+   > edits no shared tooling.
 
 How the shared tooling moves from this repository into a derived one:
 

@@ -58,6 +58,11 @@ directory should hold the app's code, and only the infrastructure that really di
    - libraries MUST NOT depend on apps;
    - apps MUST NOT depend on other apps.
 6. **Discovery.** `settings.gradle.kts` includes every directory under `apps/` and `framework/` that holds a
+
+   > **Superseded in part by [ADR-0030](0030-platform-yml-declares-every-project-value.md) rule 7.** The
+   > `buildlogic.platform` settings plugin, applied by `settings.gradle.kts`, includes the modules, and the apps'
+   > directory is `apps_dir` of `platform.yml`.
+
    `build.gradle.kts`, as the top-level project `:<directory>`. Project names MUST be unique across both
    directories. Adding a module never needs an edit to the settings file or the root build.
 

@@ -23,6 +23,10 @@ a repository manager. Copying build logic into every module scales as badly as c
 1. **The Gradle wrapper is the only entry point.** The wrapper jar is committed and validated in CI. The JDK 21
    comes from the environment: the `ci-build` image in CI, the developer's installation on a laptop. Toolchain
    auto-download is off.
+
+   > **Superseded in part by [ADR-0033](0033-public-base-image-fallback.md) rule 7.** In CI the JDK comes from the
+   > `ci-build` image or, while it is not published, from `actions/setup-java`.
+
 2. **Conventions live in `build-logic/`.** A convention plugin is a small Gradle plugin that applies shared build
    settings. `build-logic/` is an included build (a separate Gradle build that the main build uses) of precompiled
    Kotlin script plugins.
@@ -32,6 +36,11 @@ a repository manager. Copying build logic into every module scales as badly as c
    - The root build scripts hold no conventions, and no module uses `allprojects {}` or `subprojects {}`.
 3. **The plugins.** Each part of the build applies only the plugins it needs. The diagram shows which part applies
    each plugin, and what the plugin adds:
+
+   > **Superseded in part by [ADR-0030](0030-platform-yml-declares-every-project-value.md) rule 7.**
+   > `buildlogic.platform` is a settings plugin, applied by `settings.gradle.kts` before `buildlogic.git-version`.
+   > **Superseded in part by [ADR-0038](0038-stacks-publish-their-test-environment.md) rule 8.** An app's build file
+   > declares its test clients and the JVM arguments of its `integrationTest` task.
 
    ```mermaid
    flowchart LR

@@ -69,6 +69,9 @@ flowchart TD
    - `<layer>` is `flow`, `app` or `instance`, and MUST match the level of the directory the file is in.
 5. **What each directory may hold** (anything else is an error):
 
+   > **Superseded in part by [ADR-0036](0036-helm-checks-only-when-kinds-include-helm.md) rule 5.**
+   > `_helm-values.app.yaml` and `_helm-values.instance.yaml` are required only when `kinds` includes `helm`.
+
    | Directory | Files |
    |---|---|
    | `config/` | `<env>/`, `README.md` |

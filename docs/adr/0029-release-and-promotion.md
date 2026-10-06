@@ -5,7 +5,7 @@
 | Status | Accepted |
 | Date | 2026-10-04 |
 | Applies to | `release-please.yml`, `release.yml`, `release-please-config.json`; the configuration repository's version bumps |
-| Enforced by | `release.yml`: the tag must be `vX.Y.Z` and equal `printVersion`, the commit's `main.yml` run must have succeeded, and promotion refuses to move an immutable tag; config-lint check 10 in the configuration repository (immutable tags) |
+| Enforced by | `release.yml`: the tag must be `vX.Y.Z` and equal `printVersion`, the commit's `main.yml` run must have succeeded, and promotion refuses to move an immutable tag; config-lint check 10 in the configuration repository (immutable tags); `scripts/ci/set-image-tag.sh` (the bump writes only the tag of the instance layers, [ADR-0012](0012-compose-template-and-generated-env.md)) |
 | Related | [ADR-0004](0004-environments-and-runtimes.md), [ADR-0008](0008-versions-derived-from-git.md), [ADR-0010](0010-image-tags-digests-promotion-retention.md), [ADR-0020](0020-branching-protection-and-merge-rules.md), [ADR-0023](0023-main-pipeline-build-once-test-publish.md) |
 
 **In short:** A release re-tags the image digests that `main` already built and tested, and attaches a software

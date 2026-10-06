@@ -49,6 +49,10 @@ So the first `main` run of such a repository failed, and it published and deploy
 5. **The jobs after publish name the job before them.** `kind-deploy` and `deploy-dev` MUST state their condition on
    the result of the job they follow. GitHub applies a skip to every later job of a chain unless its condition says
    otherwise, and a stage skipped by design MUST NOT skip the deploys.
+
+   > **Superseded in part by [ADR-0035](0035-dev-envs-and-reference-app-are-optional.md) rule 7.** `deploy-dev` names
+   > `kind-deploy` when one runs, else `publish`.
+
 6. **What this decision supersedes.** In [ADR-0023](0023-main-pipeline-build-once-test-publish.md) rule 2,
    `integration-test` and `system-test` run under rules 1 and 2, and `publish` runs under rule 4. In
    [ADR-0025](0025-integration-tests-on-compose-stacks.md) rule 6, the system level runs on `main` under rule 2.

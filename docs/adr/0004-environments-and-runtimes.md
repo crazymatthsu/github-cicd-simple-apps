@@ -2,7 +2,7 @@
 
 | | |
 |---|---|
-| Status | Accepted |
+| Status | Accepted. Rule 3 superseded in part by [ADR-0030](0030-platform-yml-declares-every-project-value.md) |
 | Date | 2026-10-04 |
 | Applies to | every env of every project; this repository's `config/` |
 | Enforced by | config-lint checks 1 (env grammar) and 10 (tag policy); the env allow-lists of `run-compose.sh` and `pool-deploy.sh`; the dev-env guard of `_deploy-dev.yml` ([ADR-0030](0030-platform-yml-declares-every-project-value.md)) |
@@ -48,6 +48,10 @@ operations tooling must stay the same in every env, so that what was tested in d
    [ADR-0019](0019-kubernetes-and-helm-are-provisional.md), every env (dev, qa, uat, prod and parallel) runs on
    **on-prem compose**: docker or podman compose on the boxes (bare-metal hosts) of each flow's host pool, laid out
    as versioned host bundles ([ADR-0018](0018-on-prem-host-layout-versioned-bundles.md)).
+
+   > **Superseded in part by [ADR-0030](0030-platform-yml-declares-every-project-value.md) rule 5.** The allowed envs
+   > are `local` and the envs of `dev_envs`, no longer every `*-dev` env.
+
    - This repository MUST deploy and operate only `local` and its dev envs. `run-compose.sh`
      ([ADR-0017](0017-run-compose-operations-cli-and-runtime-posture.md)) and `pool-deploy.sh`
      ([ADR-0028](0028-host-pool-deployment.md)) refuse every other env, and the dev deploy refuses anything that is
