@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.6.0](https://github.com/crazymatthsu/github-cicd-simple-apps/compare/v0.5.0...v0.6.0) (2026-10-06)
+
+
+### Features
+
+* **ci:** a repository built from this one runs on the company's registry and runner: registry secrets (ADR-0032), setup-yq, a self-contained pool-deploy test ([#24](https://github.com/crazymatthsu/github-cicd-simple-apps/issues/24)) ([a0e99fb](https://github.com/crazymatthsu/github-cicd-simple-apps/commit/a0e99fb5f1d5836c5234d19582208626eedec4e6))
+
 ## [0.5.0](https://github.com/crazymatthsu/github-cicd-simple-apps/compare/v0.4.0...v0.5.0) (2026-10-05)
 
 
