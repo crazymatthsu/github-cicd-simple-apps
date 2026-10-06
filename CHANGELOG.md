@@ -1,5 +1,16 @@
 # Changelog
 
+## [2.0.0](https://github.com/crazymatthsu/github-cicd-simple-apps/compare/v1.0.0...v2.0.0) (2026-10-06)
+
+
+### ⚠ BREAKING CHANGES
+
+* drop the system test; the integration tests run once, against the images pinned in versions.env (ADR-0044) ([#31](https://github.com/crazymatthsu/github-cicd-simple-apps/issues/31))
+
+### Continuous Integration
+
+* drop the system test; the integration tests run once, against the images pinned in versions.env (ADR-0044) ([#31](https://github.com/crazymatthsu/github-cicd-simple-apps/issues/31)) ([420e2af](https://github.com/crazymatthsu/github-cicd-simple-apps/commit/420e2af7b4c8f22ddba3b0d73bc9b921f3125fae))
+
 ## [1.0.0](https://github.com/crazymatthsu/github-cicd-simple-apps/compare/v0.7.0...v1.0.0) (2026-10-06)
 
 
