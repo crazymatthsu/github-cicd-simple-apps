@@ -26,6 +26,10 @@ scripts.
 1. **One script, every app.** `scripts/run-compose.sh <env> <flow> <AppName> <AppInstance> <command> [options]`
    operates every instance. Apps MUST NOT ship wrappers of their own.
 
+   > **Superseded in part by [ADR-0037](0037-runtime-scripts-read-generic-actuator-names.md) rule 4.** `health` passes
+   > on readiness alone when the app publishes no identity section, and `app-config` reads `appconfig` before
+   > `connectorconfig` (rule 5 there).
+
    | Command | Does |
    |---|---|
    | `start [--no-wait]`, `stop`, `restart`, `down [--volumes]` | lifecycle; `start` waits for readiness (default 180 s, exit 124 on timeout) |
@@ -58,6 +62,10 @@ scripts.
    With rootless Podman every published port is 1024 or above. On SELinux hosts the Spring layer mounts get `:z`
    or `:Z` labels.
 5. **Safety rules.** `--force` never lifts them, unless noted:
+
+   > **Superseded in part by [ADR-0030](0030-platform-yml-declares-every-project-value.md) rule 7.** The allowed envs
+   > are `local` and the envs of `dev_envs`, no longer every `*-dev` env.
+
    - **Allowed envs:** `local` and `*-dev` only. This repository deploys and operates nothing else
      ([ADR-0004](0004-environments-and-runtimes.md)).
    - **Volumes:** `down --volumes` outside `local` requires `--force`.

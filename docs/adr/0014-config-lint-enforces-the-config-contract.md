@@ -25,6 +25,10 @@ on a laptop as the pull request gets in CI.
    job summary.
 2. **The checks,** grouped by what they protect:
 
+   > **Superseded in part by [ADR-0036](0036-helm-checks-only-when-kinds-include-helm.md) rule 5.** Checks 3, 4 and 12
+   > require and render the Helm artefacts only when `kinds` includes `helm`; a values file that exists is still
+   > checked.
+
    | # | Checks |
    |---|---|
    | | **The tree has the expected shape** |

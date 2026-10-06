@@ -5,7 +5,7 @@
 | Status | Accepted. Rule 7 superseded in part by [ADR-0032](0032-registry-credentials.md) |
 | Date | 2026-10-04 |
 | Applies to | every image the pipeline builds, tests, publishes, deploys or deletes |
-| Enforced by | `scripts/ci/retag-image.sh` (refuses to move an immutable tag, exit 3; verifies every write); `pushImage` (refuses a local build); `_integration-test.yml` (requires a digest-pinned image); config-lint check 10 (tag policy); `scripts/ci/retention.sh` |
+| Enforced by | `scripts/ci/retag-image.sh` (refuses to move an immutable tag, exit 3; verifies every write); `pushImage` (refuses a local build); `_integration-test.yml` (requires a digest-pinned image); config-lint check 10 (tag policy); `scripts/ci/retention.sh`; `scripts/ci/resolve-image.sh` (a reference to its digest, without a pull: what the jobs hand on) |
 | Related | [ADR-0008](0008-versions-derived-from-git.md), [ADR-0009](0009-one-shared-image-definition.md), [ADR-0023](0023-main-pipeline-build-once-test-publish.md), [ADR-0029](0029-release-and-promotion.md) |
 
 **In short:** An image is built once and never rebuilt. Tests, deploys and releases refer to it by digest: the hash
@@ -80,6 +80,10 @@ anything in use.
    - `local` uses `local`.
 7. **Retention.** The nightly sweep of `retention.sh` is a dry run until it is enabled. It works on versions: a
    version is one digest in the registry, with its tags.
+
+   > **Superseded in part by [ADR-0032](0032-registry-credentials.md) rule 5.** The sweep runs on GHCR only; on another
+   > registry `retention.sh` prints a notice and exits 0.
+
    - It deletes `pr-*` versions seven days after their pull request closed. It keeps the 20 newest `-rc`
      versions and every one younger than 30 days.
    - It never deletes a version that:

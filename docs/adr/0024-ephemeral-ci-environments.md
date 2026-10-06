@@ -57,6 +57,10 @@ cancelled run is a leak that the next run trips over.
 
 5. **The guarantee is tested.** The nightly teardown drill starts the reference stack. It proves that teardown and
    the leak check leave the runner clean in two cases:
+
+   > **Superseded in part by [ADR-0035](0035-dev-envs-and-reference-app-are-optional.md) rule 7.** The drill runs only
+   > when `platform.yml` declares a `reference_app`.
+
    - a test fails on purpose;
    - the run cancels itself.
 

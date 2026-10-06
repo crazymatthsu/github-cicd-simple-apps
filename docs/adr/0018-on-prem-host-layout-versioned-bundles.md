@@ -40,6 +40,10 @@ env served by compose ([ADR-0004](0004-environments-and-runtimes.md)).
    `run-compose.sh start` creates them, writable by the image's user. Without the two variables, as in `local`, an
    instance keeps its logs and data in volumes of its compose project.
 2. **A host bundle is the runtime of one `<env>/<flow>`:**
+
+   > **Superseded in part by [ADR-0030](0030-platform-yml-declares-every-project-value.md) rule 7.** A host bundle also
+   > holds `platform.yml`, from which `run-compose.sh` reads the vocabulary on the box.
+
    - `scripts/run-compose.sh` and `scripts/smoke.sh`;
    - `docker/docker-compose.yml`;
    - for each app of the flow that ships them, `apps/<AppName>/docker/docker-compose.override.yml` and

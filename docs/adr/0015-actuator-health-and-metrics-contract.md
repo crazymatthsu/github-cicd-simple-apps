@@ -40,6 +40,11 @@ That works only if every app answers the same endpoints, with the same meaning a
 2. **One port.** The app and the actuator share HTTP port `8080`.
 3. **Exposed endpoints: exactly `health`, `info`, `prometheus` and `connectorconfig`.** No other endpoint is
    exposed. In particular, `env`, `configprops`, `beans` and `heapdump` are never exposed: they can reveal secrets.
+
+   > **Superseded in part by [ADR-0037](0037-runtime-scripts-read-generic-actuator-names.md) rule 7.**
+   > `connectorconfig` is the summary endpoint of an app on the framework; another app exposes `appconfig` when it has
+   > a summary, or no summary endpoint.
+
 4. **Health groups:**
 
    | Endpoint | Contains | Meaning |
@@ -79,6 +84,10 @@ That works only if every app answers the same endpoints, with the same meaning a
    ```
 
 6. **`/actuator/info`** carries:
+
+   > **Superseded in part by [ADR-0037](0037-runtime-scripts-read-generic-actuator-names.md) rule 2.** The identity is
+   > also published under the generic `app` section, which the runtime scripts read first (rule 3 there).
+
    - the build: version, git sha, branch, dirty flag and version kind, from the build info
      ([ADR-0007](0007-gradle-build-with-convention-plugins.md));
    - the Java runtime;

@@ -2,7 +2,7 @@
 
 | | |
 |---|---|
-| Status | Accepted |
+| Status | Accepted. Rule 4 superseded in part by [ADR-0039](0039-an-adr-applies-where-its-subject-exists.md) |
 | Date | 2026-10-04 |
 | Applies to | every repository built from this one, and every change to it |
 | Enforced by | review (CODEOWNERS) |
@@ -41,6 +41,10 @@ codebase, not the design as it stands. They remain in the git history.
    the contract. The other sections explain them.
 4. **The contract is the set of ADRs whose status is Accepted.** It applies to every app in this repository and to
    every repository built from this one. An ADR can narrow that scope in its *Applies to* row.
+
+   > **Superseded in part by [ADR-0039](0039-an-adr-applies-where-its-subject-exists.md) rule 5.** An ADR applies where
+   > the subject its *Applies to* row names exists; a repository without the subject deviates from nothing.
+
 5. **Lifecycle.** An ADR starts as Proposed and becomes Accepted. Later it can become Superseded by ADR-NNNN, or
    Deprecated.
    - An accepted ADR is not edited in substance.
@@ -88,6 +92,7 @@ stateDiagram-v2
 - A newcomer reads the index first, then the ADRs of the area they work on.
 - Changing a convention costs a new ADR. We want that friction: it makes a changed contract visible.
 - A repository created from this one carries ADR-0001 to ADR-0999 unchanged, and records its own decisions from
-  ADR-1000. It records each deviation from the contract as an ADR that says what it deviates from.
-- Some comments in code and configuration still cite identifiers of retired documents. They are to be replaced by
-  ADR numbers (a known gap in the index).
+  ADR-1000. It records each deviation from the contract as an ADR that says what it deviates from. A subject it
+  does not have yet is not a deviation ([ADR-0039](0039-an-adr-applies-where-its-subject-exists.md)).
+- Code, configuration and documentation cite ADR numbers only (rule 9); the identifiers of the retired documents are
+  gone.

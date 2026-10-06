@@ -2,7 +2,7 @@
 
 | | |
 |---|---|
-| Status | Accepted. Supersedes rule 5 of ADR-0002, and in part rule 5 of ADR-0005, rule 6 of ADR-0006, rule 3 of ADR-0007, rule 5 of ADR-0017, rule 2 of ADR-0018 and rule 2 of ADR-0019 (rule 7). Rules 1 and 3 superseded in part by [ADR-0035](0035-dev-envs-and-reference-app-are-optional.md) |
+| Status | Accepted. Supersedes rule 5 of ADR-0002, and in part rule 3 of ADR-0004, rules 5 and 6 of ADR-0005, rule 6 of ADR-0006, rule 3 of ADR-0007, rule 5 of ADR-0017, rule 2 of ADR-0018 and rule 2 of ADR-0019 (rule 7). Rules 1 and 3 superseded in part by [ADR-0035](0035-dev-envs-and-reference-app-are-optional.md) |
 | Date | 2026-10-05 |
 | Applies to | every repository built from this one; every part of the shared tooling that needs a project value |
 | Enforced by | the `buildlogic.platform` settings plugin (validates the file on every Gradle run; `PlatformManifestTest`); config-lint checks 1, 10 and 11 (`ConfigLinterTest`); `ConnectorIdentity` (the app refuses to start; `ConnectorIdentityTest`); the argument checks of `run-compose.sh`, `pool-deploy.sh` and `helm-deploy-instance.sh` (`scripts/test/env-vocabulary-test.sh`, `scripts/test/pool-deploy-test.sh`); the `platform-manifest` action; the guard of `_deploy-dev.yml` |
@@ -39,7 +39,10 @@ the job container of the build, may have neither: they have bash and awk. A runn
 
 1. **The schema.** `platform.yml`, at the repository root, holds these keys:
 
-   | Key | Meaning | Rules | Value here |
+   > **Superseded in part by [ADR-0035](0035-dev-envs-and-reference-app-are-optional.md) rule 7.** `dev_envs` may be
+   > `[]`, and `projects[0].reference_app` may be left out.
+
+   | Key | Meaning | Rules | This repository |
    |---|---|---|---|
    | `platform` | the major version of this contract that the repository follows | | `v1` |
    | `kind` | what the repository does | `app`: builds, publishes and deploys its dev envs | `app` |
@@ -55,13 +58,18 @@ the job container of the build, may have neither: they have bash and awk. A runn
    | `stages` | the stages; every stage but `dev` is promoted | one word of lower-case letters and digits each; MUST include `dev` | `[dev, qa, uat, prod, parallel]` |
    | `flows` | the business flows | lower-case kebab-case | `[cash, deriv, swap]` |
 
-   Values that the tree can derive stay derived ([ADR-0002](0002-one-repository-one-project-one-release-line.md)
+   The last column is this repository's own `platform.yml`: an example, not a requirement. A repository built from
+   this one sets its own values, and no shared tool expects these. Values that the tree can derive stay derived ([ADR-0002](0002-one-repository-one-project-one-release-line.md)
    rule 6). A new project value MUST be added to this schema by an ADR before any tool uses it.
 2. **Lines that need no YAML parser.** `dev_envs`, `regions`, `stages` and `flows` MUST each be a one-line list of
    unquoted words at the top level, like `flows: [cash, deriv, swap]`. `registry` MUST be an unquoted value on one
    top-level line. Scripts read these lines with awk where no yq is installed.
 3. **Validated on every build.** `settings.gradle.kts` applies the `buildlogic.platform` settings plugin first. On
    every Gradle run it parses the file and fails the build with every problem listed. It also:
+
+   > **Superseded in part by [ADR-0035](0035-dev-envs-and-reference-app-are-optional.md) rule 7.** A missing
+   > `reference_app` is valid; one that is present must name an app.
+
    - sets `rootProject.name` to `projects[0].name`, and fails in CI when the repository name differs
      ([ADR-0002](0002-one-repository-one-project-one-release-line.md) rule 2);
    - includes every directory under `apps_dir` and `framework/` that holds a `build.gradle.kts`
@@ -93,8 +101,11 @@ the job container of the build, may have neither: they have bash and awk. A runn
    env and a flow. It does not list the vocabulary: `helm-deploy-instance.sh` and config-lint check that.
 7. **What this decision supersedes:**
    - [ADR-0002](0002-one-repository-one-project-one-release-line.md) rule 5: rule 1 here is the manifest's schema;
-   - [ADR-0005](0005-repository-layout-and-shared-tooling.md) rule 5, in part: `settings.gradle.kts` holds no project
-     value any more, so it is shared tooling, copied unchanged;
+   - [ADR-0004](0004-environments-and-runtimes.md) rule 3, in part: the allowed envs are `local` and the envs of `dev_envs`
+     (rule 5 here), no longer every `*-dev` env;
+   - [ADR-0005](0005-repository-layout-and-shared-tooling.md) rules 5 and 6, in part: `settings.gradle.kts` holds no project
+     value any more, so it is shared tooling, copied unchanged, and the permission of rule 6 to edit project values
+     in shared tooling has lapsed;
    - [ADR-0006](0006-apps-and-framework-modules.md) rule 6, in part: the `buildlogic.platform` settings plugin, applied
      by `settings.gradle.kts`, includes the modules, and takes the apps' directory from `apps_dir`;
    - [ADR-0007](0007-gradle-build-with-convention-plugins.md) rule 3, in part: `buildlogic.platform` is a settings
@@ -163,4 +174,6 @@ flowchart LR
 - `apps_dir` lets a repository keep its apps in another directory without changing the tooling. That deviates from
   [ADR-0006](0006-apps-and-framework-modules.md), so such a repository records the deviation in an ADR of its own
   (ADR-1000 or later).
+- What a repository may leave out at first, and what is then skipped rather than failed, is listed in the index
+  ("What a new repository may leave out") and decided in [ADR-0033](0033-public-base-image-fallback.md) to [ADR-0037](0037-runtime-scripts-read-generic-actuator-names.md) and [ADR-0039](0039-an-adr-applies-where-its-subject-exists.md).
 - CI derives the project list from the build files ([ADR-0031](0031-ci-derives-the-projects-from-the-build-files.md)).

@@ -39,7 +39,10 @@ apart.
    ([ADR-0009](0009-one-shared-image-definition.md)).
 5. **`platform.yml` is the manifest.** It declares only what the tree cannot derive:
 
-   | Key | Meaning | Value here |
+   > **Superseded by [ADR-0030](0030-platform-yml-declares-every-project-value.md) rule 1.** The schema lives there,
+   > with `group`, `reference_app`, `regions`, `stages` and `flows` added; the table below is the shape of 2026-10-04.
+
+   | Key | Meaning | This repository (an example) |
    |---|---|---|
    | `platform` | major version of this contract the repository follows | `v1` |
    | `kind` | `app`: builds, publishes and deploys its dev envs | `app` |

@@ -5,7 +5,7 @@
 | Status | Accepted. Rule 2 superseded in part by [ADR-0030](0030-platform-yml-declares-every-project-value.md) and [ADR-0036](0036-helm-checks-only-when-kinds-include-helm.md); rule 5 superseded in part by [ADR-0036](0036-helm-checks-only-when-kinds-include-helm.md) |
 | Date | 2026-10-04 |
 | Applies to | the charts, the `_helm-values.*` files, `scripts/helm-deploy-instance.sh`, the kind tier, `kind: helm` targets |
-| Enforced by | config-lint checks 3, 4 and 12; `_kind-deploy.yml` in `pr.yml` and `main.yml` |
+| Enforced by | config-lint checks 3, 4 and 12; `_kind-deploy.yml` in `pr.yml` and `main.yml`, with `scripts/helm-smoke-diff.sh` (two deployed instances must differ) |
 | Related | [ADR-0004](0004-environments-and-runtimes.md), [ADR-0011](0011-configuration-tree-and-spring-layers.md), [ADR-0014](0014-config-lint-enforces-the-config-contract.md), [ADR-0024](0024-ephemeral-ci-environments.md) |
 
 **In short:** Kubernetes on EKS is the target runtime, but until it exists every env runs on on-prem compose. The
@@ -46,6 +46,12 @@ flowchart LR
 
 1. **Provisional.** The Helm assets are kept working and are not extended. A decision on EKS supersedes this ADR.
 2. **What stays green** (working, with its checks passing):
+
+   > **Superseded in part by [ADR-0030](0030-platform-yml-declares-every-project-value.md) rule 7.** `deploy` accepts
+   > `local` and the envs of `dev_envs`. **Superseded in part by
+   > [ADR-0036](0036-helm-checks-only-when-kinds-include-helm.md) rule 5.** The values are required by check 3 only
+   > when `kinds` includes `helm`.
+
    - **Charts:** one per app, `apps/<AppName>/helm/<AppName>/`. They are identical except for the name.
    - **Values:** `_helm-values.app.yaml` and `_helm-values.instance.yaml` in the configuration tree, required by
      config-lint check 3. Their names are provisional.
@@ -75,6 +81,9 @@ flowchart LR
    - how each env moves from compose to Kubernetes.
 5. **Until then a new app ships the Helm assets too:** a copy of an existing chart with the name changed, and Helm
    values for every instance. Config-lint requires them: a missing chart is an error in `local`.
+
+   > **Superseded in part by [ADR-0036](0036-helm-checks-only-when-kinds-include-helm.md) rule 5.** A new app ships the
+   > Helm assets only when `kinds` includes `helm`.
 
 ## Alternatives considered
 

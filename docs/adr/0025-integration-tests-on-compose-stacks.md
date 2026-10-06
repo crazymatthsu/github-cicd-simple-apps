@@ -26,6 +26,10 @@ laptop and another in CI. They also do not start the app the way it is deployed.
    - Gradle (`composeUp`, `composeDown`, `devUp`, `devDown`);
    - CI (the `compose-stack` action).
 2. **Projects declare their stacks.**
+
+   > **Superseded in part by [ADR-0038](0038-stacks-publish-their-test-environment.md) rule 8.** `stacks.yml` also
+   > declares, per stack, its seed and the variables it publishes to the tests.
+
    - `test-infra/compose/stacks.yml` names, per Gradle project, the dependency stacks it needs.
    - Each stack is a file `test-infra/compose/<stack>.yml`. It defines a service of the same name, with a readiness
      health check, run labels and a memory limit.
@@ -40,6 +44,10 @@ laptop and another in CI. They also do not start the app the way it is deployed.
    - the configuration of a `local` instance: the one that the test case's manifest names, else the app's only
      `local` instance.
 4. **Where the test JVM runs:**
+
+   > **Superseded in part by [ADR-0033](0033-public-base-image-fallback.md) rule 7.** In CI the `it-runner` service
+   > runs on the `ci-build` image or, while it is not published, on its public fallback.
+
    - **CI:** inside the `it-runner` service (the `ci-build` image), on the stack's network, with no ports
      published: `compose run --rm it-runner ./gradlew :<app>:integrationTest -Pcompose.managed=false`.
    - **Laptop:** on the host JVM, against ports published on `127.0.0.1`. `./gradlew :<app>:integrationTest`
@@ -72,7 +80,15 @@ laptop and another in CI. They also do not start the app the way it is deployed.
 5. **The Gradle suite.** `integrationTest` is a JVM test suite in `src/integrationTest/java`. `check` compiles it
    but never runs it, and it is never up to date or cached. Tests read their endpoints from `IT_*` variables through
    the framework's `ItEnvironment`. They check the app through its actuator (`ActuatorClient`).
+
+   > **Superseded in part by [ADR-0038](0038-stacks-publish-their-test-environment.md) rule 8.** The `IT_*` endpoints
+   > and credentials the tests read come from the stack declarations, not from the plugin.
+
 6. **Two levels:**
+
+   > **Superseded in part by [ADR-0034](0034-main-runs-the-test-stages-the-repository-has.md) rule 6.** The system
+   > level runs on `main` only when `versions.env` declares the system image and `platform.yml` a reference app
+   > ([ADR-0035](0035-dev-envs-and-reference-app-are-optional.md)).
 
    | Level | Dependencies | Runs in |
    |---|---|---|
@@ -80,6 +96,10 @@ laptop and another in CI. They also do not start the app the way it is deployed.
    | system | the organisation's own server image, pinned by digest in `versions.env` | `main`, for the reference scenario ([ADR-0023](0023-main-pipeline-build-once-test-publish.md)) |
 
 7. **Isolation.**
+
+   > **Superseded in part by [ADR-0038](0038-stacks-publish-their-test-environment.md) rule 8.** A password is a
+   > `<generated-secret>` entry of the stack that needs it; `IT_SA_PASSWORD` is this repository's name for one.
+
    - Each run prefixes its target tables with `IT_TABLE_PREFIX=it_<sha7>_`.
    - Database passwords are generated per build (`IT_SA_PASSWORD`).
    - The env is always `local`.
