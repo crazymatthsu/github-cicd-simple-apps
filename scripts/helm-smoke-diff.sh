@@ -1,8 +1,10 @@
 #!/usr/bin/env bash
 # helm-smoke-diff.sh — prove that two deployed AppInstances differ (ADR-0019): their
-# identity tuples in /actuator/info, and at least one value of their masked effective configuration in
-# /actuator/connectorconfig (e.g. connector.source.table, connector.sink.type). Both endpoints are read inside
-# the pods, so nothing is port-forwarded. Portable bash (3.2+); run with --help for the usage.
+# identity tuples in /actuator/info, and at least one value of their masked effective configuration summary
+# (e.g. connector.source.table, connector.sink.type). It reads the generic names first and accepts the framework's
+# (ADR-0037): the app section of /actuator/info, else connector; /actuator/appconfig, else connectorconfig. The
+# endpoints are read inside the pods, so nothing is port-forwarded. Portable bash (3.2+); run with --help for the
+# usage.
 set -euo pipefail
 
 readonly EXIT_DIFFER=0 EXIT_SAME=1 EXIT_USAGE=2
@@ -11,12 +13,16 @@ usage() {
     cat <<'EOF'
 Usage: helm-smoke-diff.sh -n <namespace> [--kubeconfig <file>] <release-a> <release-b>
 
-Reads /actuator/info and /actuator/connectorconfig of both releases with
+Reads /actuator/info and the masked configuration summary (/actuator/appconfig, else /actuator/connectorconfig)
+of both releases with
   kubectl -n <namespace> exec deploy/<release> -- curl -fsS localhost:8080/actuator/...
 and prints a two-column summary: identity, completeness, config layers and every property of the masked
-configuration summary, "*" marking the rows that differ.
+configuration summary, "*" marking the rows that differ. The identity is the tuple of the app section of
+/actuator/info, else of its connector section (ADR-0037).
 
-Passes when the identity tuples differ and at least one configuration value differs.
+Passes when the identity tuples differ and at least one configuration value differs. A check that neither
+release can answer (no identity section, no summary endpoint) is skipped with a warning; a check that only one
+release answers fails.
 Exit codes: 0 the instances differ · 1 they do not, or an instance is unreachable (or kubectl / jq missing) ·
             2 usage
 Environment: KUBECTL_BIN (default kubectl); KUBECONFIG as usual.
@@ -29,6 +35,7 @@ die() {
     printf 'helm-smoke-diff: error: %s\n' "$*" >&2
     exit "$code"
 }
+warn() { printf 'helm-smoke-diff: warning: %s\n' "$*" >&2; }
 is_label() { printf '%s' "$1" | grep -Eq '^[a-z0-9]([a-z0-9-]*[a-z0-9])?$' && [ "${#1}" -le 63 ]; }
 
 NS="" KUBECONFIG_ARG=""
@@ -72,29 +79,42 @@ TMP="$(mktemp -d)"
 cleanup() { rm -rf "$TMP"; }
 trap cleanup EXIT
 
-# <release> <endpoint> <file>: the endpoint's JSON from inside the release's pod.
+# <release> <endpoint> <file> [quiet]: the endpoint's JSON from inside the release's pod; quiet: no message when the
+# endpoint does not answer.
 fetch() {
     if ! "${KC[@]}" -n "$NS" exec "deploy/$1" -- curl -fsS --max-time 10 "http://localhost:8080/actuator/$2" >"$3" 2>"$3.err"; then
-        printf 'helm-smoke-diff: %s/%s: /actuator/%s unreachable: %s\n' "$NS" "$1" "$2" "$(tr '\n' ' ' <"$3.err")" >&2
+        [ -n "${4:-}" ] ||
+            printf 'helm-smoke-diff: %s/%s: /actuator/%s unreachable: %s\n' "$NS" "$1" "$2" "$(tr '\n' ' ' <"$3.err")" >&2
         return 1
     fi
     jq -e . "$3" >/dev/null 2>&1 || { printf 'helm-smoke-diff: %s: /actuator/%s is not JSON\n' "$1" "$2" >&2; return 1; }
 }
-unreachable=0
+unreachable=0 summaries=0
 for side in a b; do
     release="$REL_A"
     [ "$side" = a ] || release="$REL_B"
     fetch "$release" info "$TMP/info-$side.json" || unreachable=1
-    fetch "$release" connectorconfig "$TMP/config-$side.json" || unreachable=1
+    # The configuration summary: the generic endpoint, else the framework's (ADR-0037). An app may have neither.
+    for endpoint in appconfig connectorconfig; do
+        if fetch "$release" "$endpoint" "$TMP/try-$side.json" quiet; then
+            mv "$TMP/try-$side.json" "$TMP/config-$side.json"
+            summaries=$((summaries + 1))
+            printf 'helm-smoke-diff: %s: configuration summary from /actuator/%s\n' "$release" "$endpoint" >&2
+            break
+        fi
+    done
 done
 [ "$unreachable" -eq 0 ] || die "$EXIT_SAME" "cannot compare: an instance did not answer (is it deployed and ready?)"
 
+# The identity section of /actuator/info: the first of app and connector that carries a tuple (ADR-0037).
+readonly IDENTITY='(first((.app, .connector) | objects | select(has("tuple"))) // {})'
 # One "<key>\t<value>" row per summary entry: identity, completeness and layers, then every property.
 rows() {
     local clean='def clean: tostring | gsub("[\\t\\r\\n]"; " ");'
-    jq -r "$clean"'
-        "identity (/actuator/info)\t\(.connector.tuple // "<missing>" | clean)",
-        "identity complete\t\(.connector.complete | if . == null then "<missing>" else . end | clean)"' "$TMP/info-$1.json"
+    jq -r "$clean$IDENTITY"' |
+        "identity (/actuator/info)\t\(.tuple // "<missing>" | clean)",
+        "identity complete\t\(.complete | if . == null then "<missing>" else . end | clean)"' "$TMP/info-$1.json"
+    [ -f "$TMP/config-$1.json" ] || return 0
     jq -r "$clean"'
         "config layers\t\((.layers // []) | map(clean | sub("^/config/(?<l>[^/]+)/application[.]yml$"; "\(.l)")) | join(", "))",
         ((.properties // {}) | to_entries[] | "\(.key | clean)\t\(.value // "<null>" | clean)")' "$TMP/config-$1.json"
@@ -124,21 +144,41 @@ awk -F '\t' -v a="$REL_A" -v b="$REL_B" '
         }
     }' "$TMP/rows-a.tsv" "$TMP/rows-b.tsv"
 
-tuple_a="$(jq -r '.connector.tuple // ""' "$TMP/info-a.json")"
-tuple_b="$(jq -r '.connector.tuple // ""' "$TMP/info-b.json")"
+tuple_a="$(jq -r "$IDENTITY.tuple // \"\"" "$TMP/info-a.json")"
+tuple_b="$(jq -r "$IDENTITY.tuple // \"\"" "$TMP/info-b.json")"
 differing="$(awk -F '\t' 'NR == FNR { if ($1 != "config layers" && $1 !~ /^identity/) va[$1] = $2; next }
     $1 == "config layers" || $1 ~ /^identity/ { next }
     { seen[$1] = 1; if (!($1 in va) || va[$1] != $2) d[$1] = 1 }
     END { for (k in va) if (!(k in seen)) d[k] = 1; for (k in d) print k }' "$TMP/rows-a.tsv" "$TMP/rows-b.tsv" | sort)"
 
-problems=""
-[ -n "$tuple_a" ] && [ -n "$tuple_b" ] || problems="$problems; an identity tuple is missing from /actuator/info"
-[ "$tuple_a" != "$tuple_b" ] || problems="$problems; both answer with the identity $tuple_a"
-[ -n "$differing" ] || problems="$problems; no configuration value differs"
+# A check that neither release answers is skipped with a warning; one that only one answers fails (ADR-0037).
+problems="" compared=""
+if [ -z "$tuple_a" ] && [ -z "$tuple_b" ]; then
+    warn "neither release publishes its identity (an app or connector section with a tuple): identity not compared"
+elif [ -z "$tuple_a" ] || [ -z "$tuple_b" ]; then
+    problems="$problems; an identity tuple is missing from /actuator/info"
+elif [ "$tuple_a" = "$tuple_b" ]; then
+    problems="$problems; both answer with the identity $tuple_a"
+else
+    compared="identity ($tuple_a, $tuple_b)"
+fi
+if [ "$summaries" -eq 0 ]; then
+    warn "neither release answers /actuator/appconfig or /actuator/connectorconfig: configuration not compared"
+elif [ "$summaries" -eq 1 ]; then
+    problems="$problems; only one release answers a configuration summary"
+elif [ -z "$differing" ]; then
+    problems="$problems; no configuration value differs"
+else
+    count="$(printf '%s\n' "$differing" | wc -l | tr -d ' ')"
+    compared="${compared:+$compared and in }$count configuration value(s): $(printf '%s' "$differing" | tr '\n' ' ')"
+fi
 if [ -n "$problems" ]; then
     printf 'helm-smoke-diff: FAIL %s vs %s:%s\n' "$REL_A" "$REL_B" "${problems#;}" >&2
     exit "$EXIT_SAME"
 fi
-printf 'helm-smoke-diff: OK %s and %s differ in identity and in %s configuration value(s): %s\n' \
-    "$tuple_a" "$tuple_b" "$(printf '%s\n' "$differing" | wc -l | tr -d ' ')" "$(printf '%s' "$differing" | tr '\n' ' ')"
+if [ -n "$compared" ]; then
+    printf 'helm-smoke-diff: OK %s and %s differ in %s\n' "$REL_A" "$REL_B" "$compared"
+else
+    printf 'helm-smoke-diff: OK %s and %s: nothing to compare, both checks skipped\n' "$REL_A" "$REL_B"
+fi
 exit "$EXIT_DIFFER"

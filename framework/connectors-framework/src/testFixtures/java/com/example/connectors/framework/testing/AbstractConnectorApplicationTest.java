@@ -74,6 +74,8 @@ public abstract class AbstractConnectorApplicationTest {
     void infoShowsIdentityAndBuild() {
         Map<String, Object> info = getJson("/actuator/info");
         assertThat(info.get("connector")).asString().contains(expectedTuple());
+        assertThat(info.get("app")).as("the generic identity section carries the connector section's values (ADR-0037)")
+                .isNotNull().isEqualTo(info.get("connector"));
         assertThat(info).containsKey("build");
     }
 

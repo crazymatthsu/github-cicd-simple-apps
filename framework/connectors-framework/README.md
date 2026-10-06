@@ -10,7 +10,7 @@ The library every connector app depends on ([ADR-0006](../../docs/adr/0006-apps-
 | `ConnectorApplication` | `main` helper; `--print-config` prints the summary and exits (`run-compose.sh app-config --offline`) |
 | metrics, MDC | common tags `env`, `flow`, `app`, `instance` on every meter; `ConnectorMdc` puts them into the MDC |
 | `ConnectorHealthIndicator` | health contributor `connector`, part of the readiness group |
-| `ConnectorInfoContributor`, `ConnectorConfigEndpoint` | identity in `/actuator/info`; `/actuator/connectorconfig` returns the masked summary |
+| `ConnectorInfoContributor`, `ConnectorConfigEndpoint` | identity in `/actuator/info`, the same values under `app` (the generic section) and `connector` ([ADR-0037](../../docs/adr/0037-runtime-scripts-read-generic-actuator-names.md)); `/actuator/connectorconfig` returns the masked summary |
 
 Test fixtures (`testFixtures(project(":connectors-framework"))`):
 `CanonicalJson`, `CompareRules`, `RowSetComparator`, `ComparisonResult` — the expected-output comparison of

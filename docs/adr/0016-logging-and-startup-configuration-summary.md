@@ -2,7 +2,7 @@
 
 | | |
 |---|---|
-| Status | Accepted |
+| Status | Accepted. Rule 5 superseded in part by [ADR-0037](0037-runtime-scripts-read-generic-actuator-names.md) |
 | Date | 2026-10-04 |
 | Applies to | every app; `run-compose.sh` |
 | Enforced by | `ConfigurationSummaryTest`, `SecretMaskerTest` and `ConnectorMdcTest` in the framework; the actuator contract test (`connectorconfig` masks secrets); review of each app's `application.yml` |
