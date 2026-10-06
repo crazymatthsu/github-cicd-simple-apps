@@ -91,12 +91,13 @@ flowchart LR
 | **CI** | | |
 | [0021](0021-ci-layering.md) | Thin trigger workflows call reusable stage workflows, then composite actions, then scripts and Gradle tasks that run on a laptop. Least privilege, and JSON between stages. | Accepted |
 | [0022](0022-pull-request-pipeline.md) | Affected projects come from the changed paths, classified by `affected-map.yml` and the projects' own directories: a fast tier on push, a full tier on pull requests and the merge queue. `pr-gate` is the only required check. | Accepted; rule 2 superseded in part by ADR-0031 |
-| [0023](0023-main-pipeline-build-once-test-publish.md) | Build once, run the component and system tests on those digests, then publish, then deploy dev. | Accepted |
+| [0023](0023-main-pipeline-build-once-test-publish.md) | Build once, run the component and system tests on those digests, then publish, then deploy dev. | Accepted; rule 2 superseded in part by ADR-0034 |
 | [0024](0024-ephemeral-ci-environments.md) | Each job gets its own labelled stack or cluster, torn down in `always()` steps; a leak check and a nightly drill prove the teardown. | Accepted |
 | [0031](0031-ci-derives-the-projects-from-the-build-files.md) | CI derives the projects — which build an image, which have integration tests, which directory selects each — from the build files, with the build's own rules; the affected map keeps only path classes. | Accepted |
 | [0032](0032-registry-credentials.md) | Two optional secrets, `REGISTRY_USER` and `REGISTRY_TOKEN`, log every job in to the registry of `platform.yml`; without them, `GITHUB_TOKEN` on GHCR. The retention sweep is GHCR-only, and the boxes of a pool hold their own read credentials. | Accepted |
+| [0034](0034-main-runs-the-test-stages-the-repository-has.md) | `main` runs the integration tests when a project has them and the system test when `versions.env` declares the system image; publish follows the stages that ran and passed, never a failed or cancelled one. | Accepted |
 | **Testing** | | |
-| [0025](0025-integration-tests-on-compose-stacks.md) | One `stack.sh` serves laptops and CI. Stacks are declared per project, the app under test runs as deployed, and tests run at a component and a system level. | Accepted |
+| [0025](0025-integration-tests-on-compose-stacks.md) | One `stack.sh` serves laptops and CI. Stacks are declared per project, the app under test runs as deployed, and tests run at a component and a system level. | Accepted; rule 6 superseded in part by ADR-0034 |
 | [0026](0026-integration-test-data-and-comparison.md) | Test cases are `test-infra/testdata/<AppName>/<case>/`: a manifest, inputs, and canonical JSON Lines, compared by shared comparators with explicit tolerances. | Accepted |
 | **CD and release** | | |
 | [0027](0027-continuous-deployment-to-dev-and-the-deployment-record.md) | Every tested `main` commit deploys dev from a per-flow inventory. The configuration tree declares intent; a GitHub Deployment records what happened, with nothing written back to git. | Accepted |
@@ -189,7 +190,10 @@ flowchart LR
 3. Replace the project files with the new project's own:
    - `apps/`, the domain code under `framework/`, `config/`;
    - `test-infra/testdata/`, the dependency stacks, `versions.env`, `stacks.yml`;
-   - `.github/affected-map.yml`, `.github/CODEOWNERS`, `README.md`.
+   - `.github/affected-map.yml`, `.github/CODEOWNERS`, `README.md`;
+   - without a system image, leave `DEEPHAVEN_SERVER_IMAGE` out of `versions.env`: `main.yml` then runs no system
+     test. With no app that has integration tests, it runs no integration-test stage either
+     ([ADR-0034](0034-main-runs-the-test-stages-the-repository-has.md)).
 4. Start a new release line: an empty `CHANGELOG.md`, a reset `.release-please-manifest.json`, and no tags.
 5. Keep `docs/adr/0001-…` to `0999-…` unchanged. Record the repository's own decisions from ADR-1000, and update
    `docs/README.md`.
