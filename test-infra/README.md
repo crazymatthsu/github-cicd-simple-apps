@@ -35,7 +35,7 @@ test-infra/
 | `:source-database` | `deephaven`, `sqlserver` |
 | `:source-kafka` | `deephaven`, `kafka` |
 | `:source-amps` | `deephaven` (AMPS has no public image; stub sink) |
-| `:connectors-framework` | `deephaven` |
+| `:app-runtime` | `deephaven` |
 
 | Service | Image (`versions.env`) | Readiness | Memory (limit) |
 |---|---|---|---|

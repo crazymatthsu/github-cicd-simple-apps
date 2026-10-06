@@ -81,7 +81,7 @@ class VersionSchemeTest {
     @Test
     fun `every project of the repository belongs to the one release line`() {
         assertEquals(VersionLine.FAMILY, VersionLine.forProjectPath(":source-kafka"))
-        assertEquals(VersionLine.FAMILY, VersionLine.forProjectPath(":connectors-framework"))
+        assertEquals(VersionLine.FAMILY, VersionLine.forProjectPath(":app-runtime"))
         assertEquals(VersionLine.FAMILY, VersionLine.byId("family"))
         assertEquals(listOf(VersionLine.FAMILY), VersionLine.entries)
     }

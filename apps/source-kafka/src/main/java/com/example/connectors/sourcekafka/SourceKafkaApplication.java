@@ -6,7 +6,7 @@ import com.example.connectors.framework.PlatformApplication;
 
 /**
  * source-kafka: Kafka -> Deephaven / AMPS. Hello world: on start-up it logs its identity and the masked effective configuration
- * (connectors-framework) and serves the actuator on 8080; {@code --print-config} prints the configuration and
+ * (app-runtime) and serves the actuator on 8080; {@code --print-config} prints the configuration and
  * exits.
  */
 @SpringBootApplication

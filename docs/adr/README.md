@@ -139,7 +139,7 @@ flowchart LR
 ### Add an app to this repository ([ADR-0006](0006-apps-and-framework-modules.md))
 
 1. `apps/<AppName>/build.gradle.kts`: apply `buildlogic.spring-boot-app`, `buildlogic.docker-image` and
-   `buildlogic.integration-test`. Depend on `project(":connectors-framework")` and, for tests, on its test fixtures.
+   `buildlogic.integration-test`. Depend on `project(":app-runtime")` and, for tests, on its test fixtures.
 2. `src/main/resources/application.yml`:
    - `spring.application.name: <AppName>`;
    - the import list of [ADR-0011](0011-configuration-tree-and-spring-layers.md);
@@ -242,7 +242,7 @@ would have run, and the ADRs of the right column apply from the moment the switc
 | `DEEPHAVEN_SERVER_IMAGE` in `test-infra/compose/versions.env` | no system test | [ADR-0034](0034-main-runs-the-test-stages-the-repository-has.md) |
 | the company base images `<registry>/base/jre21` and `ci-build` | the images build on the public Temurin fallbacks of `.github/versions.env`, with a notice; the Gradle job runs on the runner with `setup-java` | [ADR-0033](0033-public-base-image-fallback.md) |
 | the secrets `REGISTRY_USER` and `REGISTRY_TOKEN` | every login uses `GITHUB_TOKEN`, which GHCR needs | [ADR-0032](0032-registry-credentials.md) |
-| the connector framework (an app not built on it) | `health` passes on readiness alone; `app-config` reads `appconfig`, else `connectorconfig` | [ADR-0037](0037-runtime-scripts-read-generic-actuator-names.md) |
+| the framework `framework/app-runtime` (an app not built on it) | `health` passes on readiness alone; `app-config` reads `appconfig`, else `connectorconfig` | [ADR-0037](0037-runtime-scripts-read-generic-actuator-names.md), [ADR-0040](0040-actuator-contract-and-runtime-module-carry-generic-names.md) |
 | a dependency stack | nothing: a stack exists only for the projects that declare it in `stacks.yml` | [ADR-0038](0038-stacks-publish-their-test-environment.md) |
 | host pools (no boxes for a dev flow) | the dev deploy of that flow is a validated dry run (known gap G19) | [ADR-0028](0028-host-pool-deployment.md) |
 | `framework/` | the modules are the directories of `apps_dir` and `framework/` that hold a build file; an absent directory holds none | [ADR-0006](0006-apps-and-framework-modules.md) |

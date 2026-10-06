@@ -20,7 +20,7 @@ source-database: [deephaven, sqlserver]
 source-kafka: [deephaven, kafka]
 # AMPS has no public image: the stub sink stands in until the licence for CI is confirmed.
 source-amps: [deephaven]
-connectors-framework: [deephaven]
+app-runtime: [deephaven]
 
 stacks:
   deephaven:

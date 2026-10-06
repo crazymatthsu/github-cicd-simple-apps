@@ -1,4 +1,4 @@
-// connectors-framework (ADR-0006): the library every connector app depends on — identity, the `connector.*`
+// app-runtime (ADR-0006, ADR-0040): the library every app depends on, with the identity, the `connector.*`
 // property contract (ADR-0011), the masked start-up summary, identity tags on metrics and log lines, a
 // readiness health indicator and /actuator/info identity. Test fixtures carry the canonical-JSON comparator
 // that the apps' integration tests use (ADR-0026).
