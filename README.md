@@ -16,7 +16,7 @@ services (identity, masked configuration summary, actuator); the plumbing around
 
 | Path | What |
 |---|---|
-| `platform.yml` | the manifest of every project value: registry, the one project (`github-cicd-simple-apps`: group, apps directory, runtimes, reference app), the dev envs and the regions, stages and flows. The build validates it, and every tool reads it ([ADR-0030](docs/adr/0030-platform-yml-declares-every-project-value.md)) |
+| `platform.yml` | the manifest of every project value: registry, the one project (`github-cicd-simple-apps`: group, apps directory, runtimes, reference app), the dev envs and the regions, stages and flows, the apps' property roots and the secret properties. The build validates it, and every tool reads it ([ADR-0030](docs/adr/0030-platform-yml-declares-every-project-value.md), [ADR-0042](docs/adr/0042-property-roots-and-secret-properties-in-platform-yml.md)) |
 | `apps/<AppName>/` | one Gradle project per deployable app: `src/{main,test,integrationTest}`, `helm/<AppName>/`, and only when the app needs it in every env `docker/docker-compose.override.yml` |
 | `docker/` | `spring-boot.Dockerfile` and `entrypoint.sh`: one image definition shared by every app, staged with its `application.jar` by `buildlogic.docker-image` ([ADR-0009](docs/adr/0009-one-shared-image-definition.md)); `docker-compose.yml`: one compose template for every app and instance ([ADR-0012](docs/adr/0012-compose-template-and-generated-env.md)) |
 | `framework/app-runtime/` | the framework the apps are built on: identity, `connector.*` properties, masked start-up summary, health, metrics tags, test fixtures ([ADR-0006](docs/adr/0006-apps-and-framework-modules.md)) |

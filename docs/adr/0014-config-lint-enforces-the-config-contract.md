@@ -2,7 +2,7 @@
 
 | | |
 |---|---|
-| Status | Accepted. Rule 2 superseded in part by [ADR-0036](0036-helm-checks-only-when-kinds-include-helm.md) |
+| Status | Accepted. Rule 2 superseded in part by [ADR-0036](0036-helm-checks-only-when-kinds-include-helm.md) and [ADR-0042](0042-property-roots-and-secret-properties-in-platform-yml.md) |
 | Date | 2026-10-04 |
 | Applies to | every configuration tree |
 | Enforced by | the `configLint` task in `pr.yml`, `main.yml` and `config-lint.yml`; `ConfigLinterTest` |
@@ -27,7 +27,10 @@ on a laptop as the pull request gets in CI.
 
    > **Superseded in part by [ADR-0036](0036-helm-checks-only-when-kinds-include-helm.md) rule 5.** Checks 3, 4 and 12
    > require and render the Helm artefacts only when `kinds` includes `helm`; a values file that exists is still
-   > checked.
+   > checked. **Superseded in part by
+   > [ADR-0042](0042-property-roots-and-secret-properties-in-platform-yml.md) rule 5.** Checks 4 and 5 forbid the
+   > environment-variable forms of `platform.yml` `property_prefixes`, and check 9 the keys of its
+   > `secret_properties`, besides Spring's.
 
    | # | Checks |
    |---|---|
