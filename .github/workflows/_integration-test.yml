@@ -1,12 +1,12 @@
 # Reusable: one integration-test job for one Gradle project (ADR-0025).
 #
 # Start the project's compose stack (Deephaven + the dependencies it declares + the app image built
-# in this run, by digest) → run the tests in the `it-runner` service (ci-build image, on the stack
-# network, no published ports) → diagnostics on failure → teardown and leak check on success, failure
-# AND cancel (`always()`, ADR-0024). `level: system` runs the same stack with the platform's own Deephaven
-# server image instead of the upstream one (ADR-0025): the one built in this run when the repository builds it
-# (`:deephaven-server` in `images`), else the published release pinned as DEEPHAVEN_SERVER_IMAGE in
-# test-infra/compose/versions.env.
+# in this run, by digest) → run the tests in the `it-runner` service (the ci-build image, else its public
+# fallback, ADR-0033; on the stack network, no published ports) → diagnostics on failure → teardown and leak
+# check on success, failure AND cancel (`always()`, ADR-0024). `level: system` runs the same stack with the
+# platform's own Deephaven server image instead of the upstream one (ADR-0025): the one built in this run when the
+# repository builds it (`:deephaven-server` in `images`), else the published release pinned as
+# DEEPHAVEN_SERVER_IMAGE in test-infra/compose/versions.env.
 name: _integration-test
 
 on:
@@ -32,7 +32,7 @@ on:
         type: string
         default: component
       ci-build-image:
-        description: ci-build image for the it-runner service ('' → probe GHCR, else build it locally).
+        description: "ci-build image for the it-runner service ('' → probe the registry; unpublished: the public fallback, ADR-0033)."
         type: string
         default: ''
       retention-days:

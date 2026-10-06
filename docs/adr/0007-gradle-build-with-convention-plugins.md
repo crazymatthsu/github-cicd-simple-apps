@@ -2,7 +2,7 @@
 
 | | |
 |---|---|
-| Status | Accepted. Rule 3 superseded in part by [ADR-0030](0030-platform-yml-declares-every-project-value.md) |
+| Status | Accepted. Rule 3 superseded in part by [ADR-0030](0030-platform-yml-declares-every-project-value.md). Rule 1 superseded in part by [ADR-0033](0033-public-base-image-fallback.md) |
 | Date | 2026-10-04 |
 | Applies to | every module and the root build |
 | Enforced by | `FAIL_ON_PROJECT_REPOS`; `org.gradle.configuration-cache.problems=fail`; `jacocoTestCoverageVerification` in `check`; Gradle wrapper validation in CI; the `build-logic` unit tests (part of the root `check`) |

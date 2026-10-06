@@ -59,6 +59,18 @@
       "semanticCommitType": "ci"
     },
     {
+      "description": "The public fallbacks of the company base images (.github/versions.env, ADR-0033) are a CI-only change here, and the JRE and the JDK move together. Their tags float within Java 21, so the only update is a new Java major, a decision of its own (ADR-0007): it waits for approval on the dashboard.",
+      "matchDatasources": [
+        "docker"
+      ],
+      "matchPackageNames": [
+        "docker.io/library/eclipse-temurin"
+      ],
+      "groupName": "Temurin fallback images",
+      "semanticCommitType": "ci",
+      "dependencyDashboardApproval": true
+    },
+    {
       "description": "kind and kubectl track the kind release's default node image; bump them together (test-infra/kind/versions.env).",
       "matchPackageNames": [
         "kubernetes-sigs/kind",
@@ -81,14 +93,14 @@
       "datasourceTemplate": "docker"
     },
     {
-      "description": "Runner tools pinned in test-infra/kind/versions.env and .github/versions.env: a `# renovate:` hint names the datasource and package of the KEY=value line below it (ADR-0021).",
+      "description": "Runner tools and the base-image fallbacks pinned in test-infra/kind/versions.env and .github/versions.env: a `# renovate:` hint names the datasource and package of the KEY=value line below it; the version is the value, or the tag after its last ':' for an image reference (ADR-0021, ADR-0033).",
       "customType": "regex",
       "managerFilePatterns": [
         "/(^|/)test-infra/kind/versions\\.env$/",
         "/(^|/)\\.github/versions\\.env$/"
       ],
       "matchStrings": [
-        "# renovate: datasource=(?<datasource>[a-z-]+) depName=(?<depName>[^\\s]+)\\s*\\n[A-Z_]+=(?<currentValue>[^\\s]+)"
+        "# renovate: datasource=(?<datasource>[a-z-]+) depName=(?<depName>[^\\s]+)\\s*\\n[A-Z_]+=(?:[^\\s]*:)?(?<currentValue>[^\\s:]+)"
       ]
     }
   ]

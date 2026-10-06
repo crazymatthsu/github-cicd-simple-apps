@@ -1,6 +1,7 @@
 # test-infra/compose/it-runner.yml: the test JVM as a compose service (ADR-0025).
 #
-# CI runs the integration tests inside the ci-build image on the stack network, so no port is published:
+# CI runs the integration tests inside the ci-build image, or its public fallback when ci-build is not published
+# (setup-build-env exports CI_BUILD_IMAGE, ADR-0033), on the stack network, so no port is published:
 #   docker compose run --rm it-runner ./gradlew <project>:integrationTest -Pcompose.managed=false --no-daemon
 # (COMPOSE_FILE, COMPOSE_PROJECT_NAME, COMPOSE_ENV_FILES and the IT_* values come from $GITHUB_ENV,
 # written by `stack.sh up`.) The `tools` profile keeps `up --wait` from ever starting it.

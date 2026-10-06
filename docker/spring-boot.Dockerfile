@@ -12,7 +12,9 @@
 # staged against the same context (code review should ask why).
 #
 # The company base image (published outside this repository) carries the enterprise / demo CA in both
-# trust stores, tzdata, curl and the non-root user app (10001); this file never repeats that (ADR-0009).
+# trust stores, tzdata, curl and the non-root user app (10001); this file never repeats that (ADR-0009). Until a
+# repository has it, CI builds on the public fallback of .github/versions.env (eclipse-temurin, ADR-0033), which
+# lacks the CA, the user and perhaps curl: the runtime stage adds what is missing, and nothing on the company base.
 # No project value lives here (ADR-0030): the staged copy defaults BASE_IMAGE to <registry of platform.yml>/base/jre21:latest
 # (stageDockerContext), and Gradle passes it and the per-build labels, the source repository included.
 ARG BASE_IMAGE
@@ -30,6 +32,21 @@ RUN java -Djarmode=tools -jar application.jar extract --layers --launcher --dest
 # Stage 2: the runtime image, least-changing layer first, so dependency layers stay byte-identical across
 # releases and the registry cache actually hits.
 FROM ${BASE_IMAGE} AS runtime
+# Only on a base without them (the public fallback, ADR-0033): the user app (10001), /config, /app/logs owned by it,
+# and curl for the health checks. On the company base this step changes no file. It comes before the ARGs, so the
+# per-build values never invalidate its cache.
+USER root
+RUN if ! command -v curl >/dev/null 2>&1; then \
+      apt-get update \
+      && apt-get install -y --no-install-recommends curl \
+      && rm -rf /var/lib/apt/lists/*; \
+    fi \
+    && if ! getent passwd 10001 >/dev/null; then \
+      groupadd --gid 10001 app \
+      && useradd --no-log-init --uid 10001 --gid 10001 --home-dir /app --no-create-home --shell /usr/sbin/nologin app \
+      && mkdir -p /config /app/logs \
+      && chown 10001:10001 /app/logs; \
+    fi
 ARG BASE_IMAGE
 ARG APP_VERSION=0.0.0-dev
 ARG GIT_SHA=unknown
@@ -55,9 +72,9 @@ COPY --chmod=0755 entrypoint.sh /app/entrypoint.sh
 # /app/data: what an app keeps across restarts and versions (DATA_DIR on a box, ADR-0018), owned by the app user like
 # the base image's /app/logs, so a fresh volume mounted there is writable.
 COPY --from=layers --chown=10001:10001 /build/runtime/ ./
-# The base image provides /config (read-only mounts of the Spring layers, ADR-0011) and /app/logs; /app/logs and
-# /app/data are the only writable paths besides /tmp. No VOLUME: anonymous volumes would escape the CI leak check;
-# compose and Kubernetes mount volumes / emptyDir at run time instead (ADR-0017).
+# The base image (on the fallback, the step above) provides /config (read-only mounts of the Spring layers, ADR-0011)
+# and /app/logs; /app/logs and /app/data are the only writable paths besides /tmp. No VOLUME: anonymous volumes would
+# escape the CI leak check; compose and Kubernetes mount volumes / emptyDir at run time instead (ADR-0017).
 # Numeric user so that Kubernetes can verify runAsNonRoot (ADR-0019); the base image names it "app".
 USER 10001:10001
 EXPOSE 8080
