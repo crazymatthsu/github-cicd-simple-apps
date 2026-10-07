@@ -8,7 +8,7 @@ the actuator on port 8080. No client library is wired in yet.
 
 ```bash
 ./gradlew :source-kafka:build          # unit tests, bootJar
-./gradlew :source-kafka:buildImage     # needs Docker or Podman
+./gradlew :source-kafka:buildImage     # needs Podman or Docker (ADR-0045)
 scripts/run-compose.sh local cash source-kafka bbg-equity-ticks start
 scripts/run-compose.sh local cash source-kafka bbg-equity-ticks health
 scripts/run-compose.sh local cash source-kafka bbg-equity-ticks down

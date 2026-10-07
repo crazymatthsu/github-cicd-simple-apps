@@ -73,7 +73,9 @@ Options (before or after the command):
   --dry-run             print the resolved paths, identity, engine and exact command lines; run nothing
   --force               allow a guarded operation (down --volumes on *-dev; start / restart past the pool
                         guard); never overrides the env allow-list
-  --engine docker|podman  force the engine (default: $RUN_COMPOSE_ENGINE, else docker, then podman)
+  --engine podman|docker  force the engine (default: $RUN_COMPOSE_ENGINE, else $CONTAINER_ENGINE, else podman,
+                        then docker: the first whose compose answers and, for a command that needs it, whose
+                        engine answers `info`; ADR-0045)
   --json                machine-readable output for health, status and version
   -q, --quiet           less informational output
   -h, --help            this text
@@ -98,10 +100,10 @@ Files (ADR-0012; <c> = config/<env>/<flow>, every file optional unless marked):
 Exit codes: 0 ok · 1 operation failed or check negative · 2 usage · 3 refused by a safety rule ·
             4 config tree error · 5 engine not found or not running · 124 timeout
 Environment: CONFIG_ROOT (default <repo>/config), START_TIMEOUT, STOP_TIMEOUT, DEPS_NETWORK (join an
-existing network, e.g. the one of ./gradlew devUp), RUN_COMPOSE_ENGINE, IMAGE_TAG and IMAGE_REPO (override
-the env layers in every env, ADR-0012; deploy-dev's record-tag writes IMAGE_TAG into the new version directory's
-_docker-compose.instance.env before pull / start / health run from it; every other value always comes from the
-layers), APP_IMAGE (local only: run this image instead of IMAGE_REPO/APP_NAME:IMAGE_TAG);
+existing network, e.g. the one of ./gradlew devUp), RUN_COMPOSE_ENGINE and CONTAINER_ENGINE (see --engine),
+IMAGE_TAG and IMAGE_REPO (override the env layers in every env, ADR-0012; deploy-dev's record-tag writes IMAGE_TAG
+into the new version directory's _docker-compose.instance.env before pull / start / health run from it; every other
+value always comes from the layers), APP_IMAGE (local only: run this image instead of IMAGE_REPO/APP_NAME:IMAGE_TAG);
 secrets such as SPRING_DATASOURCE_PASSWORD are passed through from this shell, never from an env layer
 (ADR-0013).
 
@@ -279,7 +281,7 @@ cmd_activate() {
 # --- arguments --------------------------------------------------------------------------------------------
 
 DRY_RUN=0 FORCE=0 JSON=0 NO_WAIT=0 VOLUMES=0 OFFLINE=0 FOLLOW=0
-ENGINE_CHOICE="${RUN_COMPOSE_ENGINE:-}" SINCE="" TAIL="" APP_DIR_ARG=""
+ENGINE_CHOICE="${RUN_COMPOSE_ENGINE:-${CONTAINER_ENGINE:-}}" SINCE="" TAIL="" APP_DIR_ARG=""
 KEEP="" ACTIVATE_PREVIOUS=0 ACTIVATE_TO=""
 POSITIONAL=()
 CMD_ARGS=()
@@ -460,7 +462,8 @@ case "$INSTANCE" in *[!0-9]*) ;; *) die "$EXIT_USAGE" "AppInstance '$INSTANCE' i
 if [ $((${#APP} + 1 + ${#INSTANCE})) -gt 53 ]; then
     die "$EXIT_USAGE" "'$APP-$INSTANCE' exceeds the 53-character release-name budget (ADR-0003)"
 fi
-case "$ENGINE_CHOICE" in "" | docker | podman) ;; *) die "$EXIT_USAGE" "--engine must be docker or podman" ;; esac
+[ "$ENGINE_CHOICE" != auto ] || ENGINE_CHOICE=""
+case "$ENGINE_CHOICE" in "" | podman | docker) ;; *) die "$EXIT_USAGE" "--engine (RUN_COMPOSE_ENGINE, CONTAINER_ENGINE) must be podman or docker" ;; esac
 [ "$VOLUMES" -eq 0 ] || [ "$COMMAND" = down ] || die "$EXIT_USAGE" "--volumes only applies to down"
 [ "$OFFLINE" -eq 0 ] || [ "$COMMAND" = app-config ] || die "$EXIT_USAGE" "--offline only applies to app-config"
 [ "$NO_WAIT" -eq 0 ] || [ "$COMMAND" = start ] || [ "$COMMAND" = restart ] || die "$EXIT_USAGE" "--no-wait only applies to start and restart"
@@ -860,32 +863,59 @@ POOL_USER_NAME="" POOL_ROOT_DIR=""
 setup_pool_guard
 run_pool_guard
 
-# --- engine (ADR-0017) ------------------------------------------------------------------------------------
+# --- engine (ADR-0017, ADR-0045) --------------------------------------------------------------------------
 
-ENGINE="" COMPOSE_KIND=""
+ENGINE="" COMPOSE_KIND="" ENGINE_ANSWERED=0
 COMPOSE=()
+# find_compose <engine>: that engine's compose CLI in COMPOSE and COMPOSE_KIND, or 1 when it has none: podman compose,
+# else podman-compose; docker compose.
+find_compose() {
+    case "$1" in
+        podman)
+            if command -v podman >/dev/null 2>&1 && podman compose version >/dev/null 2>&1; then
+                COMPOSE_KIND=plugin
+                COMPOSE=(podman compose)
+                # `podman compose` runs an external provider; podman-compose (python) has no `up --wait`.
+                # (Captured first: with pipefail, `| grep -q` would fail on podman's SIGPIPE.)
+                case "$(podman compose version 2>&1)" in *podman-compose*) COMPOSE_KIND=python ;; esac
+                return 0
+            fi
+            if command -v podman-compose >/dev/null 2>&1; then
+                COMPOSE_KIND=python
+                COMPOSE=(podman-compose)
+                return 0
+            fi
+            ;;
+        docker)
+            if command -v docker >/dev/null 2>&1 && docker compose version >/dev/null 2>&1; then
+                COMPOSE_KIND=plugin
+                COMPOSE=(docker compose)
+                return 0
+            fi
+            ;;
+    esac
+    return 1
+}
+# Podman, then Docker (ADR-0045), unless --engine, RUN_COMPOSE_ENGINE or CONTAINER_ENGINE names one. A command that
+# talks to the engine takes the first whose compose answers and whose engine answers `info`; any other command, or
+# when no engine answers, the first whose compose answers (the check below then says why it cannot be used).
 detect_engine() {
-    if { [ -z "$ENGINE_CHOICE" ] || [ "$ENGINE_CHOICE" = docker ]; } &&
-        command -v docker >/dev/null 2>&1 && docker compose version >/dev/null 2>&1; then
-        ENGINE=docker COMPOSE_KIND=plugin
-        COMPOSE=(docker compose)
-        return 0
+    local candidates=(podman docker) e
+    [ -z "$ENGINE_CHOICE" ] || candidates=("$ENGINE_CHOICE")
+    if [ "${#candidates[@]}" -gt 1 ] && [ "$NEEDS_DAEMON" -eq 1 ] && [ "$DRY_RUN" -eq 0 ]; then
+        for e in "${candidates[@]}"; do
+            if find_compose "$e" && "$e" info >/dev/null 2>&1; then
+                ENGINE="$e" ENGINE_ANSWERED=1
+                return 0
+            fi
+        done
     fi
-    if [ -z "$ENGINE_CHOICE" ] || [ "$ENGINE_CHOICE" = podman ]; then
-        if command -v podman >/dev/null 2>&1 && podman compose version >/dev/null 2>&1; then
-            ENGINE=podman COMPOSE_KIND=plugin
-            COMPOSE=(podman compose)
-            # `podman compose` runs an external provider; podman-compose (python) has no `up --wait`.
-            # (Captured first: with pipefail, `| grep -q` would fail on podman's SIGPIPE.)
-            case "$(podman compose version 2>&1)" in *podman-compose*) COMPOSE_KIND=python ;; esac
+    for e in "${candidates[@]}"; do
+        if find_compose "$e"; then
+            ENGINE="$e"
             return 0
         fi
-        if command -v podman-compose >/dev/null 2>&1; then
-            ENGINE=podman COMPOSE_KIND=python
-            COMPOSE=(podman-compose)
-            return 0
-        fi
-    fi
+    done
     return 1
 }
 case "$COMMAND" in
@@ -897,17 +927,17 @@ case "$COMMAND" in
 esac
 if ! detect_engine; then
     if [ "$DRY_RUN" -eq 1 ] || [ "$NEEDS_CLI" -eq 0 ]; then
-        ENGINE="${ENGINE_CHOICE:-docker}" COMPOSE_KIND=none
+        ENGINE="${ENGINE_CHOICE:-podman}" COMPOSE_KIND=none
         COMPOSE=("$ENGINE" compose)
-        [ "$NEEDS_CLI" -eq 0 ] || warn "no compose CLI found (docker compose, podman compose, podman-compose); showing '${COMPOSE[*]}'"
+        [ "$NEEDS_CLI" -eq 0 ] || warn "no compose CLI found (podman compose, podman-compose, docker compose); showing '${COMPOSE[*]}'"
     else
-        die "$EXIT_ENGINE" "no compose CLI found: install Docker with the compose plugin, or Podman with podman compose / podman-compose"
+        die "$EXIT_ENGINE" "no compose CLI found: install Podman with podman compose / podman-compose, or Docker with the compose plugin"
     fi
 fi
 if [ "$ENGINE" = podman ] && [ -n "${XDG_RUNTIME_DIR:-}" ] && [ -S "$XDG_RUNTIME_DIR/podman/podman.sock" ]; then
     export DOCKER_HOST="${DOCKER_HOST:-unix://$XDG_RUNTIME_DIR/podman/podman.sock}"
 fi
-if [ "$NEEDS_DAEMON" -eq 1 ] && [ "$DRY_RUN" -eq 0 ] && ! "$ENGINE" info >/dev/null 2>&1; then
+if [ "$NEEDS_DAEMON" -eq 1 ] && [ "$DRY_RUN" -eq 0 ] && [ "$ENGINE_ANSWERED" -eq 0 ] && ! "$ENGINE" info >/dev/null 2>&1; then
     if [ "$ENGINE" = podman ]; then
         die "$EXIT_ENGINE" "podman is not usable: try 'systemctl --user start podman.socket' (rootless) or 'podman machine start'"
     fi

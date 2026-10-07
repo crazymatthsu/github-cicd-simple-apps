@@ -7,7 +7,7 @@
 # flow of platform.yml, instance smoke) under the compose template's posture (read-only root, /tmp on tmpfs, no
 # capabilities), runs scripts/smoke.sh against it (readiness UP, identity), then checks that it runs as user 10001
 # and that curl, which the health checks call, works inside it. The container is removed on every exit.
-# Needs a JDK 21, curl and docker (CONTAINER_ENGINE=podman: podman). Exit codes: 0 proven · 1 failed · 2 usage.
+# Needs a JDK 21, curl and Podman or Docker (ADR-0045). Exit codes: 0 proven · 1 failed · 2 usage.
 set -euo pipefail
 
 usage() {
@@ -22,8 +22,14 @@ fail() {
 [[ $# -eq 1 && $1 =~ ^[a-z0-9]([a-z0-9-]*[a-z0-9])?$ ]] || usage
 app=$1
 root=$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd -P)
-engine=docker
-[[ ${CONTAINER_ENGINE:-} != podman ]] || engine=podman
+# The engine of buildImage (ADR-0045): CONTAINER_ENGINE, else Podman when it answers, else Docker. Gradle gets it too,
+# so the image is built where it then runs.
+engine=${CONTAINER_ENGINE:-auto}
+if [[ $engine == auto ]]; then
+  engine=docker
+  if command -v podman >/dev/null 2>&1 && podman info >/dev/null 2>&1; then engine=podman; fi
+fi
+[[ $engine == podman || $engine == docker ]] || fail "CONTAINER_ENGINE must be podman, docker or auto (was '$engine')"
 
 # Both read without yq: the pin of .github/versions.env, and the one-line flows list of platform.yml (ADR-0030).
 base=$(sed -n 's/^BASE_IMAGE_FALLBACK=//p' "$root/.github/versions.env" | tail -n 1)
@@ -34,7 +40,7 @@ flow=$(awk '/^flows:/ { sub(/^flows:[ \t]*\[[ \t]*/, ""); sub(/[ \t]*[],].*$/, "
 # BASE_IMAGE from the environment, the way setup-build-env hands the fallback to buildImage. A local tag only.
 export BASE_IMAGE=$base
 cd "$root"
-./gradlew ":$app:buildImage" -Pimage.tags=public-base-smoke
+./gradlew ":$app:buildImage" -Pimage.tags=public-base-smoke -Pimage.engine="$engine"
 image=$(./gradlew -q ":$app:printImageRef" -Pimage.tags=public-base-smoke | tr -d '\r' | grep -E ':public-base-smoke$' |
   tail -n 1) || fail "printImageRef printed no reference tagged public-base-smoke"
 

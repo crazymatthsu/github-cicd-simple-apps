@@ -37,7 +37,9 @@ Commands
   file under test-infra/compose/.state/. --project <gradle path> selects one when several exist.
 
 Environment
-  COMPOSE_BIN              "docker compose" or "podman compose" (default: docker when present, else podman)
+  CONTAINER_ENGINE         podman or docker (default auto: Podman, then Docker, the first with compose v2 whose
+                           engine answers `info`; ADR-0045)
+  COMPOSE_BIN              "podman compose" or "docker compose"; wins over CONTAINER_ENGINE
   COMPOSE_PROJECT_NAME     default ci-<CI_RUN_ID>-<CI_RUN_ATTEMPT> in CI, local-<AppName> elsewhere
   CI_RUN_ID, CI_RUN_ATTEMPT  run labels (default GITHUB_RUN_ID / GITHUB_RUN_ATTEMPT, else local / 0); their keys
                            are <group>.ci.run and <group>.ci.attempt, the group being projects[0].group of
@@ -136,16 +138,37 @@ declared_stacks() {
 
 # --- engine ------------------------------------------------------------------------------------------
 
+# Podman, then Docker (ADR-0045): the first whose compose is v2 and whose engine answers. `up --wait` and
+# COMPOSE_ENV_FILES are compose v2, so `podman compose` counts only with the docker-compose provider, never with
+# podman-compose. COMPOSE_BIN, else CONTAINER_ENGINE, names the engine instead.
 detect_engine() {
+  local choice=${CONTAINER_ENGINE:-} e out reasons=''
+  [[ $choice != auto ]] || choice=''
+  COMPOSE_CMD=()
+  if [[ -z ${COMPOSE_BIN:-} && -z $choice ]]; then
+    for e in podman docker; do
+      if ! command -v "$e" >/dev/null 2>&1; then
+        reasons+=" $e is not on PATH;"
+      elif ! out=$("$e" compose version 2>/dev/null); then
+        reasons+=" '$e compose version' failed;"
+      elif [[ $out == *podman-compose* ]]; then
+        reasons+=" '$e compose' runs podman-compose, which has no 'up --wait' (install the docker-compose provider);"
+      elif ! with_timeout 30 "$e" info >/dev/null 2>&1; then
+        reasons+=" '$e info' failed;"
+      else
+        COMPOSE_CMD=("$e" compose)
+        ENGINE=$e
+        return 0
+      fi
+    done
+    die 5 "no usable container engine (Podman, then Docker):${reasons%;}. Start Podman ('podman machine start' or 'systemctl --user start podman.socket') or Docker, or name one with CONTAINER_ENGINE=podman|docker or COMPOSE_BIN."
+  fi
   if [[ -n ${COMPOSE_BIN:-} ]]; then
     read -r -a COMPOSE_CMD <<<"$COMPOSE_BIN"
-    [[ ${#COMPOSE_CMD[@]} -gt 0 ]] || die 5 "COMPOSE_BIN is blank; use \"docker compose\" or \"podman compose\"."
-  elif command -v docker >/dev/null 2>&1 && docker compose version >/dev/null 2>&1; then
-    COMPOSE_CMD=(docker compose)
-  elif command -v podman >/dev/null 2>&1 && podman compose version >/dev/null 2>&1; then
-    COMPOSE_CMD=(podman compose)
+    [[ ${#COMPOSE_CMD[@]} -gt 0 ]] || die 5 "COMPOSE_BIN is blank; use \"podman compose\" or \"docker compose\"."
   else
-    die 5 "no container engine with compose found. Install Docker with the compose plugin, or Podman with a compose provider, or set COMPOSE_BIN=\"docker compose\" | \"podman compose\"."
+    [[ $choice == podman || $choice == docker ]] || die 5 "CONTAINER_ENGINE='$choice' is not supported here (podman, docker or auto)."
+    COMPOSE_CMD=("$choice" compose)
   fi
   ENGINE=${COMPOSE_CMD[0]%-compose} # docker, podman (also for docker-compose / podman-compose)
   command -v "${COMPOSE_CMD[0]}" >/dev/null 2>&1 || die 5 "'${COMPOSE_CMD[0]}' (COMPOSE_BIN) is not on PATH."
@@ -153,7 +176,7 @@ detect_engine() {
   "${COMPOSE_CMD[@]}" version >/dev/null 2>&1 \
     || die 5 "'${COMPOSE_CMD[*]} version' failed: compose is not installed or not working."
   with_timeout 30 "$ENGINE" info >/dev/null 2>&1 \
-    || die 5 "cannot reach the $ENGINE engine ('$ENGINE info' failed). Start Docker, or for Podman run 'podman machine start' or 'systemctl --user start podman.socket'; COMPOSE_BIN selects the engine."
+    || die 5 "cannot reach the $ENGINE engine ('$ENGINE info' failed). For Podman run 'podman machine start' or 'systemctl --user start podman.socket', or start Docker; CONTAINER_ENGINE or COMPOSE_BIN selects the engine."
 }
 
 compose() {
