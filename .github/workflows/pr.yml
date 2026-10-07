@@ -31,6 +31,8 @@ permissions:
 # github.com.
 env:
   YQ_DOWNLOAD_BASE: ${{ vars.YQ_DOWNLOAD_BASE }}
+  # CI runs on Docker (ADR-0045 rule 3): the runner carries Podman too, which the tools would otherwise prefer.
+  CONTAINER_ENGINE: docker
 
 jobs:
   detect-affected:
@@ -99,8 +101,8 @@ jobs:
           if [[ ${#files[@]} -eq 0 ]]; then echo "no shell scripts"; exit 0; fi
           shellcheck --severity=warning "${files[@]}"
 
-      # Plain-bash tests of the scripts (stub ssh / rsync / docker; no host, registry or engine is reached):
-      # scripts/test/pool-deploy-test.sh covers the host pools of ADR-0028.
+      # Plain-bash tests of the scripts (stub ssh / rsync / docker / podman; no host, registry or engine is reached):
+      # scripts/test/pool-deploy-test.sh covers the host pools of ADR-0028, engine-order-test.sh the order of ADR-0045.
       - name: Script tests
         run: |
           set -euo pipefail

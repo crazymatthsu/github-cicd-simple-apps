@@ -10,7 +10,7 @@ it still starts; `/actuator/health` shows the failed query as `sourceDatabase: D
 
 ```bash
 ./gradlew :source-database:build          # unit tests, bootJar
-./gradlew :source-database:buildImage     # needs Docker or Podman
+./gradlew :source-database:buildImage     # needs Podman or Docker (ADR-0045)
 ./gradlew -q :source-database:printImageRef
 
 # on a laptop, against the local dependency stack (./gradlew devUp)

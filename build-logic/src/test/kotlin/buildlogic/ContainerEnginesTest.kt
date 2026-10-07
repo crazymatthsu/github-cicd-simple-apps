@@ -11,27 +11,52 @@ class ContainerEnginesTest {
         val line = cmd.joinToString(" ")
         if (ok.any { line.startsWith(it) }) CommandResult(0, "ok")
         else if (line.endsWith("--version")) CommandResult(127, "not found")
+        else if (cmd.first() == "podman") CommandResult(125, "Error: unable to connect to Podman socket: connection refused")
         else CommandResult(1, "Client: Docker Engine\nCannot connect to the Docker daemon at unix:///var/run/docker.sock")
     }
 
-    @Test
-    fun `docker with a daemon and buildx is preferred`() {
-        val probe = ContainerEngines.detect("auto", runner("docker --version", "docker info", "docker buildx version"))
-        assertEquals(EngineProbe.Found(Engine(EngineKind.DOCKER, buildx = true)), probe)
-    }
+    private val both = arrayOf("podman --version", "podman info", "docker --version", "docker info", "docker buildx version")
 
     @Test
-    fun `a docker CLI without a daemon falls back to podman`() {
-        val probe = ContainerEngines.detect("auto", runner("docker --version", "podman --version", "podman info"))
+    fun `podman with a service is preferred`() {
+        val probe = ContainerEngines.detect("auto", runner(*both))
         assertEquals(EngineProbe.Found(Engine(EngineKind.PODMAN, buildx = false)), probe)
     }
 
     @Test
+    fun `a podman CLI without a service falls back to docker with buildx`() {
+        val probe = ContainerEngines.detect("auto", runner("podman --version", "docker --version", "docker info", "docker buildx version"))
+        assertEquals(EngineProbe.Found(Engine(EngineKind.DOCKER, buildx = true)), probe)
+    }
+
+    @Test
+    fun `docker is taken when podman is absent`() {
+        val probe = ContainerEngines.detect("", runner("docker --version", "docker info"))
+        assertEquals(EngineProbe.Found(Engine(EngineKind.DOCKER, buildx = false)), probe)
+    }
+
+    @Test
+    fun `a named engine is the only one tried`() {
+        assertEquals(EngineProbe.Found(Engine(EngineKind.DOCKER, buildx = true)), ContainerEngines.detect("docker", runner(*both)))
+        val probe = ContainerEngines.detect("podman", runner("docker --version", "docker info")) as EngineProbe.Missing
+        assertEquals(listOf("podman: CLI not found on the PATH"), probe.reasons)
+    }
+
+    @Test
     fun `nothing usable explains why`() {
-        val probe = ContainerEngines.detect("auto", runner("docker --version")) as EngineProbe.Missing
+        val probe = ContainerEngines.detect("auto", runner("podman --version")) as EngineProbe.Missing
         assertEquals(2, probe.reasons.size)
-        assertTrue(probe.reasons[0].contains("daemon is not reachable (Cannot connect to the Docker daemon"), probe.reasons[0])
-        assertTrue(probe.reasons[1].contains("podman: CLI not found"), probe.reasons[1])
+        assertTrue(probe.reasons[0].contains("podman: CLI found but the service is not reachable (Error: unable to connect"), probe.reasons[0])
+        assertTrue(probe.reasons[1].contains("docker: CLI not found"), probe.reasons[1])
+    }
+
+    @Test
+    fun `config-lint renders with podman's compose first`() {
+        assertEquals(listOf(listOf("podman", "compose"), listOf("podman-compose"), listOf("docker", "compose"), listOf("docker-compose")),
+            ContainerEngines.composeCandidates("auto"))
+        assertEquals(listOf(listOf("podman", "compose"), listOf("podman-compose")), ContainerEngines.composeCandidates("podman"))
+        assertEquals(listOf(listOf("docker", "compose")), ContainerEngines.composeCandidates("docker"))
+        assertEquals(emptyList<List<String>>(), ContainerEngines.composeCandidates("none"))
     }
 
     @Test

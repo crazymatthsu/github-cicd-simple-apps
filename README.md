@@ -39,7 +39,7 @@ Requires a JDK 21; everything else comes through the Gradle wrapper.
 ./gradlew build                              # compile, unit tests, coverage floor, boot jars (no containers)
 ./gradlew configLint                         # lint the config tree
 ./gradlew -q printVersion                    # version derived from git, e.g. 0.1.0-local.3.1a2b3c4
-./gradlew buildImages                        # container images (Docker or Podman)
+./gradlew buildImages                        # container images (Podman, else Docker: ADR-0045)
 ./gradlew :source-database:integrationTest   # compose stack + integration tests of one app
 ./gradlew devUp / devDown                    # dependency stack for local development
 

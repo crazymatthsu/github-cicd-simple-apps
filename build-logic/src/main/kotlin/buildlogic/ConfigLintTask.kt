@@ -85,7 +85,7 @@ abstract class ConfigLintTask : DefaultTask() {
     @get:Input
     abstract val completeEnvs: SetProperty<String>
 
-    /** `auto`, `docker`, `podman` or `none` (`-PconfigLint.compose`). */
+    /** `auto`, `podman`, `docker` or `none` (`-PconfigLint.compose`, env `CONTAINER_ENGINE`; ADR-0045). */
     @get:Input
     abstract val composeCli: Property<String>
 
@@ -136,15 +136,9 @@ abstract class ConfigLintTask : DefaultTask() {
         }
     }
 
-    private fun composeCommand(): List<String>? {
-        val candidates = when (composeCli.get()) {
-            "none" -> emptyList()
-            "docker" -> listOf(listOf("docker", "compose"))
-            "podman" -> listOf(listOf("podman", "compose"), listOf("podman-compose"))
-            else -> listOf(listOf("docker", "compose"), listOf("podman", "compose"), listOf("docker-compose"), listOf("podman-compose"))
-        }
-        return candidates.firstOrNull { exec(it + "version").exitCode == 0 }
-    }
+    /** The first compose CLI that answers `version`; the render runs offline, so no engine has to answer. */
+    private fun composeCommand(): List<String>? =
+        ContainerEngines.composeCandidates(composeCli.get()).firstOrNull { exec(it + "version").exitCode == 0 }
 
     /** The variables the deploy script and Helm may read; nothing else of the developer's shell leaks in. */
     private fun helmEnvironment(configRoot: File): Map<String, String> {

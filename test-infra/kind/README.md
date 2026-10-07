@@ -55,7 +55,7 @@ lists everything.
 | `KIND_NODE_IMAGE` | kind's default for the pin | node image for `up` |
 | `KIND_WAIT` | `120s` | how long `up` waits for the control plane and for `coredns` |
 | `KIND_STATE_DIR` | `test-infra/kind/.state` | where `up` writes `<cluster>.kubeconfig` (mode 600) |
-| `KIND_EXPERIMENTAL_PROVIDER` | `docker` when installed, else `podman` | kind's engine; `load` then uses `podman save` + `kind load image-archive`, because `kind load docker-image` always calls `docker` |
+| `KIND_EXPERIMENTAL_PROVIDER` | `CONTAINER_ENGINE`, else Podman, then Docker: the first that answers `info` ([ADR-0045](../../docs/adr/0045-podman-first-then-docker.md)) | kind's engine; with Podman, `kind.sh` exports `podman` for kind, and `load` uses `podman save` + `kind load image-archive`, because `kind load docker-image` always calls `docker`. CI sets `CONTAINER_ENGINE=docker` |
 
 What `up` does:
 
@@ -118,7 +118,7 @@ Both jobs run the same sequence:
 
 ## Local flow
 
-Requirements: Docker (or Podman, see above), plus kind, kubectl and helm at the pins above.
+Requirements: Podman or Docker (see above), plus kind, kubectl and helm at the pins above.
 
 ```bash
 # 1. cluster local-kind; kubeconfig in test-infra/kind/.state/

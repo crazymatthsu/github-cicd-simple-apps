@@ -803,8 +803,8 @@ class ConfigLinter(
         val result = r.render(ComposeRenderRequest(files, combined, "lint-$env-$flow-$app-$instance", environment))
         combined.delete()
         when {
-            result == null && requireRender -> error(6, instanceEnv, "no compose CLI (docker compose / podman compose) to render the compose files")
-            result == null -> warn(6, instanceEnv, "render skipped: no compose CLI (docker compose / podman compose) found")
+            result == null && requireRender -> error(6, instanceEnv, "no compose CLI (podman compose / docker compose) to render the compose files")
+            result == null -> warn(6, instanceEnv, "render skipped: no compose CLI (podman compose / docker compose) found")
             result.exitCode != 0 -> error(6, instanceEnv, "`compose config` failed for ${files.joinToString(" + ") { rel(it) }}:\n" +
                 result.output.lineSequence().filter { it.isNotBlank() }.joinToString("\n") { "      $it" })
         }

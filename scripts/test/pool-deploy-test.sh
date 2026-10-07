@@ -2,8 +2,8 @@
 # pool-deploy-test.sh — script tests of the host pools (ADR-0018, ADR-0028): scripts/pool-deploy.sh, the
 # versioned layout /apps/<user>/versions/<project>/<version>/ with `current`, `activate`, the .platform-bundle root,
 # the pool guard and record-tag of scripts/run-compose.sh. Plain bash: stub ssh and rsync (POOL_SSH / POOL_RSYNC)
-# and a stub docker and curl (PATH) record their arguments and answer from STUB_* variables, so nothing reaches a
-# host, a registry or an engine.
+# and a stub docker and curl (PATH) record their arguments and answer from STUB_* variables (a stub podman answers
+# nothing), so nothing reaches a host, a registry or an engine.
 # The cases run against a fixture repository the test builds itself (ADR-0005: the shared tooling is tested with its
 # own fixture, as affected-test.sh does): this repository's scripts/ and docker/, a platform.yml of its own (project
 # pool-test-apps, group test.example.pooltest, regions eu / ap, flows alpha / beta, dev env eu-dev) and a config tree of
@@ -32,7 +32,7 @@ if command -v sha256sum >/dev/null 2>&1; then SHA256=(sha256sum); else SHA256=(s
 # Only what each case sets: nothing from the caller's shell steers the scripts under test.
 unset CONFIG_ROOT POOL_TRANSPORT POOL_LOCAL_ROOT POOL_LOCAL_EXECUTE POOL_SSH POOL_RSYNC POOL_SSH_OPTS POOL_PEER_CHECK \
     POOL_SELF_HOST POOL_VERSION IMAGE_TAG IMAGE_REPO APP_IMAGE STUB_RUNNING STUB_FAIL STUB_UNREACHABLE STUB_NO_CURRENT \
-    STUB_CURRENT STUB_RSYNC_CHANGES STUB_RSYNC_FAIL STUB_HEALTHY STUB_INSTANCE
+    STUB_CURRENT STUB_RSYNC_CHANGES STUB_RSYNC_FAIL STUB_HEALTHY STUB_INSTANCE RUN_COMPOSE_ENGINE CONTAINER_ENGINE
 
 WORK="$(mktemp -d "${TMPDIR:-/tmp}/pool-deploy-test.XXXXXX")"
 WORK="$(cd "$WORK" && pwd -P)"
@@ -212,6 +212,9 @@ if [ "${1:-}" = compose ] && [ "${2:-}" = version ]; then echo "Docker Compose v
 if [ -n "${STUB_HEALTHY:-}" ] && [ "${1:-}" = ps ] && [[ " $* " == *" -q "* ]]; then echo 0123456789ab; fi
 exit 0
 EOF
+# Stub podman that answers nothing: it hides a real Podman, which run-compose.sh would take before the stub docker
+# (ADR-0045).
+printf '#!/usr/bin/env bash\nexit 125\n' >"$DOCKER_BIN/podman"
 cat >"$DOCKER_BIN/curl" <<'EOF'
 #!/usr/bin/env bash
 # Stub curl for run-compose.sh health and smoke.sh: with STUB_HEALTHY set, the actuator of a ready instance
@@ -227,7 +230,7 @@ case "${!#}" in
     *) echo "curl: (22) The requested URL returned error: 404" >&2; exit 22 ;;
 esac
 EOF
-chmod +x "$STUB/ssh" "$STUB/rsync" "$DOCKER_BIN/docker" "$DOCKER_BIN/curl"
+chmod +x "$STUB/ssh" "$STUB/rsync" "$DOCKER_BIN/docker" "$DOCKER_BIN/podman" "$DOCKER_BIN/curl"
 
 # --- helpers ----------------------------------------------------------------------------------------------
 

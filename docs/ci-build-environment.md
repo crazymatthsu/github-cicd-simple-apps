@@ -60,7 +60,9 @@ The same run, step by step:
 2. **build / gradle**, in a job container on `base/ci-build`: `./gradlew build` compiles, runs the **unit tests** and
    the quality gates and writes the boot jars; `buildImages` builds every app image with `BASE_IMAGE` set to the
    `base/jre21` digest; `pushImages` pushes them. The container runs as the runner's user and joins the socket's
-   group, so the host engine does the builds and nothing runs as root. When `ci-build` is not published, the same
+   group, so the host engine does the builds and nothing runs as root. The workflows set `CONTAINER_ENGINE=docker`
+   ([ADR-0045](adr/0045-podman-first-then-docker.md)): the runner carries Podman too, which the tools would otherwise
+   prefer. When `ci-build` is not published, the same
    steps run on the host with Temurin 21 from `actions/setup-java`.
 3. **collect**, on the host: resolves the pushed tags to digests, the `images` output every later job reads.
 4. **integration-test**, one job per project that has integration tests, on the host: `stack.sh up` starts the
@@ -102,7 +104,8 @@ digests or "not used", and the build job's "Build environment" step prints eithe
 ## On a laptop
 
 The same commands run without the runner ([ADR-0021](adr/0021-ci-layering.md)): `./gradlew build` uses the
-laptop's JDK; `./gradlew :<AppName>:buildImage` uses the laptop's engine, with `BASE_IMAGE` defaulting to
+laptop's JDK; `./gradlew :<AppName>:buildImage` uses the laptop's engine (Podman, else Docker, as
+[ADR-0045](adr/0045-podman-first-then-docker.md) orders them), with `BASE_IMAGE` defaulting to
 `<registry>/base/jre21:latest` (`-Pimage.arg.BASE_IMAGE=<ref>` or the variable `BASE_IMAGE` overrides it);
 `./gradlew :<AppName>:integrationTest` builds the image, starts the same stack with ports published on
 `127.0.0.1`, runs the test JVM on the host and stops the stack. `base/ci-build` plays no part on a laptop.
