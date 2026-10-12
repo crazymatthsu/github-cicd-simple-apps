@@ -2,7 +2,7 @@
 
 | | |
 |---|---|
-| Status | Accepted. Rule 5 superseded in part by [ADR-0030](0030-platform-yml-declares-every-project-value.md), rule 1 in part by [ADR-0037](0037-runtime-scripts-read-generic-actuator-names.md), rule 7 in part by [ADR-0041](0041-every-label-prefix-derives-from-the-group.md) |
+| Status | Accepted. Rule 5 superseded in part by [ADR-0030](0030-platform-yml-declares-every-project-value.md), rule 1 in part by [ADR-0037](0037-runtime-scripts-read-generic-actuator-names.md), rule 7 in part by [ADR-0041](0041-every-label-prefix-derives-from-the-group.md), rule 4 in part by [ADR-0045](0045-podman-first-then-docker.md) |
 | Date | 2026-10-04 |
 | Applies to | every compose-run instance of this repository: laptops, CI test stacks and the dev hosts |
 | Enforced by | its own argument, safety and configuration checks (exit codes 2, 3, 4); ShellCheck and `scripts/test/pool-deploy-test.sh` in the `lint` job; the template's settings ([ADR-0012](0012-compose-template-and-generated-env.md)) |
@@ -53,7 +53,14 @@ scripts.
 3. **The root.** The script resolves its root to the nearest ancestor that holds a `.platform-bundle` manifest (a
    host's version directory), else the git checkout. So the same command line works in a checkout and on a host,
    with no `CONFIG_ROOT`.
-4. **Engines.** It uses `docker compose` if present, else `podman compose`, else `podman-compose`. It handles their
+4. **Engines.**
+
+   > **Superseded in part by [ADR-0045](0045-podman-first-then-docker.md) rule 1.** It uses `podman compose`, else
+   > `podman-compose`, else `docker compose`; a command that talks to the engine skips one whose `info` fails.
+   > `--engine` falls back to `RUN_COMPOSE_ENGINE`, then `CONTAINER_ENGINE`. The engine step of the flowchart under
+   > rule 6 follows.
+
+   It uses `docker compose` if present, else `podman compose`, else `podman-compose`. It handles their
    differences:
    - `podman-compose` has no `up --wait`, so `start` polls readiness;
    - the app container is found through its compose labels;

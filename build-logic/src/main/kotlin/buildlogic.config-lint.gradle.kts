@@ -6,9 +6,9 @@
 // Helm chart is <subproject>/helm/<AppName>/Chart.yaml (ADR-0019). The Helm checks run only when platform.yml
 // kinds includes helm (ADR-0036).
 //
-//   ./gradlew configLint                      # render check 6 with docker compose / podman compose if present,
+//   ./gradlew configLint                      # render check 6 with podman compose / docker compose if present,
 //                                             # check 12 with helm (and kubeconform) if present
-//   -PconfigLint.compose=none|docker|podman   # choose or disable the compose CLI for check 6
+//   -PconfigLint.compose=none|podman|docker   # choose or disable the compose CLI for check 6 (env CONTAINER_ENGINE)
 //   -PconfigLint.helm=auto|none|<path>        # Helm 4 for check 12: from the PATH, off, or this binary
 //   -PconfigLint.requireRender=true           # fail when no compose CLI / Helm 4 exists (default when CI=true)
 //   -PconfigLint.completeEnvs=local           # envs in which every deployable app must have configuration and a chart
@@ -57,7 +57,8 @@ tasks.register<ConfigLintTask>("configLint") {
     completeEnvs = providers.gradleProperty("configLint.completeEnvs")
         .map { it.split(',').map(String::trim).filter(String::isNotEmpty).toSet() }
         .orElse(setOf("local"))
-    composeCli = providers.gradleProperty("configLint.compose").orElse("auto")
+    composeCli = providers.gradleProperty("configLint.compose")
+        .orElse(providers.environmentVariable("CONTAINER_ENGINE")).orElse("auto")
     requireRender = providers.gradleProperty("configLint.requireRender").map { it.toBoolean() }
         .orElse(providers.environmentVariable("CI").map { it == "true" })
         .orElse(false)

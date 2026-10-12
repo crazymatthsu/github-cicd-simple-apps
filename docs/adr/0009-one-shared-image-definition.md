@@ -2,7 +2,7 @@
 
 | | |
 |---|---|
-| Status | Accepted. Rules 3 and 6 superseded in part by [ADR-0033](0033-public-base-image-fallback.md), rule 4 in part by [ADR-0041](0041-every-label-prefix-derives-from-the-group.md) |
+| Status | Accepted. Rules 3 and 6 superseded in part by [ADR-0033](0033-public-base-image-fallback.md), rule 4 in part by [ADR-0041](0041-every-label-prefix-derives-from-the-group.md) and [ADR-0045](0045-podman-first-then-docker.md) |
 | Date | 2026-10-04 |
 | Applies to | every app image |
 | Enforced by | hadolint in the `lint` job (warnings fail, trusted registries only); `ContainerEnginesTest`; `buildImage` fails in CI when no engine is usable |
@@ -66,6 +66,10 @@ so that registry caches hit. And they have to run as a non-root user, with the c
    > **Superseded in part by [ADR-0041](0041-every-label-prefix-derives-from-the-group.md) rule 6.** The project's
    > own labels are `<group>.app`, `.git-sha`, `.build-url` and `.version-kind`, the group being `projects[0].group`
    > of `platform.yml`; the Dockerfile sets only the `org.opencontainers.image.*` labels.
+
+   > **Superseded in part by [ADR-0045](0045-podman-first-then-docker.md) rule 1.** `buildImage` tries Podman, then
+   > Docker, and picks the first whose service or daemon answers; `-Pimage.engine` or `CONTAINER_ENGINE` still names
+   > one.
 
    - `buildImage` runs `docker buildx build --load` or `podman build --format docker` (which keeps the
      `HEALTHCHECK`). It tries Docker, then Podman, and picks the first whose daemon or service answers.

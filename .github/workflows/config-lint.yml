@@ -18,6 +18,10 @@ on:
 permissions:
   contents: read
 
+# CI runs on Docker (ADR-0045 rule 3): the runner carries Podman too, which the tools would otherwise prefer.
+env:
+  CONTAINER_ENGINE: docker
+
 jobs:
   config-lint:
     name: config-lint

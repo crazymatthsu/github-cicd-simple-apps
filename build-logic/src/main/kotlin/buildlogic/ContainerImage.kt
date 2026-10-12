@@ -24,7 +24,7 @@ import java.time.Instant
 import java.time.temporal.ChronoUnit
 import javax.inject.Inject
 
-/** The image build tool decided by ADR-0009: a Dockerfile built with `docker buildx` or `podman build`. */
+/** The image build tool decided by ADR-0009: a Dockerfile built with `podman build` or `docker buildx`. */
 enum class EngineKind(val executable: String) { DOCKER("docker"), PODMAN("podman") }
 
 data class Engine(val kind: EngineKind, val buildx: Boolean) {
@@ -40,16 +40,19 @@ sealed interface EngineProbe {
 }
 
 object ContainerEngines {
+    /** The order `auto` tries the engines in (ADR-0045): Podman, then Docker. */
+    val AUTO_ORDER = listOf(EngineKind.PODMAN, EngineKind.DOCKER)
+
     /**
-     * `auto` tries Docker, then Podman (ADR-0009): a CLI on the PATH is not enough, the daemon (Docker) or the
-     * service (Podman) must answer `info`. Pure function over [run] so that it is unit-tested.
+     * `auto` tries Podman, then Docker (ADR-0045): a CLI on the PATH is not enough, the service (Podman) or the
+     * daemon (Docker) must answer `info`. Pure function over [run] so that it is unit-tested.
      */
     fun detect(choice: String, run: (List<String>) -> CommandResult): EngineProbe {
         val candidates = when (choice.lowercase()) {
-            "", "auto" -> listOf(EngineKind.DOCKER, EngineKind.PODMAN)
-            "docker" -> listOf(EngineKind.DOCKER)
+            "", "auto" -> AUTO_ORDER
             "podman" -> listOf(EngineKind.PODMAN)
-            else -> throw GradleException("image.engine must be auto, docker or podman (was '$choice')")
+            "docker" -> listOf(EngineKind.DOCKER)
+            else -> throw GradleException("image.engine must be auto, podman or docker (was '$choice')")
         }
         val reasons = mutableListOf<String>()
         for (kind in candidates) {
@@ -72,6 +75,17 @@ object ContainerEngines {
             return EngineProbe.Found(Engine(kind, buildx))
         }
         return EngineProbe.Missing(reasons)
+    }
+
+    /**
+     * The compose CLIs config-lint check 6 renders with, in the order it tries them (ADR-0045): Podman's
+     * (`podman compose`, then `podman-compose`), then Docker's. `none` renders nothing; any other value is `auto`.
+     */
+    fun composeCandidates(choice: String): List<List<String>> = when (choice.lowercase()) {
+        "none" -> emptyList()
+        "podman" -> listOf(listOf("podman", "compose"), listOf("podman-compose"))
+        "docker" -> listOf(listOf("docker", "compose"))
+        else -> listOf(listOf("podman", "compose"), listOf("podman-compose"), listOf("docker", "compose"), listOf("docker-compose"))
     }
 
     /** The build command line for [engine] (ADR-0009: Podman builds with `--format docker` to keep HEALTHCHECK). */
@@ -112,7 +126,7 @@ object ContainerEngines {
 /** Shared engine handling: detect, then either run or explain clearly why nothing happens. */
 @DisableCachingByDefault(because = "Talks to the local container engine")
 abstract class ContainerEngineTask : DefaultTask() {
-    /** `auto`, `docker` or `podman` (`-Pimage.engine`, env `CONTAINER_ENGINE`). */
+    /** `auto`, `podman` or `docker` (`-Pimage.engine`, env `CONTAINER_ENGINE`; ADR-0045). */
     @get:Input
     abstract val engineChoice: Property<String>
 
@@ -160,7 +174,8 @@ abstract class ContainerEngineTask : DefaultTask() {
             is EngineProbe.Missing -> {
                 val message = "$path: no usable container engine, $action skipped.\n" +
                     probe.reasons.joinToString("\n") { "  - $it" } +
-                    "\n  Start Docker (or `systemctl --user start podman.socket`), or choose one with -Pimage.engine=docker|podman."
+                    "\n  Start Podman (`podman machine start`, or `systemctl --user start podman.socket`) or Docker, or choose " +
+                    "one with -Pimage.engine=podman|docker (env CONTAINER_ENGINE)."
                 if (requireEngine.get()) throw GradleException("$message\n  (-Pimage.requireEngine=true / CI=true: failing instead of skipping)")
                 logger.warn(message)
                 null

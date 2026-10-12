@@ -57,6 +57,7 @@ flowchart LR
 | what CI does with a pull request and with `main` | [ADR-0021](0021-ci-layering.md) to [ADR-0024](0024-ephemeral-ci-environments.md) |
 | how a release reaches prod | [ADR-0010](0010-image-tags-digests-promotion-retention.md), [ADR-0029](0029-release-and-promotion.md) |
 | how a job logs in to the registry, on GHCR or on Artifactory | [ADR-0032](0032-registry-credentials.md) |
+| which container engine builds and runs things: Podman, else Docker, and Docker in CI | [ADR-0045](0045-podman-first-then-docker.md) |
 
 ## The ADRs
 
@@ -76,9 +77,10 @@ flowchart LR
 | **Build and artifacts** | | |
 | [0007](0007-gradle-build-with-convention-plugins.md) | Convention plugins in `build-logic/`, one version catalog and the Spring Boot BOM give reproducible, cached builds; a module declares only its plugins and dependencies. | Accepted; rule 3 superseded in part by ADR-0030 and ADR-0038, rule 1 in part by ADR-0033 |
 | [0008](0008-versions-derived-from-git.md) | Versions come from git tags and Conventional Commits on every build. No version file exists. | Accepted |
-| [0009](0009-one-shared-image-definition.md) | One Dockerfile and a three-file build context for every app; images are non-root and layered, and Gradle builds them with docker or podman. | Accepted; rules 3 and 6 superseded in part by ADR-0033, rule 4 in part by ADR-0041 |
+| [0009](0009-one-shared-image-definition.md) | One Dockerfile and a three-file build context for every app; images are non-root and layered, and Gradle builds them with docker or podman. | Accepted; rules 3 and 6 superseded in part by ADR-0033, rule 4 in part by ADR-0041 and ADR-0045 |
 | [0010](0010-image-tags-digests-promotion-retention.md) | Images are `<registry>/<project>/<AppName>` with immutable version and sha tags. They move by digest, are promoted by re-tagging, and the retention sweep keeps everything in use. | Accepted; rule 7 superseded in part by ADR-0032 |
 | [0033](0033-public-base-image-fallback.md) | A company base image that is not published falls back to a public Temurin image pinned in `.github/versions.env`: `eclipse-temurin:21-jre` for the app images, `eclipse-temurin:21-jdk` for the integration tests. The shared Dockerfile adds the user, the directories and curl that the public image lacks, and a pull-request job proves it. | Accepted |
+| [0045](0045-podman-first-then-docker.md) | Every tool that picks a container engine prefers Podman, with `podman compose` (else `podman-compose`), then Docker, with `docker compose`: the first that answers. `CONTAINER_ENGINE` names one for every tool, and CI pins `docker`. | Accepted |
 | **Configuration** | | |
 | [0011](0011-configuration-tree-and-spring-layers.md) | Spring layers apply jar < flow < app < instance < secrets. Layers are files named by level, only `application.<layer>.yml` reaches the container, and nothing is shared above the flow. | Accepted; rule 5 superseded in part by ADR-0036 |
 | [0012](0012-compose-template-and-generated-env.md) | One compose template plus structural overrides. The env layers merge into one generated, annotated env per instance, from allow-listed variables. | Accepted; rule 3 superseded in part by ADR-0041 and ADR-0042 |
@@ -89,7 +91,7 @@ flowchart LR
 | **Runtime operations** | | |
 | [0015](0015-actuator-health-and-metrics-contract.md) | Every app exposes `health`, `info`, `prometheus` and its configuration summary `appconfig` on port 8080. Readiness is `readinessState` plus the `app` indicator, the identity is on every meter, and one test checks all of it. | Accepted; rules 3 and 6 superseded in part by ADR-0037, rules 1, 3, 4, 6 and 9 in part by ADR-0040 |
 | [0016](0016-logging-and-startup-configuration-summary.md) | Logs go to stdout with the identity on every line. The masked effective configuration is available at start-up, from an endpoint, and offline. | Accepted; rule 5 superseded in part by ADR-0037 and ADR-0040, rule 4 in part by ADR-0042 |
-| [0017](0017-run-compose-operations-cli-and-runtime-posture.md) | `run-compose.sh` operates every compose-run instance of this repository — laptop, CI, dev host — with safety rules and an audit line; the shared template hardens every container. | Accepted; rule 5 superseded in part by ADR-0030, rule 1 in part by ADR-0037, rule 7 in part by ADR-0041 |
+| [0017](0017-run-compose-operations-cli-and-runtime-posture.md) | `run-compose.sh` operates every compose-run instance of this repository — laptop, CI, dev host — with safety rules and an audit line; the shared template hardens every container. | Accepted; rule 5 superseded in part by ADR-0030, rule 1 in part by ADR-0037, rule 7 in part by ADR-0041, rule 4 in part by ADR-0045 |
 | [0037](0037-runtime-scripts-read-generic-actuator-names.md) | The runtime scripts read the generic names first, the `app` section of `/actuator/info` and `/actuator/appconfig`, and accept `connector` and `connectorconfig`, the names of images built before ADR-0040. An app that publishes neither passes on readiness, with a warning. | Accepted; rules 1, 3 and 7 superseded in part by ADR-0040 |
 | [0040](0040-actuator-contract-and-runtime-module-carry-generic-names.md) | The framework and its actuator contract carry generic names: the module `framework/app-runtime`, `PlatformApplication`, `AbstractPlatformApplicationTest`, the endpoint `appconfig`, the readiness indicator `app` and the identity in the `app` section of `/actuator/info` only. The runtime scripts still accept the old `connector` and `connectorconfig`. | Accepted |
 | [0041](0041-every-label-prefix-derives-from-the-group.md) | Every label key the tooling sets or filters by starts with `projects[0].group` of `platform.yml`: the group on images and compose resources (`<group>.env`), the group reversed on Kubernetes objects and kind nodes (`<domain>/env`). No tool names a label domain; the group is lower-case words. | Accepted |
@@ -130,6 +132,7 @@ flowchart LR
 | reference app | the app of the kind deployment test and the nightly teardown drill (`reference_app`) |
 | promoted env | `qa`, `uat`, `prod` or `parallel`: configured in and deployed from the configuration repository, immutable tags only ([ADR-0004](0004-environments-and-runtimes.md)) |
 | configuration repository | the separate repository holding the configuration of the promoted envs |
+| container engine | Podman, else Docker: the first that answers; `CONTAINER_ENGINE` names one ([ADR-0045](0045-podman-first-then-docker.md)) |
 | flow, cluster | a business flow; one flow in one env is one cluster, with its own boxes and inventory |
 | instance | one configured pipeline of an app in a flow: `config/<env>/<flow>/<AppName>/<AppInstance>/` |
 | layer | one level of configuration (jar, flow, app, instance, secrets) and the files at that level ([ADR-0011](0011-configuration-tree-and-spring-layers.md)) |

@@ -72,6 +72,8 @@ permissions:
 # github.com.
 env:
   YQ_DOWNLOAD_BASE: ${{ vars.YQ_DOWNLOAD_BASE }}
+  # CI runs on Docker (ADR-0045 rule 3): the runner carries Podman too, which the tools would otherwise prefer.
+  CONTAINER_ENGINE: docker
 
 jobs:
   probe:

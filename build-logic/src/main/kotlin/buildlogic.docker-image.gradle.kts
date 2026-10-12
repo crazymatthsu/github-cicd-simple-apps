@@ -1,6 +1,6 @@
 // `buildlogic.docker-image` (ADR-0007, ADR-0009, ADR-0010): buildImage, pushImage, printImageRef.
 //
-//   ./gradlew :source-database:buildImage      # docker buildx / podman build
+//   ./gradlew :source-database:buildImage      # podman build / docker buildx (ADR-0045)
 //   ./gradlew -q :source-database:printImageRef
 //
 // ONE shared Dockerfile for every app (ADR-0009): the build context staged under build/docker/ holds exactly
@@ -12,7 +12,7 @@
 // project's own labels are <group>.<name>, the group of platform.yml (ADR-0041); the Dockerfile sets only OCI labels.
 //
 // Properties: -Pimage.registry (env IMAGE_REGISTRY, default the registry of platform.yml), -Pimage.tags=a,b,
-// -Pimage.engine=auto|docker|podman (env CONTAINER_ENGINE), -Pimage.requireEngine=true (default when CI=true),
+// -Pimage.engine=auto|podman|docker (env CONTAINER_ENGINE), -Pimage.requireEngine=true (default when CI=true),
 // -Pimage.arg.BASE_IMAGE=<ref> (env BASE_IMAGE, default <platform.yml registry>/base/jre21:latest;
 // -Pimage.arg.<ARG>=<ref> for any other build argument),
 // -Pimage.extraArgs="--cache-from ...", -Pimage.allowLocalPush=true, -Pimage.sourceUrl=<repo url>,
@@ -144,7 +144,7 @@ plugins.withId("org.springframework.boot") {
 
 val buildImage = tasks.register<BuildImageTask>("buildImage") {
     group = "container image"
-    description = "Builds the image with docker buildx or podman build (no-op with a message when no engine is usable)."
+    description = "Builds the image with podman build or docker buildx (no-op with a message when no engine is usable)."
     contextDir.fileProvider(stageDockerContext.map { it.destinationDir })
     dockerfile = image.dockerfile
     imageRefs = allImageRefs

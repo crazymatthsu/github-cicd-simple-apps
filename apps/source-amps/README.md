@@ -8,7 +8,7 @@ the actuator on port 8080. No client library is wired in yet.
 
 ```bash
 ./gradlew :source-amps:build          # unit tests, bootJar
-./gradlew :source-amps:buildImage     # needs Docker or Podman
+./gradlew :source-amps:buildImage     # needs Podman or Docker (ADR-0045)
 scripts/run-compose.sh local cash source-amps reuters-fx start
 scripts/run-compose.sh local cash source-amps reuters-fx health
 scripts/run-compose.sh local cash source-amps reuters-fx down

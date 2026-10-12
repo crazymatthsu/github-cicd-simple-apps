@@ -51,6 +51,8 @@ permissions:
 # github.com.
 env:
   YQ_DOWNLOAD_BASE: ${{ vars.YQ_DOWNLOAD_BASE }}
+  # CI runs on Docker (ADR-0045 rule 3): the runner carries Podman too, which the tools would otherwise prefer.
+  CONTAINER_ENGINE: docker
 
 jobs:
   retention:
@@ -155,7 +157,7 @@ jobs:
         id: forced
         if: steps.image.outputs.skip == 'false'
         run: |
-          read -r -a compose <<<"${COMPOSE_BIN:-docker compose}"
+          read -r -a compose <<<"${COMPOSE_BIN:-${CONTAINER_ENGINE:-docker} compose}"
           "${compose[@]}" run --rm it-runner sh -c 'echo "teardown drill: this test fails on purpose"; exit 1'
 
       - name: Diagnostics before teardown

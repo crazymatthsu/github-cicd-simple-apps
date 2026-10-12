@@ -143,7 +143,8 @@ left.
 
 | Variable | Default | Effect |
 |---|---|---|
-| `COMPOSE_BIN` | `docker compose` if Docker is installed, else `podman compose` | compose command; the engine CLI is its first word |
+| `CONTAINER_ENGINE` | auto: Podman, then Docker, the first with compose v2 whose engine answers `info` ([ADR-0045](../docs/adr/0045-podman-first-then-docker.md)) | `podman` or `docker`: the engine of every tool; CI sets `docker` |
+| `COMPOSE_BIN` | `<engine> compose` | compose command; the engine CLI is its first word; wins over `CONTAINER_ENGINE` |
 | `DEEPHAVEN_IMAGE`, `MSSQL_IMAGE`, `KAFKA_IMAGE`, `CI_BUILD_IMAGE` | `versions.env` | image references; the environment overrides the file |
 | `IT_RUNNER_UID`, `IT_RUNNER_GID` | the caller's `id -u` / `id -g` | user the `it-runner` container runs as |
 | `STACK_WAIT_TIMEOUT` | `180` | seconds for each `up --wait` |
@@ -156,6 +157,7 @@ left.
 
 ```yaml
 env:
+  CONTAINER_ENGINE: docker   # CI runs on Docker (ADR-0045)
   COMPOSE_PROJECT_NAME: ci-${{ github.run_id }}-${{ github.run_attempt }}
   CI_RUN_ID: ${{ github.run_id }}
   CI_RUN_ATTEMPT: ${{ github.run_attempt }}
@@ -181,10 +183,10 @@ outputs keep their owner.
 
 ## Local development
 
-Requirements: Docker with the compose plugin (v2.24 or later), or Podman with a compose provider.
-With Podman, `podman compose` should use the `docker-compose` provider, because `--wait` and
-`COMPOSE_ENV_FILES` are compose v2 features. Set `COMPOSE_BIN="podman compose"`, which is also the
-default when `docker` is missing. SQL Server is amd64 only, so Apple silicon runs it under
+Requirements: Podman with a compose provider, or Docker with the compose plugin (v2.24 or later).
+`stack.sh` takes Podman first ([ADR-0045](../docs/adr/0045-podman-first-then-docker.md)), but only when
+`podman compose` runs the `docker-compose` provider, because `--wait` and `COMPOSE_ENV_FILES` are compose v2
+features; with podman-compose it moves on to Docker. `CONTAINER_ENGINE=docker` (or `podman`) names the engine. SQL Server is amd64 only, so Apple silicon runs it under
 emulation and may need `STACK_WAIT_TIMEOUT=300`.
 
 ```bash
@@ -211,7 +213,7 @@ docker compose exec sqlserver /opt/mssql-tools18/bin/sqlcmd -C -U sa -P "$IT_SA_
 
 ## Running the reference IT locally
 
-With Docker (or Podman) available:
+With Podman or Docker available:
 
 ```bash
 ./gradlew :source-database:integrationTest

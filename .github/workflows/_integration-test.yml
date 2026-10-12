@@ -42,6 +42,10 @@ on:
 permissions:
   contents: read
 
+# CI runs on Docker (ADR-0045 rule 3): the runner carries Podman too, which the tools would otherwise prefer.
+env:
+  CONTAINER_ENGINE: docker
+
 jobs:
   it:
     name: integration tests (${{ inputs.project }})
@@ -100,7 +104,7 @@ jobs:
       - name: Integration tests in it-runner
         run: |
           set -euo pipefail
-          read -r -a compose <<<"${COMPOSE_BIN:-docker compose}"
+          read -r -a compose <<<"${COMPOSE_BIN:-${CONTAINER_ENGINE:-docker} compose}"
           "${compose[@]}" run --rm it-runner ./gradlew "${IT_PROJECT}:integrationTest" -Pcompose.managed=false --no-daemon
 
       - name: Diagnostics before teardown

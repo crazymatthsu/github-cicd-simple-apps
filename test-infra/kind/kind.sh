@@ -51,7 +51,8 @@ Environment
   KIND_NODE_IMAGE        node image for up (default: kind's own for the pinned KIND_VERSION, versions.env)
   KIND_WAIT              how long up waits for the control plane and for cluster DNS (default 120s)
   KIND_STATE_DIR         where up writes kubeconfigs (default test-infra/kind/.state)
-  KIND_EXPERIMENTAL_PROVIDER  docker (default when installed) or podman (default when docker is absent)
+  KIND_EXPERIMENTAL_PROVIDER  podman or docker; else CONTAINER_ENGINE; else Podman, then Docker, the first whose
+                         engine answers `info` (ADR-0045). With Podman, kind.sh exports it as podman for kind
 
 Exit codes
   0 success   1 kind, kubectl or engine failure, or a leak found   2 usage
@@ -195,24 +196,32 @@ validate_ref() {
 
 # --- engine and tools --------------------------------------------------------------------------------
 
+# Podman, then Docker (ADR-0045): the first whose engine answers. kind on its own tries Docker first, so a Podman
+# choice is handed to it as KIND_EXPERIMENTAL_PROVIDER=podman. KIND_EXPERIMENTAL_PROVIDER, else CONTAINER_ENGINE,
+# names the engine instead.
 detect_engine() {
-  local provider=${KIND_EXPERIMENTAL_PROVIDER:-}
+  local provider=${KIND_EXPERIMENTAL_PROVIDER:-${CONTAINER_ENGINE:-}} e
+  [[ $provider != auto ]] || provider=''
+  ENGINE=
   if [[ -n $provider ]]; then
     case $provider in
-      docker | podman) ENGINE=$provider ;;
-      *) die 5 "KIND_EXPERIMENTAL_PROVIDER='$provider' is not supported here (docker or podman)." ;;
+      podman | docker) ENGINE=$provider ;;
+      *) die 5 "KIND_EXPERIMENTAL_PROVIDER or CONTAINER_ENGINE='$provider' is not supported here (podman or docker)." ;;
     esac
-  elif has_tool docker; then
-    ENGINE=docker
-  elif has_tool podman; then
-    ENGINE=podman
-    export KIND_EXPERIMENTAL_PROVIDER=podman
+    has_tool "$ENGINE" || die 5 "container engine '$ENGINE' (KIND_EXPERIMENTAL_PROVIDER, CONTAINER_ENGINE) is not on PATH."
+    with_timeout 30 "$ENGINE" info >/dev/null 2>&1 \
+      || die 5 "cannot reach the $ENGINE engine ('$ENGINE info' failed). For Podman run 'podman machine start', or start Docker."
   else
-    die 5 "no container engine found: kind needs Docker, or Podman with KIND_EXPERIMENTAL_PROVIDER=podman."
+    for e in podman docker; do
+      if has_tool "$e" && with_timeout 30 "$e" info >/dev/null 2>&1; then
+        ENGINE=$e
+        break
+      fi
+    done
+    [[ -n $ENGINE ]] \
+      || die 5 "no usable container engine: kind needs Podman or Docker, installed and answering 'info' ('podman machine start', or start Docker)."
   fi
-  has_tool "$ENGINE" || die 5 "container engine '$ENGINE' (KIND_EXPERIMENTAL_PROVIDER) is not on PATH."
-  with_timeout 30 "$ENGINE" info >/dev/null 2>&1 \
-    || die 5 "cannot reach the $ENGINE engine ('$ENGINE info' failed). Start Docker, or for Podman run 'podman machine start'."
+  [[ $ENGINE == docker ]] || export KIND_EXPERIMENTAL_PROVIDER=podman
 }
 
 require_tool() {
