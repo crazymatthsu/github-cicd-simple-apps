@@ -1,5 +1,12 @@
 # Changelog
 
+## [2.1.0](https://github.com/crazymatthsu/github-cicd-simple-apps/compare/v2.0.0...v2.1.0) (2026-10-12)
+
+
+### Features
+
+* prefer Podman and podman compose, then Docker and docker compose, in every tool; CI pins Docker (ADR-0045) ([#34](https://github.com/crazymatthsu/github-cicd-simple-apps/issues/34)) ([8625076](https://github.com/crazymatthsu/github-cicd-simple-apps/commit/8625076f92dd742d46feb40bb87b98e53a6a1960))
+
 ## [2.0.0](https://github.com/crazymatthsu/github-cicd-simple-apps/compare/v1.0.0...v2.0.0) (2026-10-06)
 
 
